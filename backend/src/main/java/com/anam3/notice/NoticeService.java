@@ -88,15 +88,16 @@ public class NoticeService {
                 viewer.isAdmin() || n.isWrittenBy(viewer.id()), n.getCreatedAt(), n.getUpdatedAt());
     }
 
-    /** 운영자 글은 "운영자", 그 외엔 번개와 같은 규칙으로 가운데 마스킹 (운영자와 본인에겐 실명) */
+    /** 관리자 글은 실명 + "관리자" 표시, 그 외엔 3교시와 같은 규칙으로 가운데 마스킹 (관리자와 본인에겐 실명) */
     private static AuthorView author(Member author, LoginMember viewer) {
         boolean me = author.getId().equals(viewer.id());
         if (author.isAdmin()) {
-            return new AuthorView("운영자", null, true, me, false);
+            return new AuthorView(author.getName(), author.cohortLabel(), author.departmentShortLabel(), true, me,
+                    false);
         }
         boolean showReal = me || viewer.isAdmin();
         String name = showReal ? author.getName() : NameMasker.mask(author.getName());
-        return new AuthorView(name, author.admissionLabel(), false, me, !showReal);
+        return new AuthorView(name, author.cohortLabel(), author.departmentShortLabel(), false, me, !showReal);
     }
 
     private static String preview(String content) {

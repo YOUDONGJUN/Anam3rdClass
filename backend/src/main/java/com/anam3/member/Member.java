@@ -32,9 +32,15 @@ public class Member {
     @Column(nullable = false, length = 20)
     private String name;
 
-    /** 입학 연도. 2024 -> "24학번" */
-    @Column(name = "admission_year", nullable = false)
-    private int admissionYear;
+    /** 기수. 61 -> "61기" */
+    @Column(nullable = false)
+    private int cohort;
+
+    /** 학과 (운영자 계정 등 처음엔 비어 있을 수 있음) */
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(length = 30)
+    private Department department;
 
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
@@ -52,18 +58,33 @@ public class Member {
     protected Member() {
     }
 
-    public Member(String loginId, String passwordHash, String name, int admissionYear, MemberRole role, Instant now) {
+    public Member(String loginId, String passwordHash, String name, int cohort, MemberRole role, Instant now) {
+        this(loginId, passwordHash, name, cohort, null, role, now);
+    }
+
+    public Member(String loginId, String passwordHash, String name, int cohort, Department department,
+            MemberRole role, Instant now) {
         this.loginId = loginId;
         this.passwordHash = passwordHash;
         this.name = name;
-        this.admissionYear = admissionYear;
+        this.cohort = cohort;
+        this.department = department;
         this.role = role;
         this.status = MemberStatus.ACTIVE;
         this.createdAt = now;
     }
 
-    public String admissionLabel() {
-        return String.format("%02d학번", admissionYear % 100);
+    public String cohortLabel() {
+        return cohort + "기";
+    }
+
+    /** 이름 옆에 붙는 짧은 학과 이름 (없으면 null) */
+    public String departmentShortLabel() {
+        return department == null ? null : department.shortLabel();
+    }
+
+    public String departmentLabel() {
+        return department == null ? null : department.label();
     }
 
     public boolean isAdmin() {
@@ -72,6 +93,12 @@ public class Member {
 
     public boolean isActive() {
         return status == MemberStatus.ACTIVE;
+    }
+
+    public void updateProfile(String name, int cohort, Department department) {
+        this.name = name;
+        this.cohort = cohort;
+        this.department = department;
     }
 
     public void changePassword(String newPasswordHash) {
@@ -106,8 +133,12 @@ public class Member {
         return name;
     }
 
-    public int getAdmissionYear() {
-        return admissionYear;
+    public int getCohort() {
+        return cohort;
+    }
+
+    public Department getDepartment() {
+        return department;
     }
 
     public MemberRole getRole() {

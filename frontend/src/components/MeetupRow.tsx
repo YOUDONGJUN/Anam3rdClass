@@ -4,9 +4,10 @@ import type { MeetupSummary } from '../api/types'
 import { useMeetupAction } from '../api/queries'
 import { formatDayLabel, formatRemaining, formatTime } from '../lib/time'
 import { isLive, seatsCaption } from '../lib/meetup'
-import { CategoryBadge } from './CategoryBadge'
+import { CategoryBadges } from './CategoryBadge'
 import { LineGauge } from './LineGauge'
 import { PersonName } from './PersonName'
+import { PurposeTags } from './PurposeTags'
 import { StatusPill } from './StatusPill'
 import { Button } from './ui'
 import { useToast } from './toastContext'
@@ -25,9 +26,11 @@ function QuickJoin({ meetup }: { meetup: MeetupSummary }) {
           {
             onSuccess: (d) =>
               toast.show(
-                d.status === 'CONFIRMED' && meetup.status === 'RECRUITING'
-                  ? '성사! 이제 서로 이름이 보여요'
-                  : '참여했어요. 성사되면 이름이 공개돼요',
+                d.status !== 'CONFIRMED'
+                  ? '참여했어요. 성사되면 이름이 공개돼요'
+                  : meetup.status === 'RECRUITING'
+                    ? '성사! 이제 서로 이름이 보여요'
+                    : '참여했어요. 이제 함께하는 사람들 이름이 보여요',
                 'ok',
               ),
             onError: (e) => toast.show(e.message, 'error'),
@@ -40,7 +43,7 @@ function QuickJoin({ meetup }: { meetup: MeetupSummary }) {
   )
 }
 
-/** 번개 목록의 한 줄 — 왼쪽 시간 칸, 오른쪽 정보 + 노선도 게이지 */
+/** 3교시 목록의 한 줄 — 왼쪽 시간 칸, 오른쪽 정보 + 노선도 게이지 */
 export function MeetupRow({ meetup, showDate = false, now }: { meetup: MeetupSummary; showDate?: boolean; now: Date }) {
   const live = isLive(meetup.status)
   const recruiting = live && new Date(meetup.deadlineAt) > now
@@ -55,7 +58,7 @@ export function MeetupRow({ meetup, showDate = false, now }: { meetup: MeetupSum
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start gap-2">
-          <CategoryBadge category={meetup.category} size="sm" />
+          <CategoryBadges categories={meetup.categories} size="sm" />
           <h3 className="min-w-0 flex-1 pt-0.5 text-base leading-snug font-bold text-ink">
             <Link
               to={`/meetups/${meetup.id}`}
@@ -67,10 +70,13 @@ export function MeetupRow({ meetup, showDate = false, now }: { meetup: MeetupSum
           <StatusPill meetup={meetup} />
         </div>
 
-        <p className="mt-1.5 flex items-center gap-1 text-sm text-ink-2">
-          <MapPin className="size-3.5 shrink-0 text-ink-3" aria-hidden />
-          <span className="truncate">{meetup.place}</span>
-        </p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-2">
+          <p className="flex max-w-full min-w-0 items-center gap-1">
+            <MapPin className="size-3.5 shrink-0 text-ink-3" aria-hidden />
+            <span className="truncate">{meetup.place}</span>
+          </p>
+          {meetup.purposes.length > 0 && <PurposeTags purposes={meetup.purposes} />}
+        </div>
 
         <div className="mt-3 flex items-center gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -82,12 +88,12 @@ export function MeetupRow({ meetup, showDate = false, now }: { meetup: MeetupSum
             />
             <span className="tabular shrink-0 text-sm font-bold text-ink">
               {meetup.participantCount}
-              <span className="font-medium text-ink-3">/{meetup.maxPeople}</span>
+              <span className="font-medium text-ink-3">{meetup.maxPeople === null ? '명' : `/${meetup.maxPeople}`}</span>
             </span>
           </div>
           <div className="shrink-0">
             {meetup.hosting ? (
-              <span className="rounded-md bg-board px-2 py-1 text-xs font-bold text-on-board">내 번개</span>
+              <span className="rounded-md bg-board px-2 py-1 text-xs font-bold text-on-board">내 3교시</span>
             ) : meetup.joined ? (
               <span className="rounded-md bg-ok-soft px-2 py-1 text-xs font-bold text-ok-ink">참여 중</span>
             ) : meetup.joinable ? (

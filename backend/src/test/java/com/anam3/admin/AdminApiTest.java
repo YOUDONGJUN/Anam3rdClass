@@ -18,7 +18,7 @@ class AdminApiTest extends ApiTestSupport {
     @BeforeEach
     void users() throws Exception {
         admin = adminToken();
-        minsu = signup("minsu", "김민수", 2025);
+        minsu = signup("minsu", "김민수", 61);
     }
 
     private long memberId(String loginId) throws Exception {
@@ -74,11 +74,27 @@ class AdminApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.inviteCode").value("swai2026"));
 
         post("/api/auth/signup", null, """
-                {"inviteCode":"%s","loginId":"newbie","password":"password1234","name":"신입생","admissionYear":2026}
+                {"inviteCode":"%s","loginId":"newbie","password":"password1234","name":"신입생","cohort":62,"department":"AI"}
                 """.formatted(INVITE_CODE)).andExpect(status().isBadRequest());
         post("/api/auth/signup", null, """
-                {"inviteCode":"swai2026","loginId":"newbie","password":"password1234","name":"신입생","admissionYear":2026}
+                {"inviteCode":"swai2026","loginId":"newbie","password":"password1234","name":"신입생","cohort":62,"department":"AI"}
                 """).andExpect(status().isCreated());
+    }
+
+    @Test
+    void 최신_기수를_올리면_새_기수로_가입할_수_있다() throws Exception {
+        String body = """
+                {"inviteCode":"%s","loginId":"newbie63","password":"password1234","name":"신입생","cohort":63,"department":"AI"}
+                """.formatted(INVITE_CODE);
+        post("/api/auth/signup", null, body).andExpect(status().isBadRequest());
+
+        put("/api/admin/settings/latest-cohort", minsu, "{\"latestCohort\":63}").andExpect(status().isForbidden());
+        put("/api/admin/settings/latest-cohort", admin, "{\"latestCohort\":63}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.latestCohort").value(63));
+
+        get("/api/auth/signup-options", null).andExpect(jsonPath("$.latestCohort").value(63));
+        post("/api/auth/signup", null, body).andExpect(status().isCreated());
     }
 
     @Test

@@ -4,19 +4,27 @@ import { ChevronLeft, Pencil, Pin, PinOff, Plus, Trash2 } from 'lucide-react'
 import { useDeleteNotice, useNotice, useNotices, usePinNotice, useSaveNotice } from '../api/queries'
 import type { AuthorView } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { AdminTag } from '../components/PersonName'
 import { Button, EmptyState, ErrorState, Field, FormError, Spinner } from '../components/ui'
 import { buttonClass, cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
+import { affiliation } from '../lib/person'
 import { formatRelative } from '../lib/time'
 
 function Author({ author }: { author: AuthorView }) {
   if (author.official) {
-    return <span className="rounded bg-board px-1.5 py-0.5 text-[11px] font-bold text-on-board">운영자</span>
+    return (
+      <span className="inline-flex items-center gap-1.5 text-ink-2">
+        <span className="font-semibold text-ink">{author.name}</span>
+        <AdminTag />
+        {author.me && ' (나)'}
+      </span>
+    )
   }
   return (
     <span className="text-ink-2">
-      {author.name} · {author.admissionLabel}
+      {author.name} · {affiliation(author.cohortLabel, author.departmentLabel)}
       {author.me && ' (나)'}
     </span>
   )

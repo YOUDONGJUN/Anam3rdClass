@@ -27,10 +27,10 @@ class MeetupApiTest extends ApiTestSupport {
 
     @BeforeEach
     void users() throws Exception {
-        host = signup("minsu", "김민수", 2025);
-        jiyoung = signup("jiyoung", "이지영", 2024);
-        hyunwoo = signup("hyunwoo", "박현우", 2025);
-        outsider = signup("seoyeon", "최서연", 2023);
+        host = signup("minsu", "김민수", 61);
+        jiyoung = signup("jiyoung", "이지영", 60);
+        hyunwoo = signup("hyunwoo", "박현우", 61);
+        outsider = signup("seoyeon", "최서연", 59);
     }
 
     @Test
@@ -57,7 +57,8 @@ class MeetupApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.status").value("RECRUITING"))
                 .andExpect(jsonPath("$.revealed").value(false))
                 .andExpect(jsonPath("$.participants[*].name", contains("김*수", "이지영"))) // 나는 실명
-                .andExpect(jsonPath("$.participants[0].admissionLabel").value("25학번"))
+                .andExpect(jsonPath("$.participants[0].cohortLabel").value("61기"))
+                .andExpect(jsonPath("$.participants[0].departmentLabel").value("인융"))
                 .andExpect(jsonPath("$.participants[0].masked").value(true))
                 .andExpect(jsonPath("$.openChatUrl").isEmpty())
                 .andExpect(jsonPath("$.hasOpenChat").value(true));
@@ -112,6 +113,20 @@ class MeetupApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 인원_제한_없는_번개() throws Exception {
+        long id = createMeetup(host, 2, null, IN_2H, IN_1H, null);
+        post("/api/meetups/" + id + "/join", jiyoung, null).andExpect(status().isOk());
+        post("/api/meetups/" + id + "/join", hyunwoo, null).andExpect(status().isOk());
+
+        get("/api/meetups/" + id, outsider)
+                .andExpect(jsonPath("$.maxPeople").isEmpty())
+                .andExpect(jsonPath("$.participantCount").value(3))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.canJoin").value(true));
+        post("/api/meetups/" + id + "/join", outsider, null).andExpect(status().isOk());
+    }
+
+    @Test
     void 같은_번개에_두번_참여할_수_없다() throws Exception {
         long id = createMeetup(host, 3, 6, IN_2H, IN_1H, null);
         post("/api/meetups/" + id + "/join", jiyoung, null).andExpect(status().isOk());
@@ -162,10 +177,11 @@ class MeetupApiTest extends ApiTestSupport {
     }
 
     @Test
-    void 수정과_취소는_개설자와_운영자만() throws Exception {
+    void 수정과_취소는_개설자와_관리자만() throws Exception {
         long id = createMeetup(host, 3, 6, IN_2H, IN_1H, null);
         String update = """
-                {"title":"장소 바뀜","description":"","place":"참살이길","category":"SOJU","openChatUrl":"%s"}
+                {"title":"장소 바뀜","description":"","place":"참살이길","categories":["SOJU","HIGHBALL"],
+                 "purposes":["학업"],"openChatUrl":"%s"}
                 """.formatted(CHAT);
 
         put("/api/meetups/" + id, jiyoung, update).andExpect(status().isForbidden());
@@ -174,7 +190,8 @@ class MeetupApiTest extends ApiTestSupport {
         put("/api/meetups/" + id, host, update)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.place").value("참살이길"))
-                .andExpect(jsonPath("$.category").value("SOJU"));
+                .andExpect(jsonPath("$.categories", contains("SOJU", "HIGHBALL")))
+                .andExpect(jsonPath("$.purposes", contains("학업")));
 
         post("/api/meetups/" + id + "/cancel", adminToken(), null)
                 .andExpect(status().isOk())
@@ -237,6 +254,107 @@ class MeetupApiTest extends ApiTestSupport {
     void 없는_번개는_404() throws Exception {
         get("/api/meetups/999999", host)
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("번개를 찾을 수 없어요"));
+                .andExpect(jsonPath("$.message").value("3교시를 찾을 수 없어요"));
+    }
+
+    @Test
+    void 마실_것은_여러_개_고르고_모임_목적을_붙인다() throws Exception {
+        String body = """
+                {"title":"소맥 하실 분","description":"","place":"참살이길 ○○호프","categories":["BEER","SOJU","BEER"],
+                 "purposes":[" 친목 ","학업","친목",""],"meetAt":"%s","deadlineAt":"%s","minPeople":2,"maxPeople":6}
+                """.formatted(T0.plus(IN_2H), T0.plus(IN_1H));
+        // 빈 목적은 거절
+        post("/api/meetups", host, body).andExpect(status().isBadRequest());
+
+        body = body.replace(",\"\"]", "]");
+        long id = ((Number) read(post("/api/meetups", host, body).andExpect(status().isCreated()), "$.id")).longValue();
+
+        // 종류는 정해진 순서로, 목적은 공백·중복을 정리해서 고른 순서대로
+        get("/api/meetups/" + id, jiyoung)
+                .andExpect(jsonPath("$.place").value("참살이길 ○○호프"))
+                .andExpect(jsonPath("$.categories", contains("SOJU", "BEER")))
+                .andExpect(jsonPath("$.purposes", contains("친목", "학업")));
+        get("/api/meetups", jiyoung)
+                .andExpect(jsonPath("$[0].categories", contains("SOJU", "BEER")))
+                .andExpect(jsonPath("$[0].purposes", contains("친목", "학업")));
+    }
+
+    @Test
+    void 종류와_목적_검증() throws Exception {
+        String base = """
+                {"title":"치맥","description":"","place":"안암","categories":%s,"purposes":%s,
+                 "meetAt":"%s","deadlineAt":"%s","minPeople":2,"maxPeople":6}
+                """;
+        String meet = T0.plus(IN_2H).toString();
+        String deadline = T0.plus(IN_1H).toString();
+        // 종류를 하나도 안 고름
+        post("/api/meetups", host, base.formatted("[]", "[]", meet, deadline))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("무엇을 마실지 하나 이상 골라 주세요"));
+        // 목적 4개
+        post("/api/meetups", host, base.formatted("[\"BEER\"]", "[\"a\",\"b\",\"c\",\"d\"]", meet, deadline))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("모임 목적은 3개까지 고를 수 있어요"));
+        // 목적에 쉼표 (DB 에 쉼표로 이어 저장하므로)
+        post("/api/meetups", host, base.formatted("[\"BEER\"]", "[\"친목,잡담\"]", meet, deadline))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("모임 목적에는 쉼표(,)를 쓸 수 없어요"));
+        // 목적이 너무 김
+        post("/api/meetups", host, base.formatted("[\"BEER\"]", "[\"열세글자가넘는아주긴모임목적\"]", meet, deadline))
+                .andExpect(status().isBadRequest());
+        // 목적은 안 넣어도 된다
+        post("/api/meetups", host, base.formatted("[\"BEER\"]", "null", meet, deadline))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.purposes", hasSize(0)));
+    }
+
+    @Test
+    void 최소_인원이_없으면_열자마자_성사되고_참여하면_바로_실명() throws Exception {
+        long id = createMeetup(host, null, null, IN_2H, IN_1H, CHAT);
+
+        get("/api/meetups/" + id, outsider)
+                .andExpect(jsonPath("$.minPeople").isEmpty())
+                .andExpect(jsonPath("$.maxPeople").isEmpty())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.revealed").value(false))
+                .andExpect(jsonPath("$.host.name").value("김*수"))
+                .andExpect(jsonPath("$.canJoin").value(true));
+
+        post("/api/meetups/" + id + "/join", jiyoung, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.revealed").value(true))
+                .andExpect(jsonPath("$.host.name").value("김민수"))
+                .andExpect(jsonPath("$.openChatUrl").value(CHAT));
+
+        // 마감이 지나도 무산되지 않는다
+        clock.advance(Duration.ofMinutes(90));
+        get("/api/meetups", outsider).andExpect(jsonPath("$[0].status").value("CONFIRMED"));
+    }
+
+    @Test
+    void 최소_인원이_없어도_혼자였으면_지난_3교시에_안_나온다() throws Exception {
+        createMeetup(host, null, 6, IN_2H, IN_1H, null);
+        long together = createMeetup(jiyoung, null, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + together + "/join", hyunwoo, null);
+
+        clock.advance(Duration.ofHours(3));
+
+        get("/api/meetups?scope=past", outsider)
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value((int) together));
+    }
+
+    @Test
+    void 관리자_이름은_누구에게나_실명과_관리자_표시() throws Exception {
+        long id = createMeetup(adminToken(), 3, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + id + "/join", jiyoung, null);
+
+        get("/api/meetups/" + id, outsider)
+                .andExpect(jsonPath("$.revealed").value(false))
+                .andExpect(jsonPath("$.host.name").value("박관리"))
+                .andExpect(jsonPath("$.host.admin").value(true))
+                .andExpect(jsonPath("$.host.masked").value(false))
+                .andExpect(jsonPath("$.participants[1].name").value("이*영"))
+                .andExpect(jsonPath("$.participants[1].admin").value(false));
     }
 }

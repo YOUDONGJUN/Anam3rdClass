@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { api, ApiError } from '../api/client'
-import type { AuthResponse } from '../api/types'
+import type { AuthResponse, Department } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { AffiliationFields } from '../components/AffiliationFields'
 import { Button, Field, FormError, Segmented } from '../components/ui'
 import { inputClass } from '../components/styles'
-import { kstParts } from '../lib/time'
 
 function useAfterAuth() {
   const { signIn } = useAuth()
@@ -69,17 +69,16 @@ function LoginForm() {
       <Button type="submit" size="lg" loading={pending} disabled={!loginId || !password}>
         로그인
       </Button>
-      <p className="text-center text-sm text-ink-3">비밀번호를 잊었다면 운영자에게 임시 비밀번호를 요청해 주세요.</p>
+      <p className="text-center text-sm text-ink-3">비밀번호를 잊었다면 관리자에게 임시 비밀번호를 요청해 주세요.</p>
     </form>
   )
 }
 
 function SignupForm() {
   const done = useAfterAuth()
-  const thisYear = kstParts(new Date()).year
-  const years = Array.from({ length: 12 }, (_, i) => thisYear + (kstParts(new Date()).month >= 11 ? 1 : 0) - i)
-
-  const [form, setForm] = useState({ inviteCode: '', name: '', admissionYear: String(thisYear), loginId: '', password: '' })
+  const [form, setForm] = useState({ inviteCode: '', name: '', loginId: '', password: '' })
+  const [cohort, setCohort] = useState('')
+  const [department, setDepartment] = useState<Department | ''>('')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [key]: e.target.value }))
@@ -92,7 +91,7 @@ function SignupForm() {
       done(
         await api<AuthResponse>('/api/auth/signup', {
           method: 'POST',
-          body: { ...form, admissionYear: Number(form.admissionYear) },
+          body: { ...form, cohort: Number(cohort), department },
         }),
       )
     } catch (err) {
@@ -101,7 +100,7 @@ function SignupForm() {
     }
   }
 
-  const ready = form.inviteCode && form.name && form.loginId && form.password.length >= 8
+  const ready = form.inviteCode && form.name && cohort && department && form.loginId && form.password.length >= 8
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
@@ -118,27 +117,18 @@ function SignupForm() {
           />
         )}
       </Field>
-      <div className="grid grid-cols-[1fr_8.5rem] gap-3">
-        <Field label="이름">
-          {({ id }) => (
-            <input id={id} className={inputClass} autoComplete="name" value={form.name} onChange={set('name')} />
-          )}
-        </Field>
-        <Field label="학번">
-          {({ id }) => (
-            <select id={id} className={inputClass} value={form.admissionYear} onChange={set('admissionYear')}>
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {String(y % 100).padStart(2, '0')}학번
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-      </div>
-      <p className="-mt-2 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-ink-2">
-        다른 사람에게 이름은 <b className="text-ink">김*수 · 24학번</b>처럼 가려져 보여요. 번개가 성사되면 함께하는 사람끼리만
-        실명이 보여요.
+      <Field label="이름">
+        {({ id }) => <input id={id} className={inputClass} autoComplete="name" value={form.name} onChange={set('name')} />}
+      </Field>
+      <AffiliationFields
+        cohort={cohort}
+        department={department}
+        onCohortChange={setCohort}
+        onDepartmentChange={setDepartment}
+      />
+      <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-ink-2">
+        다른 사람에게 이름은 <b className="text-ink">김*수 · 61기 · 인융</b>처럼 가려져 보여요. 3교시가 성사되면 함께하는
+        사람끼리만 실명이 보여요.
       </p>
       <Field label="아이디" hint="영문·숫자·_ 4~20자">
         {({ id, describedBy }) => (
@@ -175,7 +165,7 @@ function SignupForm() {
 }
 
 const STEPS = [
-  { title: '번개를 열어요', body: '시간, 장소, 최소 인원만 정하면 끝. 이름은 가운데가 가려져요.' },
+  { title: '3교시를 열어요', body: '시간, 장소, 인원만 정하면 끝. 이름은 가운데가 가려져요.' },
   { title: '사람이 모여요', body: '누가 왔는지는 몰라도 몇 명 모였는지는 실시간으로 보여요.' },
   { title: '성사되면 공개', body: '최소 인원이 차면 참여자끼리만 실명과 오픈채팅 링크가 열려요. 안 모이면 조용히 사라져요.' },
 ]
@@ -195,7 +185,7 @@ export function WelcomePage() {
             </div>
             <div className="h-3 bg-accent" aria-hidden />
             <div className="flex items-center justify-between px-6 py-3.5 text-sm font-semibold text-on-board-2 sm:px-10">
-              <span>← 2교시 · 수업</span>
+              <span>← 1·2교시 · 수업</span>
               <span>귀가 · 막차 →</span>
             </div>
           </div>
@@ -214,7 +204,10 @@ export function WelcomePage() {
         <section className="px-4 py-8 sm:px-10 lg:px-0 lg:py-0">
           <div className="mx-auto max-w-md rounded-3xl border border-line bg-surface p-6 shadow-[0_12px_40px_-16px_rgb(0_0_0/0.18)] sm:p-8">
             <p className="mb-1 text-lg font-bold text-ink">고려대 SW·AI융합대학원 번개 모임</p>
-            <p className="mb-6 text-[15px] text-ink-2">동기·선후배끼리만 쓰는 공간이에요.</p>
+            <p className="mb-6 text-[15px] leading-relaxed text-ink-2">
+              수업 끝나고 모이는 번개, 여기선 <b className="text-ink">3교시</b>라고 불러요. 동기·선후배끼리만 쓰는
+              공간이에요.
+            </p>
             <Segmented
               label="로그인 또는 가입"
               value={tab}

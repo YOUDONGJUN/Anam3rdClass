@@ -22,7 +22,7 @@ public interface MeetupRepository extends JpaRepository<Meetup, Long> {
     @Query("select m from Meetup m join fetch m.host where m.id = :id")
     Optional<Meetup> findWithHost(@Param("id") Long id);
 
-    /** 아직 모이기 전인 번개 (무산 여부는 서비스에서 걸러낸다) */
+    /** 아직 모이기 전인 3교시 (무산 여부는 서비스에서 걸러낸다) */
     @Query("""
             select m from Meetup m join fetch m.host
             where m.canceled = false and m.meetAt > :now
@@ -30,10 +30,12 @@ public interface MeetupRepository extends JpaRepository<Meetup, Long> {
             """)
     List<Meetup> findUpcoming(@Param("now") Instant now, Pageable pageable);
 
-    /** 성사되어 이미 모인 번개 */
+    /**
+     * 성사되어 실제로 모인 3교시. 최소 인원이 없는(무조건 진행) 3교시는 2명 이상 모였을 때만 친다.
+     */
     @Query("""
             select m from Meetup m join fetch m.host
-            where m.canceled = false and m.meetAt <= :now and m.participantCount >= m.minPeople
+            where m.canceled = false and m.meetAt <= :now and m.participantCount >= coalesce(m.minPeople, 2)
             order by m.meetAt desc
             """)
     List<Meetup> findPastConfirmed(@Param("now") Instant now, Pageable pageable);
@@ -41,6 +43,7 @@ public interface MeetupRepository extends JpaRepository<Meetup, Long> {
     @Query("select m from Meetup m join fetch m.host order by m.meetAt desc")
     List<Meetup> findAllWithHost(Pageable pageable);
 
-    @Query("select count(m) from Meetup m where m.canceled = false and m.participantCount >= m.minPeople")
+    /** 성사된(최소 인원이 모인) 3교시 수. 최소 인원이 없으면 2명 이상 모였을 때만 친다 */
+    @Query("select count(m) from Meetup m where m.canceled = false and m.participantCount >= coalesce(m.minPeople, 2)")
     long countConfirmed();
 }

@@ -3,6 +3,8 @@
 export type Role = 'USER' | 'ADMIN'
 export type MemberStatus = 'ACTIVE' | 'BANNED'
 
+export type Department = 'SOFTWARE_SECURITY' | 'BIG_DATA' | 'AI'
+
 export type MeetupCategory = 'SOJU' | 'BEER' | 'WINE' | 'MAKGEOLLI' | 'HIGHBALL' | 'ANYTHING' | 'NO_ALCOHOL'
 
 export type MeetupStatus = 'RECRUITING' | 'CONFIRMED' | 'FAILED' | 'DONE' | 'CANCELED'
@@ -11,9 +13,17 @@ export interface Member {
   id: number
   loginId: string
   name: string
-  admissionYear: number
-  admissionLabel: string
+  cohort: number
+  cohortLabel: string
+  /** 관리자 계정 등은 처음에 비어 있을 수 있음 */
+  department: Department | null
+  departmentLabel: string | null
   role: Role
+}
+
+export interface SignupOptions {
+  latestCohort: number
+  departments: { code: Department; label: string }[]
 }
 
 export interface AuthResponse {
@@ -24,9 +34,13 @@ export interface AuthResponse {
 /** masked=true 면 name 은 "김*수" 처럼 가려진 이름 */
 export interface PersonView {
   name: string
-  admissionLabel: string
+  cohortLabel: string
+  /** 짧은 학과 이름 (소보·빅융·인융). 없을 수 있음 */
+  departmentLabel: string | null
   me: boolean
   host: boolean
+  /** 관리자 — 이름이 가려지지 않고 "관리자" 표시가 붙는다 */
+  admin: boolean
   masked: boolean
 }
 
@@ -34,11 +48,16 @@ export interface MeetupSummary {
   id: number
   title: string
   place: string
-  category: MeetupCategory
+  /** 마실 것 (여러 개, 정해진 순서) */
+  categories: MeetupCategory[]
+  /** 모임 목적 태그 (친목, 학업 …). 없으면 빈 배열 */
+  purposes: string[]
   meetAt: string
   deadlineAt: string
-  minPeople: number
-  maxPeople: number
+  /** null 이면 최소 인원 없음 — 몇 명이 오든 진행(열자마자 성사) */
+  minPeople: number | null
+  /** null 이면 인원 제한 없음 */
+  maxPeople: number | null
   participantCount: number
   status: MeetupStatus
   joinable: boolean
@@ -64,19 +83,27 @@ export interface MeetupCreateInput {
   title: string
   description: string
   place: string
-  category: MeetupCategory
+  categories: MeetupCategory[]
+  purposes: string[]
   meetAt: string
   deadlineAt: string
-  minPeople: number
-  maxPeople: number
+  /** null 이면 최소 인원 없음 */
+  minPeople: number | null
+  /** null 이면 인원 제한 없음 */
+  maxPeople: number | null
   openChatUrl: string
 }
 
-export type MeetupUpdateInput = Pick<MeetupCreateInput, 'title' | 'description' | 'place' | 'category' | 'openChatUrl'>
+export type MeetupUpdateInput = Pick<
+  MeetupCreateInput,
+  'title' | 'description' | 'place' | 'categories' | 'purposes' | 'openChatUrl'
+>
 
+/** official=true 면 관리자 글 (실명 + "관리자" 표시) */
 export interface AuthorView {
   name: string
-  admissionLabel: string | null
+  cohortLabel: string | null
+  departmentLabel: string | null
   official: boolean
   me: boolean
   masked: boolean
@@ -112,8 +139,9 @@ export interface AdminMember {
   id: number
   loginId: string
   name: string
-  admissionYear: number
-  admissionLabel: string
+  cohort: number
+  cohortLabel: string
+  departmentLabel: string | null
   role: Role
   status: MemberStatus
   createdAt: string

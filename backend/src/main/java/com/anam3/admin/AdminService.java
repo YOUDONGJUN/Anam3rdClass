@@ -44,7 +44,7 @@ public class AdminService {
     public AdminMemberView ban(Long memberId) {
         Member member = load(memberId);
         if (member.isAdmin()) {
-            throw ApiException.badRequest("CANNOT_BAN_ADMIN", "운영자 계정은 차단할 수 없어요");
+            throw ApiException.badRequest("CANNOT_BAN_ADMIN", "관리자 계정은 차단할 수 없어요");
         }
         member.ban();
         return AdminMemberView.from(member);

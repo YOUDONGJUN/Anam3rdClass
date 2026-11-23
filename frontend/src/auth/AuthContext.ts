@@ -6,6 +6,8 @@ export interface AuthState {
   member: Member | null
   signIn: (res: AuthResponse) => void
   signOut: () => void
+  /** 내 정보를 고친 뒤 화면의 내 정보도 바꾼다 */
+  updateMember: (member: Member) => void
 }
 
 export const AuthContext = createContext<AuthState | null>(null)

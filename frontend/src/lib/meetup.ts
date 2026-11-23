@@ -1,5 +1,6 @@
-// 번개 종류/상태의 화면 표시 규칙.
+// 3교시 종류/목적/상태의 화면 표시 규칙.
 // 종류 색은 서울 지하철 노선 색에서 가져왔다 (소주=2호선 초록, 맥주=3호선 주황 …).
+// 여러 종류를 고르면 환승역 표지판처럼 노선 배지가 나란히 붙는다.
 import { Beer, Coffee, GlassWater, Martini, Milk, Sparkles, Wine, type LucideIcon } from 'lucide-react'
 import type { MeetupCategory, MeetupStatus, MeetupSummary } from '../api/types'
 
@@ -32,14 +33,59 @@ export const CATEGORY_ORDER: MeetupCategory[] = [
   'NO_ALCOHOL',
 ]
 
+/** 화면에 늘 같은 순서로 보이게 정렬 */
+export function sortCategories(list: readonly MeetupCategory[]): MeetupCategory[] {
+  return CATEGORY_ORDER.filter((c) => list.includes(c))
+}
+
+/** "소주 · 맥주" */
+export function categoryLabel(list: readonly MeetupCategory[]) {
+  return sortCategories(list)
+    .map((c) => CATEGORY[c].label)
+    .join(' · ')
+}
+
+/**
+ * 종류 고르기/빼기. 여러 개를 고를 수 있지만 "아무거나"는 혼자만:
+ * 아무거나를 고르면 나머지가 빠지고, 다른 걸 고르면 아무거나가 빠진다.
+ */
+export function toggleCategory(list: readonly MeetupCategory[], c: MeetupCategory): MeetupCategory[] {
+  if (list.includes(c)) return list.filter((x) => x !== c)
+  if (c === 'ANYTHING') return ['ANYTHING']
+  return sortCategories([...list.filter((x) => x !== 'ANYTHING'), c])
+}
+
+/** 모임 목적 빠른 선택. 목록에 없으면 직접 적는다 */
+export const PURPOSE_PRESETS = ['친목', '잡담', '학업', '팀플 뒤풀이', '진로·커리어', '고민 상담'] as const
+export const MAX_PURPOSES = 3
+export const PURPOSE_MAX_LENGTH = 12
+
+/**
+ * 직접 적은 목적을 태그로 나눈다. "친목, 잡담" 처럼 쉼표로 여러 개를 한 번에 적어도 된다.
+ * 이미 고른 것과 겹치면 빼고, 최대 개수까지만 붙인다.
+ */
+export function addPurposes(current: readonly string[], typed: string): string[] {
+  const next = [...current]
+  for (const raw of typed.split(',')) {
+    const tag = raw.trim().slice(0, PURPOSE_MAX_LENGTH)
+    if (!tag || next.includes(tag)) continue
+    if (next.length >= MAX_PURPOSES) break
+    next.push(tag)
+  }
+  return next
+}
+
 export type Tone = 'accent' | 'ok' | 'muted' | 'danger'
 
-export function statusView(m: Pick<MeetupSummary, 'status' | 'joinable'>): { label: string; tone: Tone } {
+export function statusView(m: Pick<MeetupSummary, 'status' | 'joinable' | 'minPeople'>): { label: string; tone: Tone } {
   switch (m.status) {
     case 'RECRUITING':
       return { label: '모집중', tone: 'accent' }
-    case 'CONFIRMED':
-      return { label: m.joinable ? '성사' : '성사 · 마감', tone: 'ok' }
+    case 'CONFIRMED': {
+      // 최소 인원이 없는 3교시는 열자마자 "확정"
+      const word = m.minPeople === null ? '확정' : '성사'
+      return { label: m.joinable ? word : `${word} · 마감`, tone: 'ok' }
+    }
     case 'FAILED':
       return { label: '무산', tone: 'muted' }
     case 'DONE':
@@ -52,12 +98,25 @@ export function statusView(m: Pick<MeetupSummary, 'status' | 'joinable'>): { lab
 /** 인원 게이지 옆 한 줄 설명 */
 export function seatsCaption(m: Pick<MeetupSummary, 'status' | 'participantCount' | 'minPeople' | 'maxPeople'>) {
   const { status, participantCount: count, minPeople: min, maxPeople: max } = m
-  if (status === 'CANCELED') return '취소된 번개'
+  if (status === 'CANCELED') return '취소된 3교시'
   if (status === 'FAILED') return '인원이 모이지 않았어요'
-  if (status === 'DONE') return `${count}명이 함께했어요`
-  if (count < min) return `성사까지 ${min - count}명`
-  if (count >= max) return '정원이 다 찼어요'
-  return `성사! ${max - count}자리 남음`
+  if (status === 'DONE') return count > 1 ? `${count}명이 함께했어요` : '함께한 사람이 없었어요'
+  if (min !== null && count < min) return `성사까지 ${min - count}명`
+  if (max !== null && count >= max) return '정원이 다 찼어요'
+  if (min === null) return max === null ? '무조건 진행 · 누구나 와요' : `무조건 진행 · ${max - count}자리 남음`
+  return max === null ? '성사! 인원 제한 없어요' : `성사! ${max - count}자리 남음`
+}
+
+/** 인원 규칙 한 줄: "3명이 모이면 성사 · 최대 6명" */
+export function peopleRule(min: number | null, max: number | null) {
+  const head = min === null ? '최소 인원 없이 무조건 진행' : `나 포함 ${min}명이 모이면 성사`
+  const tail = max === null ? '인원 제한 없음' : `최대 ${max}명`
+  return `${head} · ${tail}`
+}
+
+/** "3/6명" 또는 제한 없음이면 "3명" */
+export function headcount(m: Pick<MeetupSummary, 'participantCount' | 'maxPeople'>) {
+  return m.maxPeople === null ? `${m.participantCount}명` : `${m.participantCount}/${m.maxPeople}명`
 }
 
 export function isLive(status: MeetupStatus) {

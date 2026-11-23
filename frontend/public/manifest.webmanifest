@@ -1,0 +1,11 @@
+{
+  "name": "안암3교시",
+  "short_name": "안암3교시",
+  "description": "고려대 SW·AI융합대학원 번개 모임",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f2ec",
+  "theme_color": "#1b2533",
+  "lang": "ko",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

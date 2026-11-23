@@ -1,0 +1,18 @@
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+
+# 환경변수 (비밀값)
+.env
+.env.*
+!.env.example
+
+# 로그
+*.log
+
+# 디자인 도구 작업 파일
+.impeccable/

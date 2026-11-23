@@ -1,0 +1,20 @@
+# (선택) 운영과 같은 PostgreSQL 로 로컬에서 확인하고 싶을 때만 사용.
+# 평소 개발은 이 파일 없이 backend 를 바로 실행하면 된다 (H2 인메모리 DB).
+#
+#   docker compose up -d
+#   cd backend && SPRING_PROFILES_ACTIVE=prod DATABASE_URL=postgresql://anam3:anam3@localhost:5433/anam3?sslmode=disable \
+#     JWT_SECRET=local-postgres-secret-0123456789abcdef ADMIN_LOGIN_ID=admin ADMIN_PASSWORD=admin1234 ./mvnw spring-boot:run
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: anam3
+      POSTGRES_USER: anam3
+      POSTGRES_PASSWORD: anam3
+    ports:
+      - '5433:5432' # 이미 설치된 PostgreSQL(5432)과 겹치지 않게
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

@@ -1,0 +1,21 @@
+# 운영 배포용. 필요한 환경변수는 README 의 "배포" 참고
+#  - DATABASE_URL : postgresql://user:pass@host/db?sslmode=require (Neon 연결 문자열 그대로)
+#    또는 SPRING_DATASOURCE_URL / SPRING_DATASOURCE_USERNAME / SPRING_DATASOURCE_PASSWORD
+#  - JWT_SECRET, INVITE_CODE, ADMIN_LOGIN_ID, ADMIN_PASSWORD, ADMIN_NAME
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+  # 운영에서는 반드시 직접 정한다 (기본값은 공개 저장소에 적혀 있으므로 사용 금지)
+  invite-code: ${INVITE_CODE}
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 0
+      idle-timeout: 60000
+
+server:
+  tomcat:
+    threads:
+      max: 30 # 무료 플랜 메모리 절약

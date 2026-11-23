@@ -1,0 +1,10 @@
+# 줄바꿈은 저장소 안에서 LF 로 통일 (Windows/Mac 협업)
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+backend/mvnw text eol=lf
+
+*.png binary
+*.jpg binary
+*.woff2 binary
+*.jar binary

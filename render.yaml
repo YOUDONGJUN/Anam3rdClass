@@ -1,0 +1,25 @@
+# Render Blueprint — Render 대시보드 > New > Blueprint 에서 이 저장소를 고르면 자동으로 만들어진다.
+# 값이 비어 있는(sync: false) 환경변수는 생성 화면에서 직접 입력한다. 자세한 순서는 README "배포" 참고.
+services:
+  - type: web
+    name: anam3
+    runtime: docker
+    plan: free
+    region: singapore # 한국과 가장 가까운 리전
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL # Neon 연결 문자열 (postgresql://…)
+        sync: false
+      - key: JWT_SECRET # 로그인 토큰 서명 키 (Render 가 무작위 생성)
+        generateValue: true
+      - key: INVITE_CODE # 가입용 입장 코드
+        sync: false
+      - key: ADMIN_LOGIN_ID # 운영자 아이디
+        sync: false
+      - key: ADMIN_PASSWORD # 운영자 비밀번호 (8자 이상)
+        sync: false
+      - key: ADMIN_NAME
+        value: 운영자

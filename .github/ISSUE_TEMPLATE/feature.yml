@@ -1,0 +1,24 @@
+name: 💡 기능 제안
+description: 이런 게 있으면 좋겠어요
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 상황에서 불편했나요?
+      placeholder: 예) 번개에 질문하고 싶은데 참여하기 전엔 물어볼 곳이 없어요
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 어떻게 되면 좋을까요?
+      placeholder: 예) 번개 상세에 짧은 댓글을 달 수 있으면 좋겠어요 (이름은 가려진 채로)
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: 직접 만들어 볼 의향
+      options:
+        - label: 제가 구현해 볼게요!

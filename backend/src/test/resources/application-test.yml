@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:anam3test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+
+app:
+  jwt:
+    secret: test-secret-0123456789-0123456789-0123456789
+  invite-code: test-code
+  admin:
+    login-id: testadmin
+    password: testadmin1234
+    name: 운영자

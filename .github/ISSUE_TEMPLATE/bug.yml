@@ -1,0 +1,29 @@
+name: 🐛 버그 제보
+description: 뭔가 이상하게 동작해요
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 어떤 문제가 있나요?
+      placeholder: 예) 번개에 참여했는데 인원 수가 안 늘어나요
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 어떻게 하면 다시 볼 수 있나요?
+      placeholder: |
+        1. 번개 목록에서 ○○ 번개를 누름
+        2. "나도 콜" 누름
+        3. …
+  - type: input
+    id: device
+    attributes:
+      label: 기기 / 브라우저
+      placeholder: 예) 아이폰 15 사파리, 윈도우 크롬
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: 스크린샷 (있으면)
+      description: 다른 사람의 실명이 보이는 부분은 가려 주세요.

@@ -1,0 +1,17 @@
+# Render 무료 앱이 잠들지 않게 10분마다 헬스체크를 호출한다.
+# 저장소 Settings → Secrets and variables → Actions → Variables 에 APP_URL(예: https://anam3.onrender.com)을 넣으면 동작한다.
+# GitHub 예약 작업은 지연될 수 있어 cron-job.org 사용을 더 추천 (README 참고).
+name: Keep alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    if: ${{ vars.APP_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: curl -fsS --max-time 120 "${{ vars.APP_URL }}/api/health"

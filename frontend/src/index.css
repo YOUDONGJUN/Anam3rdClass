@@ -1,0 +1,226 @@
+@import 'tailwindcss';
+@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+
+/*
+ * 안암3교시 디자인 토큰
+ * 모티브: 안암역(6호선) 지하철 사인 — 네이비 안내판, 6호선 황토색, 출구번호 노란색.
+ * 번개 종류 색은 서울 지하철 노선 색에서 가져왔다 (src/lib/meetup.ts).
+ * 색은 여기 변수로만 정의하고, 컴포넌트에서는 Tailwind 클래스(bg-board, text-ink-2 …)로 쓴다.
+ */
+@theme inline {
+  --font-sans:
+    'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo',
+    'Noto Sans KR', sans-serif;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-board: var(--board);
+  --color-board-2: var(--board-2);
+  --color-board-line: var(--board-line);
+  --color-on-board: var(--on-board);
+  --color-on-board-2: var(--on-board-2);
+
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+
+  --color-exit: var(--exit);
+  --color-on-exit: var(--on-exit);
+
+  --color-ok: var(--ok);
+  --color-ok-ink: var(--ok-ink);
+  --color-ok-soft: var(--ok-soft);
+
+  --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-soft: var(--danger-soft);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root {
+  color-scheme: light;
+
+  --bg: #f4f2ec;
+  --surface: #ffffff;
+  --surface-2: #efece4;
+  --ink: #17202b;
+  --ink-2: #48515e;
+  --ink-3: #69717d;
+  --line: #e3dfd5;
+  --line-strong: #cfc9bc;
+
+  --board: #1b2533;
+  --board-2: #253246;
+  --board-line: #34435a;
+  --on-board: #f6f4ef;
+  --on-board-2: #b3bdca;
+
+  --accent: #d3843a;
+  --accent-ink: #94521a;
+  --accent-soft: #f6e6d4;
+  --on-accent: #17110a;
+
+  --exit: #ffc72c;
+  --on-exit: #17140a;
+
+  --ok: #00a84d;
+  --ok-ink: #00773a;
+  --ok-soft: #dcf2e4;
+
+  --danger: #d6363c;
+  --danger-ink: #b3262c;
+  --danger-soft: #fbe3e3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --bg: #0d131b;
+    --surface: #151d28;
+    --surface-2: #1c2633;
+    --ink: #edf0f4;
+    --ink-2: #b6beca;
+    --ink-3: #8c96a5;
+    --line: #273244;
+    --line-strong: #364357;
+
+    --board: #1b2636;
+    --board-2: #263347;
+    --board-line: #33425a;
+    --on-board: #f1f3f6;
+    --on-board-2: #9eabbd;
+
+    --accent: #e3934b;
+    --accent-ink: #f0a865;
+    --accent-soft: #3a2a1b;
+    --on-accent: #17110a;
+
+    --exit: #ffcd3c;
+    --on-exit: #17140a;
+
+    --ok: #2fc274;
+    --ok-ink: #5ad895;
+    --ok-soft: #133524;
+
+    --danger: #ef5b5f;
+    --danger-ink: #ff8a8d;
+    --danger-soft: #3b1a1c;
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    /* 한국어는 어절 단위로 줄바꿈 */
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  ::selection {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  input,
+  textarea,
+  select {
+    caret-color: var(--accent);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--ink-3);
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* 노선도 게이지: 새로 채워진 역이 들어올 때 / 성사 환승역 한 번 반짝 */
+@keyframes station-arrive {
+  from {
+    transform: scale(0.4);
+    opacity: 0.3;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes transfer-glow {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--ok) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 14px color-mix(in oklab, var(--ok) 0%, transparent);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.station-arrive {
+  animation: station-arrive 520ms var(--ease-out-expo) both;
+}
+
+.transfer-glow {
+  animation: transfer-glow 1.1s var(--ease-out-expo) 1;
+}
+
+.toast-in {
+  animation: toast-in 360ms var(--ease-out-expo) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .station-arrive,
+  .transfer-glow,
+  .toast-in {
+    animation: none;
+  }
+}

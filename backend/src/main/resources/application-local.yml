@@ -1,0 +1,21 @@
+# 로컬 개발용: 설치 없이 바로 실행 (H2 인메모리, 재시작하면 데이터 초기화)
+# H2 콘솔: http://localhost:8080/h2-console  (JDBC URL 은 아래 url 그대로)
+spring:
+  datasource:
+    url: jdbc:h2:mem:anam3;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+
+app:
+  jwt:
+    secret: local-dev-secret-do-not-use-in-prod-0123456789
+  admin:
+    login-id: admin
+    password: admin1234
+    name: 운영자
+  cors:
+    # Vite 개발 서버 (frontend: npm run dev)
+    allowed-origins: http://localhost:5173,http://127.0.0.1:5173

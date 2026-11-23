@@ -1,0 +1,221 @@
+package com.anam3.meetup;
+
+import java.time.Instant;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import com.anam3.member.Member;
+
+/** 번개 모임 */
+@Entity
+@Table(name = "meetups")
+public class Meetup {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "host_id", nullable = false)
+    private Member host;
+
+    @Column(nullable = false, length = 40)
+    private String title;
+
+    @Column(nullable = false, length = 500)
+    private String description;
+
+    @Column(nullable = false, length = 60)
+    private String place;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 20)
+    private MeetupCategory category;
+
+    /** 모이는 시각 */
+    @Column(name = "meet_at", nullable = false)
+    private Instant meetAt;
+
+    /** 모집 마감 시각 (이때까지 최소 인원이 안 차면 무산) */
+    @Column(name = "deadline_at", nullable = false)
+    private Instant deadlineAt;
+
+    /** 개설자 포함 최소 인원 */
+    @Column(name = "min_people", nullable = false)
+    private int minPeople;
+
+    /** 개설자 포함 정원 */
+    @Column(name = "max_people", nullable = false)
+    private int maxPeople;
+
+    /** 개설자 포함 현재 인원 (참여/취소 시 행 잠금 후 갱신) */
+    @Column(name = "participant_count", nullable = false)
+    private int participantCount;
+
+    /** 카카오톡 오픈채팅 링크. 성사 후 참여자에게만 공개 */
+    @Column(name = "open_chat_url", length = 300)
+    private String openChatUrl;
+
+    @Column(nullable = false)
+    private boolean canceled;
+
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    protected Meetup() {
+    }
+
+    public Meetup(Member host, String title, String description, String place, MeetupCategory category,
+            Instant meetAt, Instant deadlineAt, int minPeople, int maxPeople, String openChatUrl, Instant now) {
+        this.host = host;
+        this.title = title;
+        this.description = description;
+        this.place = place;
+        this.category = category;
+        this.meetAt = meetAt;
+        this.deadlineAt = deadlineAt;
+        this.minPeople = minPeople;
+        this.maxPeople = maxPeople;
+        this.openChatUrl = openChatUrl;
+        this.participantCount = 1; // 개설자
+        this.canceled = false;
+        this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    public MeetupStatus statusAt(Instant now) {
+        if (canceled) {
+            return MeetupStatus.CANCELED;
+        }
+        boolean reached = isReached();
+        if (!now.isBefore(meetAt)) {
+            return reached ? MeetupStatus.DONE : MeetupStatus.FAILED;
+        }
+        if (!now.isBefore(deadlineAt)) {
+            return reached ? MeetupStatus.CONFIRMED : MeetupStatus.FAILED;
+        }
+        return reached ? MeetupStatus.CONFIRMED : MeetupStatus.RECRUITING;
+    }
+
+    /** 최소 인원 달성 여부 */
+    public boolean isReached() {
+        return participantCount >= minPeople;
+    }
+
+    public boolean isRecruitingAt(Instant now) {
+        return !canceled && now.isBefore(deadlineAt) && now.isBefore(meetAt);
+    }
+
+    public boolean isJoinableAt(Instant now) {
+        return isRecruitingAt(now) && participantCount < maxPeople;
+    }
+
+    public boolean isOpenAt(Instant now) {
+        MeetupStatus status = statusAt(now);
+        return status == MeetupStatus.RECRUITING || status == MeetupStatus.CONFIRMED;
+    }
+
+    public boolean isHostedBy(Long memberId) {
+        return host.getId().equals(memberId);
+    }
+
+    public void addParticipant() {
+        this.participantCount++;
+    }
+
+    public void removeParticipant() {
+        this.participantCount--;
+    }
+
+    public void update(String title, String description, String place, MeetupCategory category, String openChatUrl,
+            Instant now) {
+        this.title = title;
+        this.description = description;
+        this.place = place;
+        this.category = category;
+        this.openChatUrl = openChatUrl;
+        this.updatedAt = now;
+    }
+
+    public void cancel(Instant now) {
+        this.canceled = true;
+        this.updatedAt = now;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Member getHost() {
+        return host;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public String getPlace() {
+        return place;
+    }
+
+    public MeetupCategory getCategory() {
+        return category;
+    }
+
+    public Instant getMeetAt() {
+        return meetAt;
+    }
+
+    public Instant getDeadlineAt() {
+        return deadlineAt;
+    }
+
+    public int getMinPeople() {
+        return minPeople;
+    }
+
+    public int getMaxPeople() {
+        return maxPeople;
+    }
+
+    public int getParticipantCount() {
+        return participantCount;
+    }
+
+    public String getOpenChatUrl() {
+        return openChatUrl;
+    }
+
+    public boolean isCanceled() {
+        return canceled;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+}

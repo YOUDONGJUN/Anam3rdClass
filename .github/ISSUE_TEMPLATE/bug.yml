@@ -6,7 +6,7 @@ body:
     id: what
     attributes:
       label: 어떤 문제가 있나요?
-      placeholder: 예) 번개에 참여했는데 인원 수가 안 늘어나요
+      placeholder: 예) 3교시에 참여했는데 인원 수가 안 늘어나요
     validations:
       required: true
   - type: textarea
@@ -14,7 +14,7 @@ body:
     attributes:
       label: 어떻게 하면 다시 볼 수 있나요?
       placeholder: |
-        1. 번개 목록에서 ○○ 번개를 누름
+        1. 3교시 목록에서 ○○ 3교시를 누름
         2. "나도 콜" 누름
         3. …
   - type: input

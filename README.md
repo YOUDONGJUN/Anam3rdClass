@@ -1,154 +1,64 @@
 # 안암3교시 🍻
 
 > 수업 끝나고, 3교시는 여기서.
-> 고려대학교 SW·AI융합대학원 동기·선후배를 위한 **번개 모임** 서비스 (학생 비공식 프로젝트)
 
-"누구 한잔할 사람?" 하고 먼저 말 꺼내기 민망했던 사람들을 위해 만들었어요.
-수업 끝나고 모이는 번개를 이 서비스에서는 **3교시**라고 불러요 (화면의 "3교시 열기", "열린 3교시" 등).
+고려대학교 SW·AI융합대학원 동기·선후배가 수업 끝나고 함께할 번개 모임을 부담 없이 열고 참여하는 웹 서비스예요.
+이 서비스에서는 그 번개를 **3교시**라고 불러요.
 
-| 모바일 — 열린 번개 | 모바일 — 성사! | 데스크톱 — 번개 상세 |
+| 모바일 — 열린 3교시 | 모바일 — 성사! | 데스크톱 — 3교시 상세 |
 | :---: | :---: | :---: |
 | <img src="docs/images/mobile-feed.png" width="240" /> | <img src="docs/images/mobile-confirmed.png" width="240" /> | <img src="docs/images/desktop-detail.png" width="420" /> |
 
-## 핵심 규칙: "성사되기 전까지는 아무도 모른다"
+## 어떻게 동작하나요
 
-| 누가 보나 | 성사 전 (최소 인원 미달) | 성사 후 (최소 인원 달성) |
-| --- | --- | --- |
-| 참여자 | `김*수 · 61기 · 인융` (가려짐) | **실명 + 카카오톡 오픈채팅 링크** |
-| 참여 안 한 사람 | `김*수 · 61기 · 인융` | `김*수 · 61기 · 인융` (계속 가려짐) |
-| 관리자 | 실명 | 실명 |
+1. 누군가 3교시를 열어요. 마실 것, 시간, 장소, 인원(최소·최대 또는 제한 없음)을 정해요.
+2. 다른 사람들이 **나도 콜**로 참여해요. 성사 전까지 이름은 `김*수 · 61기 · 인융`처럼 가려져요.
+3. 최소 인원이 모이면 **성사**! 참여자끼리만 실명과 카카오톡 오픈채팅 링크가 공개돼요.
+4. 마감까지 인원이 안 모이면 목록에서 조용히 사라져요.
 
-- 마감 시간까지 최소 인원이 안 모이면 **무산**되고, 목록에서 조용히 사라져요 (본인의 "내 3교시"에만 남음).
-- **최소 인원 없음**으로 열면 몇 명이 오든 진행해요. 열자마자 '확정'이라 참여하면 바로 서로 실명이 보여요.
-- 관리자 본인의 이름은 가려지지 않고 `유동준 [관리자]`처럼 표시돼요.
-- 이름 가리기는 **서버에서** 처리해요. 화면에서 가리면 개발자 도구로 다 보이니까요. → [`MeetupMapper.java`](backend/src/main/java/com/anam3/meetup/MeetupMapper.java)
-- 인원 현황은 지하철 노선도처럼 보여줘요. 자리 하나가 역 하나이고, 최소 인원 지점은 환승역처럼 그려요.
+이름 가리기는 화면이 아니라 서버에서 처리해요 ([`MeetupMapper.java`](backend/src/main/java/com/anam3/meetup/MeetupMapper.java)).
 
-## 기능
+## 주요 기능
 
-- **3교시(번개)**: 열기(마실 것 여러 개 선택·모임 목적 태그·시간·장소 직접 입력·최소/최대 인원 각각 "없음" 가능·모집 마감·오픈채팅 링크), "나도 콜" 참여/취소, 공유(단톡방 링크 복사), 다가오는/지난 3교시
-- **공지**: 누구나 작성, 관리자 글은 실명 + "관리자" 표시, 상단 고정은 관리자만
-- **회원**: 입장 코드로만 가입(외부인 차단), 기수(1기~최신)·학과(소프트웨어보안/빅데이터융합/인공지능융합) 선택, 내 정보 수정, 비밀번호 변경
-- **관리자**: 회원 목록(실명), 차단/해제, 임시 비밀번호 발급, 입장 코드·최신 기수 변경, 전체 3교시 보기, 통계
-- 모바일/데스크톱 반응형, 다크 모드, 홈 화면에 추가 가능
+- 3교시 열기 · 참여 · 단톡방 공유, 다가오는/지난 3교시
+- 공지 게시판 (누구나 작성)
+- 입장 코드로만 가입, 기수·학과 표시
+- 관리자 페이지 (회원 관리, 입장 코드)
+- 모바일·데스크톱 반응형, 다크 모드
 
 ## 기술 스택
 
-| 영역 | 사용 기술 |
-| --- | --- |
-| 백엔드 | Java 25, Spring Boot 4.1, Spring Security(JWT), Spring Data JPA, Flyway, Maven |
-| DB | PostgreSQL(운영, Neon 무료) / H2(로컬·테스트, 설치 불필요) |
-| 프론트엔드 | React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query, React Router |
-| 배포 | Render 무료 웹 서비스(Docker 1개에 화면+API) + Neon 무료 PostgreSQL |
-| CI | GitHub Actions (백엔드 테스트, 프론트 lint/test/build, Docker 빌드) |
+- **백엔드**: Java 25, Spring Boot 4, Spring Security (JWT), Spring Data JPA, Flyway
+- **프론트엔드**: React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query
+- **DB**: PostgreSQL (로컬 개발은 설치 없이 H2 인메모리)
+- **배포**: 화면과 API를 Docker 이미지 하나로 빌드해요. `main`에 합쳐지면 자동으로 배포돼요.
 
-## 로컬에서 실행하기 (5분)
+## 로컬에서 실행하기
 
-필요한 것: **Java 25**, **Node.js 22 이상**. DB 설치는 필요 없어요(H2 인메모리 + 샘플 데이터 자동 생성).
+필요한 것: Java 25, Node.js 22 이상. DB는 설치하지 않아도 되고, 샘플 데이터가 자동으로 들어가요.
 
 ```bash
-# 1) 백엔드 (http://localhost:8080)
+# 백엔드 (http://localhost:8080)
 cd backend
 ./mvnw spring-boot:run        # Windows: mvnw.cmd spring-boot:run
 
-# 2) 프론트엔드 (http://localhost:5173) — 새 터미널에서
+# 프론트엔드 (http://localhost:5173) — 새 터미널에서
 cd frontend
 npm install
 npm run dev
 ```
 
-브라우저에서 http://localhost:5173 을 열고 아래 계정으로 로그인하세요.
+http://localhost:5173 에서 샘플 계정 `minsu` / `password1234` 로 로그인하면 돼요 (로컬 전용 계정).
 
-| 아이디 | 비밀번호 | 역할 |
-| --- | --- | --- |
-| `admin` | `admin1234` | 운영자 |
-| `minsu` / `jiyoung` / `hyunwoo` | `password1234` | 일반 회원 |
-
-새로 가입하려면 입장 코드 `anam3` 를 쓰면 돼요 (로컬 전용).
-H2 DB 내용은 http://localhost:8080/h2-console 에서 볼 수 있어요 (JDBC URL: `jdbc:h2:mem:anam3`, 사용자 `sa`).
-
-## 테스트
+테스트:
 
 ```bash
-cd backend && ./mvnw test           # API 통합 테스트 + 단위 테스트
-cd frontend && npm run lint && npm test && npm run build
+cd backend && ./mvnw test
+cd frontend && npm run lint && npm test
 ```
-
-PR을 올리면 GitHub Actions가 위 테스트와 Docker 빌드를 자동으로 돌려요.
-
-## 폴더 구조
-
-```
-backend/                       Spring Boot API
-  src/main/java/com/anam3/
-    auth/      로그인·가입·JWT·보안 설정
-    member/    회원, 내 정보(/api/me)
-    meetup/    번개 ★ 공개 규칙은 MeetupMapper, 상태 계산은 Meetup.statusAt
-    notice/    공지
-    admin/     운영자 API (/api/admin/**)
-    setting/   입장 코드 등 운영 설정
-    bootstrap/ 운영자 계정 자동 생성, 로컬 샘플 데이터
-    common/    에러 처리, 이름 마스킹, SPA 서빙, DB URL 변환
-  src/main/resources/db/migration/   DB 스키마 (Flyway)
-frontend/                      React 화면
-  src/api/        API 호출 + react-query 훅
-  src/pages/      화면 단위
-  src/components/ 공통 컴포넌트 (LineGauge = 노선도 게이지)
-  src/lib/        시간(KST) 처리, 번개 종류/상태 표시 규칙
-  src/index.css   디자인 토큰 (색은 여기서만 정의)
-Dockerfile        화면+API 한 컨테이너로 빌드
-render.yaml       Render 배포 설정
-```
-
-## 배포 (무료)
-
-구성: **Render**(앱 1개, 무료) + **Neon**(PostgreSQL, 무료) + **cron-job.org**(잠들지 않게 깨우기, 무료)
-
-> 무료 플랜 조건은 바뀔 수 있어요 (2026년 11월 기준: Render 무료 750시간/월·15분 무요청 시 잠듦, Neon 무료 1GB·월 100 CU-시간).
-
-### 1. Neon에서 DB 만들기
-1. https://neon.com 가입 → **New Project** → Region은 **AWS Asia Pacific (Singapore)** 선택
-2. 대시보드의 **Connect** 에서 연결 문자열 복사 (`postgresql://...neon.tech/neondb?sslmode=require` 형태, *Pooled connection* 권장)
-
-### 2. Render에 앱 올리기
-1. https://render.com 에 GitHub 계정으로 가입
-2. **New → Blueprint** → 이 저장소 선택 (`render.yaml` 을 자동으로 읽어요)
-3. 환경변수 입력:
-
-| 이름 | 값 |
-| --- | --- |
-| `DATABASE_URL` | 1번에서 복사한 Neon 연결 문자열 그대로 |
-| `INVITE_CODE` | 가입용 입장 코드 (단톡방에 공지할 값) |
-| `ADMIN_LOGIN_ID` | 운영자 아이디 |
-| `ADMIN_PASSWORD` | 운영자 비밀번호 (8자 이상) |
-| `JWT_SECRET` | 자동 생성됨 (손대지 않기) |
-
-4. **Apply** → 첫 빌드 5~10분 → `https://anam3-xxxx.onrender.com` 주소가 생겨요.
-5. 그 주소로 들어가 운영자 아이디로 로그인 → 운영 페이지에서 입장 코드 확인
-
-### 3. 잠들지 않게 하기 (선택이지만 추천)
-Render 무료 앱은 15분간 요청이 없으면 잠들고, 깨는 데 최대 1분 걸려요.
-https://cron-job.org 에서 **10분마다** `https://(내 주소)/api/health` 를 호출하도록 등록하면 항상 깨어 있어요.
-(헬스체크는 DB를 건드리지 않아서 Neon 무료 사용량은 아껴져요.)
-
-GitHub Actions로 하려면 저장소 **Settings → Secrets and variables → Actions → Variables** 에 `APP_URL` 을 넣으면 [`keepalive.yml`](.github/workflows/keepalive.yml) 이 10분마다 깨워요. 다만 GitHub 예약 작업은 실행이 늦어질 수 있어서 cron-job.org를 더 추천해요.
-
-### 환경변수 전체
-
-| 이름 | 필수 | 설명 |
-| --- | --- | --- |
-| `DATABASE_URL` | ✅ | `postgresql://user:pass@host/db?sslmode=require` 또는 `jdbc:postgresql://...` |
-| `JWT_SECRET` | ✅ | 32자 이상 무작위 문자열 |
-| `INVITE_CODE` | ✅ | 최초 입장 코드 (이후엔 운영 페이지에서 변경) |
-| `ADMIN_LOGIN_ID` / `ADMIN_PASSWORD` | 권장 | 서버 시작 시 운영자 계정 생성. 이미 가입한 아이디면 운영자로 승격 |
-| `ADMIN_NAME` | | 관리자 계정을 처음 만들 때의 이름 (기본 "관리자", render.yaml 은 "유동준") |
-| `ADMIN_COHORT` | | 운영자 계정을 처음 만들 때의 기수 (기본 61) |
-| `LATEST_COHORT` | | 가입 때 고를 수 있는 최신 기수 초깃값 (기본 62, 이후엔 운영 페이지에서 변경) |
-| `CORS_ALLOWED_ORIGINS` | | 프론트를 다른 도메인(예: Vercel)에 따로 올릴 때만 |
-| `VITE_API_BASE_URL` | | (프론트 빌드용) API가 다른 도메인일 때만 |
 
 ## 함께 만들기
 
 기능 제안, 버그 제보, 코드 기여 모두 환영해요. → [CONTRIBUTING.md](CONTRIBUTING.md)
 
-학생들이 만든 비공식 커뮤니티로, 고려대학교의 공식 서비스가 아닙니다.
+학생들이 만든 비공식 프로젝트로, 고려대학교의 공식 서비스가 아니에요. · [MIT License](LICENSE)

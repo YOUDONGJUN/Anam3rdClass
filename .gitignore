@@ -16,3 +16,6 @@ Thumbs.db
 
 # 디자인 도구 작업 파일
 .impeccable/
+
+# 디자인 작업용 메모 (로컬 전용)
+PRODUCT.md

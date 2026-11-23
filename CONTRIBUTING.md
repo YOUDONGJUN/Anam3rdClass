@@ -11,14 +11,14 @@
 
 1. **이슈 먼저**: 큰 작업이면 이슈에 "이거 제가 해 볼게요" 남겨 주세요. 겹치는 작업을 막을 수 있어요.
 2. **저장소 가져오기**
-   - 운영자가 협업자(Collaborator)로 초대했다면 → 바로 `git clone`
+   - 관리자가 협업자(Collaborator)로 초대했다면 → 바로 `git clone`
    - 아니라면 → 오른쪽 위 **Fork** 후 내 저장소를 clone
 3. **브랜치 만들기** (main 에 바로 올리지 않아요)
    ```bash
    git checkout -b feat/meetup-comment     # 새 기능
    git checkout -b fix/deadline-timezone   # 버그 수정
    ```
-4. **로컬 실행 & 수정** — [README의 "로컬에서 실행하기"](README.md#로컬에서-실행하기-5분)
+4. **로컬 실행 & 수정** — [README의 "로컬에서 실행하기"](README.md#로컬에서-실행하기)
 5. **테스트 통과 확인**
    ```bash
    cd backend && ./mvnw test
@@ -26,17 +26,17 @@
    ```
 6. **커밋 & 푸시 → Pull Request**
    - PR 템플릿을 채워 주세요. 화면을 바꿨다면 스크린샷(모바일+데스크톱)을 꼭 넣어 주세요.
-   - GitHub Actions(CI)가 초록색이 되고 운영자 리뷰를 받으면 합쳐져요.
-   - `main` 에 합쳐지면 Render가 자동으로 배포해요.
+   - GitHub Actions(CI)가 초록색이 되고 관리자 승인을 받으면 합쳐져요.
+   - `main` 에 합쳐지면 자동으로 배포돼요.
 
 ## 커밋 메시지
 
 `종류: 무엇을` 형식으로 한국어/영어 자유롭게.
 
 ```
-feat: 번개에 댓글 기능 추가
-fix: 자정 넘는 번개가 '오늘'로 보이던 문제 수정
-docs: 배포 가이드 보완
+feat: 3교시에 댓글 기능 추가
+fix: 자정 넘는 3교시가 '오늘'로 보이던 문제 수정
+docs: README 보완
 refactor / test / chore / style
 ```
 
@@ -49,7 +49,7 @@ refactor / test / chore / style
 - 비밀번호, 토큰, 입장 코드, DB 주소를 코드나 커밋에 넣지 마세요. 전부 환경변수예요.
 
 ### DB 변경
-- 테이블/컬럼을 바꿀 땐 **새 Flyway 파일**을 추가해요: `backend/src/main/resources/db/migration/V2__설명.sql`
+- 테이블/컬럼을 바꿀 땐 **다음 번호로 새 Flyway 파일**을 추가해요: `backend/src/main/resources/db/migration/V5__설명.sql`
 - 이미 배포된 `V1__init.sql` 같은 파일은 **절대 수정하지 않기** (운영 DB가 깨져요).
 - PostgreSQL과 H2(PostgreSQL 모드) 양쪽에서 돌아가는 SQL로 써 주세요.
 
@@ -64,12 +64,6 @@ refactor / test / chore / style
 - 색은 `src/index.css` 의 토큰(`bg-board`, `text-ink-2`, `bg-accent` …)만 써요. `#ff0000` 같은 값을 직접 쓰지 않기. 다크 모드가 자동으로 맞춰져요.
 - 시간 표시는 `src/lib/time.ts` 를 써요 (항상 한국 시간 기준).
 - 모바일(390px)과 데스크톱(1440px) 둘 다 확인해 주세요.
-- 디자인 방향(안암역 6호선 안내판 모티브)은 [PRODUCT.md](PRODUCT.md) 를 참고해요.
-
-## 운영자(메인테이너)에게
-
-- 협업자 초대: 저장소 **Settings → Collaborators → Add people**
-- `main` 브랜치는 보호되어 있어요: PR + CI 통과 + 리뷰 1명 필요 (운영자는 예외 가능)
-- 배포 환경변수는 Render 대시보드에서만 관리해요.
+- 디자인은 안암역 6호선 안내판이 모티브예요. 기존 화면의 색·간격·말투에 맞춰 주세요.
 
 궁금한 건 이슈나 단톡방에 편하게 물어봐 주세요. 🍻

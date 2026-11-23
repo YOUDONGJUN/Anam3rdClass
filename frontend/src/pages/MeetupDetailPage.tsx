@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { ChevronLeft, Clock, EyeOff, MapPin, MessageCircle, PartyPopper, Pencil, Share2, Users } from 'lucide-react'
+import { ChevronLeft, Clock, EyeOff, Hash, MapPin, MessageCircle, PartyPopper, Pencil, Share2, Users } from 'lucide-react'
 import { useMeetup, useMeetupAction } from '../api/queries'
 import type { MeetupDetail } from '../api/types'
-import { CategoryBadge } from '../components/CategoryBadge'
+import { CategoryBadges } from '../components/CategoryBadge'
 import { ParticipantRoute } from '../components/LineGauge'
 import { PersonName } from '../components/PersonName'
+import { PurposeTags } from '../components/PurposeTags'
 import { StatusPill } from '../components/StatusPill'
 import { Button, ErrorState, Spinner } from '../components/ui'
 import { buttonClass, cardClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
-import { CATEGORY, isLive, seatsCaption } from '../lib/meetup'
+import { CATEGORY, headcount, isLive, seatsCaption, sortCategories } from '../lib/meetup'
 import { formatDateTime, formatRemaining } from '../lib/time'
 
 function Countdown({ m, now }: { m: MeetupDetail; now: Date }) {
@@ -29,7 +30,7 @@ function Countdown({ m, now }: { m: MeetupDetail; now: Date }) {
 
 /** 지금 상태에서 내가 알아야 할 것 한 가지 */
 function StateNote({ m }: { m: MeetupDetail }) {
-  const left = m.minPeople - m.participantCount
+  const left = (m.minPeople ?? 1) - m.participantCount
   let tone: 'accent' | 'ok' | 'muted' = 'accent'
   let title = ''
   let body = ''
@@ -43,7 +44,7 @@ function StateNote({ m }: { m: MeetupDetail }) {
       break
     case 'CONFIRMED':
       tone = 'ok'
-      title = '성사된 번개예요'
+      title = m.minPeople === null ? '인원 상관없이 무조건 진행해요' : '성사된 3교시예요'
       body = m.joined
         ? m.openChatUrl
           ? '오픈채팅방에서 만나요. 이제 서로 실명이 보여요.'
@@ -64,7 +65,7 @@ function StateNote({ m }: { m: MeetupDetail }) {
       break
     case 'CANCELED':
       tone = 'muted'
-      title = '취소된 번개예요'
+      title = '취소된 3교시예요'
       body = ''
       break
   }
@@ -88,7 +89,7 @@ function StateNote({ m }: { m: MeetupDetail }) {
 
 async function share(m: MeetupDetail, onCopied: () => void) {
   const url = `${window.location.origin}/meetups/${m.id}`
-  const text = `[안암3교시] ${m.title} · ${formatDateTime(m.meetAt)} · ${m.place} (${m.participantCount}/${m.maxPeople}명)`
+  const text = `[안암3교시] ${m.title} · ${formatDateTime(m.meetAt)} · ${m.place} (${headcount(m)})`
   if (navigator.share) {
     try {
       await navigator.share({ title: m.title, text, url })
@@ -118,12 +119,11 @@ export function MeetupDetailPage() {
   if (isPending) return <Spinner />
   if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
 
-  const category = CATEGORY[m.category]
   const live = isLive(m.status)
   const hasActions = m.canJoin || Boolean(m.joined && m.revealed && m.openChatUrl) || live || m.canLeave
 
   function run(kind: 'join' | 'leave' | 'cancel') {
-    if (kind === 'cancel' && !window.confirm('번개를 취소할까요? 참여자들에게는 "취소됨"으로 보여요.')) return
+    if (kind === 'cancel' && !window.confirm('3교시를 취소할까요? 참여자들에게는 "취소됨"으로 보여요.')) return
     if (kind === 'leave' && !window.confirm('참여를 취소할까요?')) return
     const wasConfirmed = m?.status === 'CONFIRMED'
     action.mutate(
@@ -139,7 +139,7 @@ export function MeetupDetailPage() {
           } else if (kind === 'leave') {
             toast.show('참여를 취소했어요')
           } else {
-            toast.show('번개를 취소했어요')
+            toast.show('3교시를 취소했어요')
           }
         },
         onError: (e) => toast.show(e.message, 'error'),
@@ -188,16 +188,15 @@ export function MeetupDetailPage() {
         className="mb-4 -ml-2 inline-flex h-10 items-center gap-1 rounded-lg px-2 text-[15px] font-semibold text-ink-2 hover:text-ink"
       >
         <ChevronLeft className="size-5" aria-hidden />
-        번개 목록
+        3교시 목록
       </button>
 
       {/* 안내판 머리 */}
       <header className="overflow-hidden rounded-3xl bg-board text-on-board">
         <div className="px-5 pt-6 pb-6 sm:px-8 sm:pt-8">
           <div className="flex items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-2 text-sm font-semibold text-on-board-2">
-              <CategoryBadge category={m.category} size="sm" />
-              {category.label}
+            <span className="min-w-0 text-on-board-2">
+              <CategoryBadges categories={m.categories} size="sm" withLabel />
             </span>
             <StatusPill meetup={m} />
           </div>
@@ -213,6 +212,15 @@ export function MeetupDetailPage() {
               <MapPin className="size-4 shrink-0 text-on-board-2" aria-hidden />
               <dd className="font-semibold">{m.place}</dd>
             </div>
+            {m.purposes.length > 0 && (
+              <div className="flex items-center gap-2.5">
+                <dt className="sr-only">모임 목적</dt>
+                <Hash className="size-4 shrink-0 text-on-board-2" aria-hidden />
+                <dd>
+                  <PurposeTags purposes={m.purposes} tone="board" />
+                </dd>
+              </div>
+            )}
             <div className="flex items-center gap-2.5">
               <dt className="sr-only">연 사람</dt>
               <Users className="size-4 shrink-0 text-on-board-2" aria-hidden />
@@ -225,7 +233,12 @@ export function MeetupDetailPage() {
             <Countdown m={m} now={now} />
           </div>
         </div>
-        <div className="h-2" style={{ backgroundColor: category.color }} aria-hidden />
+        {/* 고른 종류의 노선 색을 나란히 — 여러 노선이 지나는 환승역처럼 */}
+        <div className="flex h-2" aria-hidden>
+          {sortCategories(m.categories).map((c) => (
+            <span key={c} className="flex-1" style={{ backgroundColor: CATEGORY[c].color }} />
+          ))}
+        </div>
       </header>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
@@ -240,10 +253,10 @@ export function MeetupDetailPage() {
           )}
 
           <section className={`${cardClass} px-4 py-5 sm:px-5`}>
-            <div className="mb-3 flex items-baseline justify-between gap-3 px-1">
-              <h2 className="text-[17px] font-extrabold text-ink">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1">
+              <h2 className="text-[17px] font-extrabold whitespace-nowrap text-ink">
                 탑승 인원 <span className="tabular text-accent-ink">{m.participantCount}</span>
-                <span className="tabular font-semibold text-ink-3">/{m.maxPeople}</span>
+                <span className="tabular font-semibold text-ink-3">{m.maxPeople === null ? '명' : `/${m.maxPeople}`}</span>
               </h2>
               <span className="text-sm text-ink-3">{seatsCaption(m)}</span>
             </div>
@@ -251,7 +264,7 @@ export function MeetupDetailPage() {
               <p className="mx-1 mb-3 flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-sm text-ink-2">
                 <EyeOff className="size-4 shrink-0" aria-hidden />
                 {m.status === 'FAILED' || m.status === 'CANCELED'
-                  ? '성사되지 않은 번개라 이름은 계속 가려져요.'
+                  ? '성사되지 않은 3교시라 이름은 계속 가려져요.'
                   : '성사되면 함께하는 사람끼리만 실명이 보여요.'}
               </p>
             )}
@@ -285,7 +298,7 @@ export function MeetupDetailPage() {
               </Link>
               {m.canCancel && (
                 <Button variant="danger" className="flex-1" loading={action.isPending} onClick={() => run('cancel')}>
-                  번개 취소
+                  3교시 취소
                 </Button>
               )}
             </div>

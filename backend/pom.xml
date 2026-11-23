@@ -15,7 +15,7 @@
 	<description>안암3교시 - 고려대 SW·AI융합대학원 번개 모임 API</description>
 
 	<properties>
-		<java.version>21</java.version>
+		<java.version>25</java.version>
 	</properties>
 
 	<dependencies>

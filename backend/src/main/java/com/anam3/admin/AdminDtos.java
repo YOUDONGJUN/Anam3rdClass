@@ -2,7 +2,10 @@ package com.anam3.admin;
 
 import java.time.Instant;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import com.anam3.member.Member;
@@ -14,16 +17,23 @@ public final class AdminDtos {
     private AdminDtos() {
     }
 
-    public record AdminMemberView(Long id, String loginId, String name, int admissionYear, String admissionLabel,
-            MemberRole role, MemberStatus status, Instant createdAt) {
+    public record AdminMemberView(Long id, String loginId, String name, int cohort, String cohortLabel,
+            String departmentLabel, MemberRole role, MemberStatus status, Instant createdAt) {
 
         public static AdminMemberView from(Member m) {
-            return new AdminMemberView(m.getId(), m.getLoginId(), m.getName(), m.getAdmissionYear(),
-                    m.admissionLabel(), m.getRole(), m.getStatus(), m.getCreatedAt());
+            return new AdminMemberView(m.getId(), m.getLoginId(), m.getName(), m.getCohort(),
+                    m.cohortLabel(), m.departmentLabel(), m.getRole(), m.getStatus(), m.getCreatedAt());
         }
     }
 
-    public record SettingsView(String inviteCode) {
+    public record SettingsView(String inviteCode, int latestCohort) {
+    }
+
+    public record LatestCohortRequest(
+            @NotNull(message = "최신 기수를 입력해 주세요")
+            @Min(value = 1, message = "기수를 확인해 주세요")
+            @Max(value = 999, message = "기수를 확인해 주세요")
+            Integer latestCohort) {
     }
 
     public record InviteCodeRequest(

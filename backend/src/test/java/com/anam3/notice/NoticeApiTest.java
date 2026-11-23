@@ -15,8 +15,8 @@ class NoticeApiTest extends ApiTestSupport {
 
     @BeforeEach
     void users() throws Exception {
-        minsu = signup("minsu", "김민수", 2025);
-        jiyoung = signup("jiyoung", "이지영", 2024);
+        minsu = signup("minsu", "김민수", 61);
+        jiyoung = signup("jiyoung", "이지영", 60);
     }
 
     private long createNotice(String token, String title) throws Exception {
@@ -34,7 +34,7 @@ class NoticeApiTest extends ApiTestSupport {
         get("/api/notices/" + id, jiyoung)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.author.name").value("김*수"))
-                .andExpect(jsonPath("$.author.admissionLabel").value("25학번"))
+                .andExpect(jsonPath("$.author.cohortLabel").value("61기"))
                 .andExpect(jsonPath("$.author.official").value(false))
                 .andExpect(jsonPath("$.canEdit").value(false));
 
@@ -44,12 +44,14 @@ class NoticeApiTest extends ApiTestSupport {
     }
 
     @Test
-    void 운영자_글은_운영자로_표시된다() throws Exception {
+    void 관리자_글은_실명과_관리자_표시() throws Exception {
         long id = createNotice(adminToken(), "공지");
 
         get("/api/notices/" + id, minsu)
-                .andExpect(jsonPath("$.author.name").value("운영자"))
-                .andExpect(jsonPath("$.author.official").value(true));
+                .andExpect(jsonPath("$.author.name").value("박관리"))
+                .andExpect(jsonPath("$.author.cohortLabel").value("61기"))
+                .andExpect(jsonPath("$.author.official").value(true))
+                .andExpect(jsonPath("$.author.masked").value(false));
     }
 
     @Test

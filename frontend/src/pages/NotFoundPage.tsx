@@ -8,7 +8,7 @@ export function NotFoundPage() {
       <p className="text-lg font-bold text-ink">여기는 없는 역이에요</p>
       <p className="text-[15px] text-ink-2">주소가 바뀌었거나 지워진 페이지예요.</p>
       <Link to="/" className={buttonClass('primary')}>
-        번개 목록으로
+        3교시 목록으로
       </Link>
     </div>
   )

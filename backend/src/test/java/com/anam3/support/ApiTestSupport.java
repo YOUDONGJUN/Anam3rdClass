@@ -68,10 +68,10 @@ public abstract class ApiTestSupport {
 
     // ---------- 인증 ----------
 
-    protected String signup(String loginId, String name, int admissionYear) throws Exception {
+    protected String signup(String loginId, String name, int cohort) throws Exception {
         String body = """
-                {"inviteCode":"%s","loginId":"%s","password":"password1234","name":"%s","admissionYear":%d}
-                """.formatted(INVITE_CODE, loginId, name, admissionYear);
+                {"inviteCode":"%s","loginId":"%s","password":"password1234","name":"%s","cohort":%d,"department":"AI"}
+                """.formatted(INVITE_CODE, loginId, name, cohort);
         ResultActions r = request(MockMvcRequestBuilders.post("/api/auth/signup"), null, body).andExpect(status().isCreated());
         return read(r, "$.token");
     }
@@ -87,20 +87,21 @@ public abstract class ApiTestSupport {
         return login("testadmin", "testadmin1234");
     }
 
-    // ---------- 번개 ----------
+    // ---------- 3교시 ----------
 
-    protected long createMeetup(String token, int min, int max, Duration meetIn, Duration deadlineIn,
+    /** min/max 가 null 이면 각각 "최소 인원 없음" / "인원 제한 없음" */
+    protected long createMeetup(String token, Integer min, Integer max, Duration meetIn, Duration deadlineIn,
             String openChatUrl) throws Exception {
         String body = meetupJson("치맥 번개", min, max, T0.plus(meetIn), T0.plus(deadlineIn), openChatUrl);
         ResultActions r = request(MockMvcRequestBuilders.post("/api/meetups"), token, body).andExpect(status().isCreated());
         return ((Number) read(r, "$.id")).longValue();
     }
 
-    protected static String meetupJson(String title, int min, int max, Instant meetAt, Instant deadlineAt,
+    protected static String meetupJson(String title, Integer min, Integer max, Instant meetAt, Instant deadlineAt,
             String openChatUrl) {
         return """
-                {"title":"%s","description":"수업 끝나고 한잔","place":"안암역 앞","category":"BEER",
-                 "meetAt":"%s","deadlineAt":"%s","minPeople":%d,"maxPeople":%d,"openChatUrl":%s}
+                {"title":"%s","description":"수업 끝나고 한잔","place":"안암역 앞","categories":["BEER"],
+                 "purposes":["친목"],"meetAt":"%s","deadlineAt":"%s","minPeople":%s,"maxPeople":%s,"openChatUrl":%s}
                 """.formatted(title, meetAt, deadlineAt, min, max,
                 openChatUrl == null ? "null" : "\"" + openChatUrl + "\"");
     }

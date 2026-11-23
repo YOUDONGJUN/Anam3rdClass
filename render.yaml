@@ -22,4 +22,4 @@ services:
       - key: ADMIN_PASSWORD # 운영자 비밀번호 (8자 이상)
         sync: false
       - key: ADMIN_NAME
-        value: 운영자
+        value: 유동준

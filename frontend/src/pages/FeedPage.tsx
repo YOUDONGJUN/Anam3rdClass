@@ -51,14 +51,14 @@ export function FeedPage() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">
-            {scope === 'upcoming' ? '열린 번개' : '지난 번개'}
+            {scope === 'upcoming' ? '열린 3교시' : '지난 3교시'}
           </h1>
           <p className="mt-1 text-[15px] text-ink-2">
-            {scope === 'upcoming' ? '수업 끝나고, 3교시는 여기서.' : '성사되어 실제로 모였던 번개예요.'}
+            {scope === 'upcoming' ? '수업 끝나고, 3교시는 여기서.' : '성사되어 실제로 모였던 3교시예요.'}
           </p>
         </div>
         <Segmented
-          label="번개 보기"
+          label="3교시 보기"
           value={scope}
           onChange={(v) => setParams(v === 'past' ? { scope: 'past' } : {}, { replace: true })}
           options={[
@@ -80,17 +80,17 @@ export function FeedPage() {
         <div className={cardClass}>
           {scope === 'upcoming' ? (
             <EmptyState
-              title="아직 열린 번개가 없어요"
+              title="아직 열린 3교시가 없어요"
               body="먼저 열어 보는 건 어때요? 인원이 안 모이면 조용히 사라지니까 부담 없어요."
               action={
                 <Link to="/meetups/new" className={buttonClass('primary')}>
                   <Plus className="size-4" strokeWidth={2.6} aria-hidden />
-                  번개 열기
+                  3교시 열기
                 </Link>
               }
             />
           ) : (
-            <EmptyState title="아직 성사된 번개가 없어요" body="첫 번째 성사의 주인공이 되어 보세요." />
+            <EmptyState title="아직 성사된 3교시가 없어요" body="첫 번째 성사의 주인공이 되어 보세요." />
           )}
         </div>
       ) : (

@@ -7,14 +7,17 @@ import {
   useAdminSettings,
   useAdminStats,
   useChangeInviteCode,
+  useChangeLatestCohort,
   useResetPassword,
 } from '../api/queries'
 import type { AdminMember } from '../api/types'
 import { MeetupRow } from '../components/MeetupRow'
+import { AdminTag } from '../components/PersonName'
 import { Button, EmptyState, ErrorState, Field, FormError, Segmented, Spinner } from '../components/ui'
 import { cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
+import { affiliation } from '../lib/person'
 import { formatRelative } from '../lib/time'
 
 type Tab = 'overview' | 'members' | 'meetups'
@@ -46,7 +49,7 @@ function Overview() {
   const items = s
     ? [
         { label: '회원', value: s.members },
-        { label: '번개', value: s.meetups },
+        { label: '3교시', value: s.meetups },
         { label: '성사', value: s.confirmedMeetups },
         { label: '공지', value: s.notices },
       ]
@@ -96,7 +99,64 @@ function Overview() {
           <FormError message={error} />
         </div>
       </section>
+
+      <LatestCohortSetting current={settings.data?.latestCohort} />
     </div>
+  )
+}
+
+/** 가입 때 고를 수 있는 최신 기수. 새 기수가 들어오면 올려 준다 */
+function LatestCohortSetting({ current }: { current?: number }) {
+  const change = useChangeLatestCohort()
+  const toast = useToast()
+  const [value, setValue] = useState<string | null>(null)
+  const shown = value ?? (current ? String(current) : '')
+  const changed = current !== undefined && shown !== '' && Number(shown) !== current
+
+  return (
+    <section className={`${cardClass} px-5 py-5`}>
+      <h2 className="text-[17px] font-extrabold text-ink">최신 기수</h2>
+      <p className="mt-1 text-sm leading-relaxed text-ink-2">
+        가입·내 정보에서 1기부터 이 기수까지 고를 수 있어요. 새 기수가 입학하면 올려 주세요.
+      </p>
+      <form
+        className="mt-4 flex items-end gap-3"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          change.mutate(Number(shown), {
+            onSuccess: (d) => {
+              setValue(null)
+              toast.show(`최신 기수를 ${d.latestCohort}기로 바꿨어요`, 'ok')
+            },
+            onError: (err) => toast.show(err.message, 'error'),
+          })
+        }}
+      >
+        <div className="w-40">
+          <Field label="최신 기수">
+            {({ id }) => (
+              <div className="relative">
+                <input
+                  id={id}
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={999}
+                  className={`${inputClass} tabular pr-10 font-semibold`}
+                  value={shown}
+                  onChange={(e) => setValue(e.target.value)}
+                />
+                <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-ink-3">기</span>
+              </div>
+            )}
+          </Field>
+        </div>
+        <Button type="submit" loading={change.isPending} disabled={!changed}>
+          바꾸기
+        </Button>
+      </form>
+    </section>
   )
 }
 
@@ -112,9 +172,12 @@ function MemberItem({ m }: { m: AdminMember }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <p className="text-base font-bold text-ink">{m.name}</p>
         <span className="text-sm text-ink-3">
-          {m.admissionLabel} · @{m.loginId}
+          {affiliation(m.cohortLabel, m.departmentLabel)} · @{m.loginId}
         </span>
-        {m.role === 'ADMIN' && <span className="rounded bg-board px-1.5 py-0.5 text-[11px] font-bold text-on-board">운영자</span>}
+        {!m.departmentLabel && m.role !== 'ADMIN' && (
+          <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-bold text-ink-3">학과 미선택</span>
+        )}
+        {m.role === 'ADMIN' && <AdminTag />}
         {banned && <span className="rounded bg-danger-soft px-1.5 py-0.5 text-[11px] font-bold text-danger-ink">차단됨</span>}
         <span className="ml-auto text-[13px] text-ink-3">가입 {formatRelative(m.createdAt)}</span>
       </div>
@@ -184,14 +247,14 @@ function Members() {
   if (isPending) return <Spinner />
   if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
   const q = query.trim().toLowerCase()
-  const list = q ? data.filter((m) => m.name.includes(q) || m.loginId.includes(q) || m.admissionLabel.includes(q)) : data
+  const list = q ? data.filter((m) => m.name.includes(q) || m.loginId.includes(q) || m.cohortLabel.includes(q) || (m.departmentLabel ?? '').includes(q)) : data
 
   return (
     <div className="flex flex-col gap-3">
       <input
         type="search"
         aria-label="회원 검색"
-        placeholder="이름, 아이디, 학번으로 찾기"
+        placeholder="이름, 아이디, 기수, 학과로 찾기"
         className={inputClass}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -220,12 +283,12 @@ function Meetups() {
   if (data.length === 0)
     return (
       <div className={cardClass}>
-        <EmptyState title="아직 번개가 없어요" />
+        <EmptyState title="아직 3교시가 없어요" />
       </div>
     )
   return (
     <div className="flex flex-col gap-3">
-      <p className="px-1 text-sm text-ink-3">운영자에게는 모든 번개가 실명으로 보여요. 무산·취소된 번개도 포함돼요.</p>
+      <p className="px-1 text-sm text-ink-3">관리자에게는 모든 3교시가 실명으로 보여요. 무산·취소된 것도 포함돼요.</p>
       <div className={`${cardClass} divide-y divide-line overflow-hidden`}>
         {data.map((m) => (
           <MeetupRow key={m.id} meetup={m} now={now} showDate />
@@ -241,17 +304,17 @@ export function AdminPage() {
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">운영</h1>
-          <p className="mt-1 text-[15px] text-ink-2">회원 관리, 입장 코드, 전체 번개</p>
+          <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">관리</h1>
+          <p className="mt-1 text-[15px] text-ink-2">회원 관리, 입장 코드, 전체 3교시</p>
         </div>
         <Segmented
-          label="운영 메뉴"
+          label="관리 메뉴"
           value={tab}
           onChange={setTab}
           options={[
             { value: 'overview', label: '현황' },
             { value: 'members', label: '회원' },
-            { value: 'meetups', label: '번개' },
+            { value: 'meetups', label: '3교시' },
           ]}
         />
       </div>

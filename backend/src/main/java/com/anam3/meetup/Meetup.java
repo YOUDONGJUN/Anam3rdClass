@@ -1,11 +1,11 @@
 package com.anam3.meetup;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -14,12 +14,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
 import com.anam3.member.Member;
 
-/** 번개 모임 */
+/** 3교시(번개 모임) */
 @Entity
 @Table(name = "meetups")
 public class Meetup {
@@ -41,10 +38,13 @@ public class Meetup {
     @Column(nullable = false, length = 60)
     private String place;
 
-    @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(nullable = false, length = 20)
-    private MeetupCategory category;
+    /** 마실 것. 여러 개면 "SOJU,BEER" (MeetupTags 참고) */
+    @Column(nullable = false, length = 100)
+    private String categories;
+
+    /** 모임 목적 태그. 여러 개면 "친목,학업", 없으면 null */
+    @Column(length = 100)
+    private String purposes;
 
     /** 모이는 시각 */
     @Column(name = "meet_at", nullable = false)
@@ -54,13 +54,13 @@ public class Meetup {
     @Column(name = "deadline_at", nullable = false)
     private Instant deadlineAt;
 
-    /** 개설자 포함 최소 인원 */
-    @Column(name = "min_people", nullable = false)
-    private int minPeople;
+    /** 개설자 포함 최소 인원. null 이면 최소 인원 없음 — 몇 명이 오든 진행(열자마자 성사) */
+    @Column(name = "min_people")
+    private Integer minPeople;
 
-    /** 개설자 포함 정원 */
-    @Column(name = "max_people", nullable = false)
-    private int maxPeople;
+    /** 개설자 포함 정원. null 이면 인원 제한 없음 */
+    @Column(name = "max_people")
+    private Integer maxPeople;
 
     /** 개설자 포함 현재 인원 (참여/취소 시 행 잠금 후 갱신) */
     @Column(name = "participant_count", nullable = false)
@@ -82,13 +82,15 @@ public class Meetup {
     protected Meetup() {
     }
 
-    public Meetup(Member host, String title, String description, String place, MeetupCategory category,
-            Instant meetAt, Instant deadlineAt, int minPeople, int maxPeople, String openChatUrl, Instant now) {
+    public Meetup(Member host, String title, String description, String place,
+            Collection<MeetupCategory> categories, List<String> purposes, Instant meetAt, Instant deadlineAt,
+            Integer minPeople, Integer maxPeople, String openChatUrl, Instant now) {
         this.host = host;
         this.title = title;
         this.description = description;
         this.place = place;
-        this.category = category;
+        this.categories = MeetupTags.joinCategories(categories);
+        this.purposes = MeetupTags.joinPurposes(purposes);
         this.meetAt = meetAt;
         this.deadlineAt = deadlineAt;
         this.minPeople = minPeople;
@@ -114,9 +116,13 @@ public class Meetup {
         return reached ? MeetupStatus.CONFIRMED : MeetupStatus.RECRUITING;
     }
 
-    /** 최소 인원 달성 여부 */
+    /** 최소 인원 달성 여부. 최소 인원이 없으면 늘 달성(열자마자 성사) */
     public boolean isReached() {
-        return participantCount >= minPeople;
+        return minPeople == null || participantCount >= minPeople;
+    }
+
+    public boolean hasNoMinimum() {
+        return minPeople == null;
     }
 
     public boolean isRecruitingAt(Instant now) {
@@ -124,12 +130,20 @@ public class Meetup {
     }
 
     public boolean isJoinableAt(Instant now) {
-        return isRecruitingAt(now) && participantCount < maxPeople;
+        return isRecruitingAt(now) && !isFull();
     }
 
     public boolean isOpenAt(Instant now) {
         MeetupStatus status = statusAt(now);
         return status == MeetupStatus.RECRUITING || status == MeetupStatus.CONFIRMED;
+    }
+
+    public boolean isUnlimited() {
+        return maxPeople == null;
+    }
+
+    public boolean isFull() {
+        return maxPeople != null && participantCount >= maxPeople;
     }
 
     public boolean isHostedBy(Long memberId) {
@@ -144,12 +158,13 @@ public class Meetup {
         this.participantCount--;
     }
 
-    public void update(String title, String description, String place, MeetupCategory category, String openChatUrl,
-            Instant now) {
+    public void update(String title, String description, String place, Collection<MeetupCategory> categories,
+            List<String> purposes, String openChatUrl, Instant now) {
         this.title = title;
         this.description = description;
         this.place = place;
-        this.category = category;
+        this.categories = MeetupTags.joinCategories(categories);
+        this.purposes = MeetupTags.joinPurposes(purposes);
         this.openChatUrl = openChatUrl;
         this.updatedAt = now;
     }
@@ -179,8 +194,12 @@ public class Meetup {
         return place;
     }
 
-    public MeetupCategory getCategory() {
-        return category;
+    public List<MeetupCategory> getCategories() {
+        return MeetupTags.splitCategories(categories);
+    }
+
+    public List<String> getPurposes() {
+        return MeetupTags.splitPurposes(purposes);
     }
 
     public Instant getMeetAt() {
@@ -191,11 +210,13 @@ public class Meetup {
         return deadlineAt;
     }
 
-    public int getMinPeople() {
+    /** null 이면 최소 인원 없음 */
+    public Integer getMinPeople() {
         return minPeople;
     }
 
-    public int getMaxPeople() {
+    /** null 이면 인원 제한 없음 */
+    public Integer getMaxPeople() {
         return maxPeople;
     }
 

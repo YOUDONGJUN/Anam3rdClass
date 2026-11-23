@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.anam3.admin.AdminDtos.AdminMemberView;
 import com.anam3.admin.AdminDtos.InviteCodeRequest;
+import com.anam3.admin.AdminDtos.LatestCohortRequest;
 import com.anam3.admin.AdminDtos.SettingsView;
 import com.anam3.admin.AdminDtos.StatsView;
 import com.anam3.admin.AdminDtos.TemporaryPasswordView;
@@ -71,13 +72,23 @@ public class AdminController {
 
     @GetMapping("/settings")
     public SettingsView settings() {
-        return new SettingsView(settingService.inviteCode());
+        return currentSettings();
     }
 
     @PutMapping("/settings/invite-code")
     public SettingsView changeInviteCode(@Valid @RequestBody InviteCodeRequest req) {
         settingService.changeInviteCode(req.inviteCode());
-        return new SettingsView(settingService.inviteCode());
+        return currentSettings();
+    }
+
+    @PutMapping("/settings/latest-cohort")
+    public SettingsView changeLatestCohort(@Valid @RequestBody LatestCohortRequest req) {
+        settingService.changeLatestCohort(req.latestCohort());
+        return currentSettings();
+    }
+
+    private SettingsView currentSettings() {
+        return new SettingsView(settingService.inviteCode(), settingService.latestCohort());
     }
 
     @GetMapping("/meetups")

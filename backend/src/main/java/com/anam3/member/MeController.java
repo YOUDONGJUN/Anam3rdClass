@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.anam3.auth.AuthDtos.ChangePasswordRequest;
+import com.anam3.auth.AuthDtos.ProfileRequest;
 import com.anam3.auth.AuthService;
 import com.anam3.auth.LoginMember;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
@@ -34,6 +35,12 @@ public class MeController {
     @GetMapping
     public MemberResponse me(@AuthenticationPrincipal LoginMember me) {
         return authService.me(me);
+    }
+
+    @PutMapping("/profile")
+    public MemberResponse updateProfile(@AuthenticationPrincipal LoginMember me,
+            @Valid @RequestBody ProfileRequest req) {
+        return authService.updateProfile(me, req);
     }
 
     @PutMapping("/password")

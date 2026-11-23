@@ -46,25 +46,25 @@ public class AdminBootstrap implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         AppProperties.Admin admin = props.admin();
         if (admin == null || admin.loginId() == null || admin.loginId().isBlank()) {
-            log.info("ADMIN_LOGIN_ID 가 없어 운영자 계정 준비를 건너뜁니다");
+            log.info("ADMIN_LOGIN_ID 가 없어 관리자 계정 준비를 건너뜁니다");
             return;
         }
         String loginId = admin.loginId().strip().toLowerCase(Locale.ROOT);
         members.findByLoginId(loginId).ifPresentOrElse(existing -> {
             if (!existing.isAdmin()) {
                 existing.promoteToAdmin();
-                log.info("기존 회원 '{}' 을(를) 운영자로 지정했습니다", loginId);
+                log.info("기존 회원 '{}' 을(를) 관리자로 지정했습니다", loginId);
             }
         }, () -> {
             if (admin.password() == null || admin.password().length() < 8) {
-                log.warn("ADMIN_PASSWORD 가 없거나 8자 미만이라 운영자 계정을 만들지 않았습니다");
+                log.warn("ADMIN_PASSWORD 가 없거나 8자 미만이라 관리자 계정을 만들지 않았습니다");
                 return;
             }
-            String name = admin.name() == null || admin.name().isBlank() ? "운영자" : admin.name().strip();
-            int year = admin.admissionYear() == null ? 2024 : admin.admissionYear();
-            members.save(new Member(loginId, passwordEncoder.encode(admin.password()), name, year,
+            String name = admin.name() == null || admin.name().isBlank() ? "관리자" : admin.name().strip();
+            int cohort = admin.cohort() == null ? 61 : admin.cohort();
+            members.save(new Member(loginId, passwordEncoder.encode(admin.password()), name, cohort,
                     MemberRole.ADMIN, clock.instant()));
-            log.info("운영자 계정 '{}' 을(를) 만들었습니다", loginId);
+            log.info("관리자 계정 '{}' 을(를) 만들었습니다", loginId);
         });
     }
 }

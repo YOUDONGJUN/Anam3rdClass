@@ -15,7 +15,7 @@ app:
   admin:
     login-id: admin
     password: admin1234
-    name: 운영자
+    name: 유동준
   cors:
     # Vite 개발 서버 (frontend: npm run dev)
     allowed-origins: http://localhost:5173,http://127.0.0.1:5173

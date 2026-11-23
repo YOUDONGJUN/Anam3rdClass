@@ -1,14 +1,18 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
-import { KeyRound, LogOut, ShieldCheck } from 'lucide-react'
+import { ChevronRight, KeyRound, LogOut, ShieldCheck, UserPen } from 'lucide-react'
 import { api, ApiError } from '../api/client'
-import { useMyMeetups } from '../api/queries'
+import { useMyMeetups, useUpdateProfile } from '../api/queries'
+import type { Department, Member } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { AffiliationFields } from '../components/AffiliationFields'
 import { MeetupRow, MeetupRowSkeleton } from '../components/MeetupRow'
+import { AdminTag } from '../components/PersonName'
 import { Button, EmptyState, ErrorState, Field, FormError } from '../components/ui'
 import { buttonClass, cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
+import { affiliation } from '../lib/person'
 
 function PasswordForm({ onDone }: { onDone: () => void }) {
   const toast = useToast()
@@ -59,10 +63,54 @@ function PasswordForm({ onDone }: { onDone: () => void }) {
   )
 }
 
+/** 이름·기수·학과 수정 */
+function ProfileForm({ member, onDone }: { member: Member; onDone: () => void }) {
+  const { updateMember } = useAuth()
+  const update = useUpdateProfile()
+  const toast = useToast()
+  const [name, setName] = useState(member.name)
+  const [cohort, setCohort] = useState(String(member.cohort))
+  const [department, setDepartment] = useState<Department | ''>(member.department ?? '')
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!department) return setError('학과를 선택해 주세요')
+    setError(null)
+    try {
+      const updated = await update.mutateAsync({ name: name.trim(), cohort: Number(cohort), department })
+      updateMember(updated)
+      toast.show('내 정보를 고쳤어요', 'ok')
+      onDone()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '고치지 못했어요')
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4 border-t border-line px-5 py-5" noValidate>
+      <Field label="이름">
+        {({ id }) => <input id={id} className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />}
+      </Field>
+      <AffiliationFields cohort={cohort} department={department} onCohortChange={setCohort} onDepartmentChange={setDepartment} />
+      <FormError message={error} />
+      <div className="flex gap-2">
+        <Button type="submit" loading={update.isPending} disabled={!name.trim() || !cohort || !department}>
+          저장
+        </Button>
+        <Button variant="ghost" onClick={onDone}>
+          취소
+        </Button>
+      </div>
+    </form>
+  )
+}
+
 export function MyPage() {
   const { member, signOut } = useAuth()
   const { data, isPending, isError, error, refetch } = useMyMeetups()
   const [editingPassword, setEditingPassword] = useState(false)
+  const [editingProfile, setEditingProfile] = useState(false)
   const now = useNow()
 
   if (!member) return null
@@ -78,21 +126,32 @@ export function MyPage() {
             <p className="flex items-center gap-2 text-xl font-extrabold">
               {member.name}
               {member.role === 'ADMIN' && (
-                <span className="rounded bg-exit px-1.5 py-0.5 text-[11px] font-bold text-on-exit">운영자</span>
+                <AdminTag />
               )}
             </p>
             <p className="mt-1 text-sm text-on-board-2">
-              {member.admissionLabel} · @{member.loginId}
+              {affiliation(member.cohortLabel, member.departmentLabel)} · @{member.loginId}
             </p>
           </div>
         </div>
         <p className="border-t border-board-line px-6 py-3 text-sm text-on-board-2">
-          다른 사람에게는 이름이 가운데가 가려진 채로 보여요. 성사된 번개의 참여자에게만 실명이 보여요.
+          다른 사람에게는 이름이 가운데가 가려진 채로 보여요. 성사된 3교시의 참여자에게만 실명이 보여요.
         </p>
       </section>
 
+      {!member.department && !editingProfile && (
+        <button
+          type="button"
+          onClick={() => setEditingProfile(true)}
+          className="flex items-center justify-between gap-3 rounded-2xl bg-exit/25 px-5 py-4 text-left text-[15px] font-semibold text-ink"
+        >
+          학과를 아직 고르지 않았어요. 지금 고르기
+          <ChevronRight className="size-5 shrink-0" aria-hidden />
+        </button>
+      )}
+
       <section>
-        <h2 className="mb-3 px-1 text-[17px] font-extrabold text-ink">내 번개</h2>
+        <h2 className="mb-3 px-1 text-[17px] font-extrabold text-ink">내 3교시</h2>
         {isPending ? (
           <div className={`${cardClass} divide-y divide-line`}>
             <MeetupRowSkeleton />
@@ -103,11 +162,11 @@ export function MyPage() {
         ) : data.length === 0 ? (
           <div className={cardClass}>
             <EmptyState
-              title="아직 함께한 번개가 없어요"
-              body="연 번개와 참여한 번개가 여기에 모여요. 무산된 번개도 나만 볼 수 있게 남아요."
+              title="아직 함께한 3교시가 없어요"
+              body="내가 연 3교시와 참여한 3교시가 여기에 모여요. 무산된 것도 나만 볼 수 있게 남아요."
               action={
                 <Link to="/" className={buttonClass('secondary')}>
-                  열린 번개 보기
+                  열린 3교시 보기
                 </Link>
               }
             />
@@ -126,8 +185,22 @@ export function MyPage() {
         {member.role === 'ADMIN' && (
           <Link to="/admin" className="flex h-14 items-center gap-3 border-b border-line px-5 text-[15px] font-semibold text-ink hover:bg-surface-2">
             <ShieldCheck className="size-5 text-ink-3" aria-hidden />
-            운영 페이지
+            관리 페이지
           </Link>
+        )}
+        <button
+          type="button"
+          onClick={() => setEditingProfile((v) => !v)}
+          aria-expanded={editingProfile}
+          className="flex h-14 w-full items-center gap-3 border-b border-line px-5 text-left text-[15px] font-semibold text-ink hover:bg-surface-2"
+        >
+          <UserPen className="size-5 text-ink-3" aria-hidden />
+          이름·기수·학과 고치기
+        </button>
+        {editingProfile && (
+          <div className="border-b border-line">
+            <ProfileForm member={member} onDone={() => setEditingProfile(false)} />
+          </div>
         )}
         <button
           type="button"

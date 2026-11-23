@@ -12,7 +12,8 @@ public final class NoticeDtos {
     }
 
     /** official=true 면 운영자 글 (name 은 "운영자") */
-    public record AuthorView(String name, String admissionLabel, boolean official, boolean me, boolean masked) {
+    public record AuthorView(String name, String cohortLabel, String departmentLabel, boolean official, boolean me,
+            boolean masked) {
     }
 
     public record NoticeSummary(Long id, String title, String preview, AuthorView author, boolean pinned,

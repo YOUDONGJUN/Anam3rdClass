@@ -27,11 +27,11 @@ export function AppShell() {
   const { pathname } = useLocation()
 
   const items: NavItem[] = [
-    { to: '/', label: '번개', Icon: TrainFront, end: true },
+    { to: '/', label: '3교시', Icon: TrainFront, end: true },
     { to: '/notices', label: '공지', Icon: Megaphone },
     { to: '/me', label: '내 정보', Icon: CircleUser },
   ]
-  if (member?.role === 'ADMIN') items.push({ to: '/admin', label: '운영', Icon: ShieldCheck })
+  if (member?.role === 'ADMIN') items.push({ to: '/admin', label: '관리', Icon: ShieldCheck })
 
   const showFab = pathname === '/' || pathname === '/me'
 
@@ -46,7 +46,7 @@ export function AppShell() {
         <div className="px-5 pt-6">
           <Link to="/meetups/new" className={buttonClass('primary', 'lg', 'w-full')}>
             <Plus className="size-5" strokeWidth={2.6} aria-hidden />
-            번개 열기
+            3교시 열기
           </Link>
         </div>
         <nav aria-label="주 메뉴" className="mt-6 flex flex-col gap-1 px-3">
@@ -74,7 +74,7 @@ export function AppShell() {
           <div className="mt-auto border-t border-board-line px-6 py-5">
             <p className="text-[15px] font-semibold text-on-board">{member.name}</p>
             <p className="mt-0.5 text-sm text-on-board-2">
-              {member.admissionLabel} · @{member.loginId}
+              {member.cohortLabel} · @{member.loginId}
             </p>
           </div>
         )}
@@ -132,7 +132,7 @@ export function AppShell() {
           )}
         >
           <Plus className="size-5" strokeWidth={2.6} aria-hidden />
-          번개 열기
+          3교시 열기
         </Link>
       )}
     </div>

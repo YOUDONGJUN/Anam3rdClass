@@ -4,6 +4,9 @@ import { api } from './client'
 import type {
   AdminMember,
   AdminStats,
+  Department,
+  Member,
+  SignupOptions,
   MeetupCreateInput,
   MeetupDetail,
   MeetupSummary,
@@ -20,6 +23,25 @@ export const keys = {
   notices: ['notices'] as const,
   notice: (id: number) => ['notice', id] as const,
   admin: ['admin'] as const,
+  signupOptions: ['signup-options'] as const,
+}
+
+// ---------------- 회원 ----------------
+
+/** 가입·내 정보에서 고를 수 있는 기수(1 ~ 최신)와 학과. 로그인 없이 호출된다 */
+export function useSignupOptions() {
+  return useQuery({
+    queryKey: keys.signupOptions,
+    queryFn: () => api<SignupOptions>('/api/auth/signup-options'),
+    staleTime: 10 * 60_000,
+  })
+}
+
+export function useUpdateProfile() {
+  return useMutation({
+    mutationFn: (input: { name: string; cohort: number; department: Department }) =>
+      api<Member>('/api/me/profile', { method: 'PUT', body: input }),
+  })
 }
 
 // ---------------- 번개 ----------------
@@ -140,10 +162,27 @@ export function useAdminMeetups() {
   return useQuery({ queryKey: [...keys.admin, 'meetups'], queryFn: () => api<MeetupSummary[]>('/api/admin/meetups') })
 }
 
+export interface AdminSettings {
+  inviteCode: string
+  latestCohort: number
+}
+
 export function useAdminSettings() {
   return useQuery({
     queryKey: [...keys.admin, 'settings'],
-    queryFn: () => api<{ inviteCode: string }>('/api/admin/settings'),
+    queryFn: () => api<AdminSettings>('/api/admin/settings'),
+  })
+}
+
+export function useChangeLatestCohort() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (latestCohort: number) =>
+      api<AdminSettings>('/api/admin/settings/latest-cohort', { method: 'PUT', body: { latestCohort } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...keys.admin, 'settings'] })
+      qc.invalidateQueries({ queryKey: keys.signupOptions })
+    },
   })
 }
 

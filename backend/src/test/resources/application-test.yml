@@ -11,4 +11,4 @@ app:
   admin:
     login-id: testadmin
     password: testadmin1234
-    name: 운영자
+    name: 박관리

@@ -9,7 +9,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---------- 2) Spring Boot 빌드 (React 결과물을 static 으로 포함) ----------
-FROM eclipse-temurin:21-jdk AS api
+FROM eclipse-temurin:25-jdk AS api
 WORKDIR /app
 COPY backend/.mvn .mvn
 COPY backend/mvnw backend/pom.xml ./
@@ -19,7 +19,7 @@ COPY --from=web /web/dist src/main/resources/static
 RUN ./mvnw -B -q package -DskipTests
 
 # ---------- 3) 실행 ----------
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 WORKDIR /app
 RUN useradd --system --uid 1001 app
 COPY --from=api /app/target/anam3.jar app.jar

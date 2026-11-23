@@ -8,7 +8,7 @@ const toneClass: Record<Tone, string> = {
   danger: 'bg-danger-soft text-danger-ink',
 }
 
-export function StatusPill({ meetup }: { meetup: Pick<MeetupSummary, 'status' | 'joinable'> }) {
+export function StatusPill({ meetup }: { meetup: Pick<MeetupSummary, 'status' | 'joinable' | 'minPeople'> }) {
   const { label, tone } = statusView(meetup)
   return (
     <span className={`inline-flex h-6 shrink-0 items-center rounded-md px-2 text-xs font-bold ${toneClass[tone]}`}>

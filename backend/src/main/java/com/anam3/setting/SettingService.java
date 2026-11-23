@@ -10,6 +10,7 @@ import com.anam3.common.AppProperties;
 public class SettingService {
 
     static final String INVITE_CODE = "invite_code";
+    static final String LATEST_COHORT = "latest_cohort";
 
     private final AppSettingRepository settings;
     private final AppProperties props;
@@ -28,9 +29,24 @@ public class SettingService {
     }
 
     public void changeInviteCode(String code) {
-        String value = code.strip();
-        settings.findById(INVITE_CODE).ifPresentOrElse(
+        save(INVITE_CODE, code.strip());
+    }
+
+    /** 가입 때 고를 수 있는 가장 최근 기수 (새 기수가 들어오면 운영 페이지에서 올린다) */
+    @Transactional(readOnly = true)
+    public int latestCohort() {
+        return settings.findById(LATEST_COHORT)
+                .map(s -> Integer.parseInt(s.getValue()))
+                .orElse(props.latestCohort() == null ? 62 : props.latestCohort());
+    }
+
+    public void changeLatestCohort(int cohort) {
+        save(LATEST_COHORT, String.valueOf(cohort));
+    }
+
+    private void save(String key, String value) {
+        settings.findById(key).ifPresentOrElse(
                 s -> s.changeValue(value),
-                () -> settings.save(new AppSetting(INVITE_CODE, value)));
+                () -> settings.save(new AppSetting(key, value)));
     }
 }

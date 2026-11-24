@@ -120,3 +120,12 @@ export function ceilTo10Minutes(date: Date): Date {
   const step = 10 * 60_000
   return new Date(Math.ceil(date.getTime() / step) * step)
 }
+
+/** 모집 마감이 모임 몇 분 전인지 → "10분 전" · "1시간 전" · "1시간 30분 전" · "모일 때까지"(0분) */
+export function formatLeadTime(minutes: number): string {
+  if (minutes <= 0) return '모일 때까지'
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m}분 전`
+  return m === 0 ? `${h}시간 전` : `${h}시간 ${m}분 전`
+}

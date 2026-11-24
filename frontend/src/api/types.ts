@@ -210,7 +210,16 @@ export interface MeetupCreateInput {
 export type MeetupUpdateInput = Pick<
   MeetupCreateInput,
   'title' | 'description' | 'place' | 'categories' | 'purposes' | 'openChatUrl'
->
+> & {
+  /** 인원 바꾸기 (null 이면 각각 최소 인원 없음 · 최대 인원 없음) */
+  people: { minPeople: number | null; maxPeople: number | null }
+  /** 시간 바꾸기. 바꾸지 않았으면 null (마감이 지난 성사 3교시도 다른 칸은 고칠 수 있게) */
+  schedule: { meetAt: string; deadlineAt: string } | null
+  /** 대상 바꾸기 (이미 참여한 원우가 빠지게 좁힐 수는 없다) */
+  audience: MeetupAudience
+  /** 참여 방식 바꾸기 */
+  options: { lateJoin: boolean; fee: number | null; feePrepaid: boolean }
+}
 
 /** official=true 면 대학원장 글 (실명 + "대학원장" 표시) */
 export interface AuthorView {

@@ -3,6 +3,7 @@ package com.anam3.meetup;
 import java.time.Instant;
 import java.util.List;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -150,13 +151,13 @@ public final class MeetupDtos {
             @Pattern(regexp = "^$|^https://\\S+$", message = "오픈채팅 링크는 https:// 로 시작해야 해요")
             String openChatUrl,
 
-            /** 누구에게 여는지: 우리 학교(기본, 비워도 됨) · 우리 기수 · 연합. 열 때만 정하고 바꿀 수 없다 */
+            /** 누구에게 여는지: 우리 학교(기본, 비워도 됨) · 우리 기수 · 연합. 수정에서 바꿀 수 있다 (이미 참여한 원우가 빠지게 좁힐 수는 없다) */
             MeetupAudience audience,
 
-            /** 중간 합류 OK (비우면 아니오). 열 때만 정한다 */
+            /** 중간 합류 OK (비우면 아니오) */
             Boolean lateJoin,
 
-            /** 참여비(원). 비우면 참여비 없음. 열 때만 정한다 */
+            /** 참여비(원). 비우면 참여비 없음 */
             @Min(value = 1000, message = "참여비는 1,000원 이상으로 적어 주세요")
             @Max(value = 1000000, message = "참여비는 100만 원까지 적을 수 있어요")
             Integer fee,
@@ -187,6 +188,54 @@ public final class MeetupDtos {
 
             @Size(max = 300, message = "링크가 너무 길어요")
             @Pattern(regexp = "^$|^https://\\S+$", message = "오픈채팅 링크는 https:// 로 시작해야 해요")
-            String openChatUrl) {
+            String openChatUrl,
+
+            // 아래는 비우면(null) 그대로 둔다 (이 칸들이 없던 예전 화면의 요청도 그대로 받는다)
+
+            /** 인원 바꾸기 */
+            @Valid
+            PeopleChange people,
+
+            /** 시간 바꾸기 */
+            @Valid
+            ScheduleChange schedule,
+
+            /** 대상 바꾸기. 이미 참여한 원우가 빠지게 좁힐 수는 없다 */
+            MeetupAudience audience,
+
+            /** 참여 방식(중간 합류 · 참여비) 바꾸기 */
+            @Valid
+            OptionsChange options) {
+    }
+
+    /** 수정할 때 바꾸는 시간. 열 때와 같은 규칙으로 검사한다 (바뀌지 않았으면 검사하지 않는다) */
+    public record ScheduleChange(
+            @NotNull(message = "모임 시간을 정해 주세요")
+            Instant meetAt,
+
+            @NotNull(message = "모집 마감 시간을 정해 주세요")
+            Instant deadlineAt) {
+    }
+
+    /** 수정할 때 바꾸는 참여 방식 */
+    public record OptionsChange(
+            Boolean lateJoin,
+
+            @Min(value = 1000, message = "참여비는 1,000원 이상으로 적어 주세요")
+            @Max(value = 1000000, message = "참여비는 100만 원까지 적을 수 있어요")
+            Integer fee,
+
+            Boolean feePrepaid) {
+    }
+
+    /** 수정할 때 바꾸는 인원. 각각 비우면(null) 최소 인원 없음 · 최대 인원 없음 */
+    public record PeopleChange(
+            @Min(value = 2, message = "최소 인원은 2명 이상이에요")
+            @Max(value = 20, message = "최소 인원은 20명까지예요")
+            Integer minPeople,
+
+            @Min(value = 2, message = "최대 인원은 2명 이상이에요")
+            @Max(value = 30, message = "최대 인원은 30명까지예요. 더 많으면 '제한 없음'으로 바꿔 주세요")
+            Integer maxPeople) {
     }
 }

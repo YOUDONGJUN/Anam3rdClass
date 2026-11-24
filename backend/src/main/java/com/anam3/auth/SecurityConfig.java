@@ -11,10 +11,9 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -42,7 +41,13 @@ public class SecurityConfig {
                 .headers(h -> h.frameOptions(f -> f.sameOrigin())) // 로컬 H2 콘솔용
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/health").permitAll()
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // 대학원장 전용: 학교·도메인·학과 바꾸기, 교수 임명·해임, 예전 회원 이메일 지정
+                        .requestMatchers(HttpMethod.GET, "/api/admin/schools").hasAnyRole("MANAGER", "OWNER")
+                        .requestMatchers("/api/admin/schools/**", "/api/admin/departments/**").hasRole("OWNER")
+                        .requestMatchers(HttpMethod.POST, "/api/admin/schools").hasRole("OWNER")
+                        .requestMatchers("/api/admin/members/*/role", "/api/admin/members/*/email").hasRole("OWNER")
+                        // 교수·대학원장: 나머지 관리 화면
+                        .requestMatchers("/api/admin/**").hasAnyRole("MANAGER", "OWNER")
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()) // 화면(정적 파일)
                 .exceptionHandling(e -> e
@@ -55,12 +60,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    /** 스프링 기본 인메모리 사용자 생성을 막는다 (우리는 JWT 만 쓴다) */
+    /** 스프링 기본 인메모리 사용자 생성을 막는다 (우리는 카카오 로그인 + JWT 만 쓴다) */
     @Bean
     public UserDetailsService userDetailsService() {
         return username -> {
@@ -79,7 +79,7 @@ public class SecurityConfig {
         return source;
     }
 
-    private static void writeError(HttpServletResponse res, int status, String code, String message)
+    static void writeError(HttpServletResponse res, int status, String code, String message)
             throws IOException {
         res.setStatus(status);
         res.setContentType("application/json;charset=UTF-8");

@@ -11,6 +11,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import com.anam3.school.SchoolDtos.SchoolTag;
+
 public final class MeetupDtos {
 
     /** 모임 목적은 3개까지, 하나에 12자까지 */
@@ -20,11 +22,14 @@ public final class MeetupDtos {
     }
 
     /**
-     * 화면에 보이는 사람 정보. masked=true 면 name 은 "김*수" 처럼 가려진 이름이다.
-     * admin=true 면 관리자 — 이름이 가려지지 않고 "관리자" 표시가 붙는다.
+     * 화면에 보이는 사람 정보. masked=true 면 name 은 "김*대" 처럼 가려진 이름이다.
+     * owner=true 면 대학원장 — 이름이 가려지지 않고 "대학원장" 표시가 붙는다.
+     * (교수는 3교시에서 일반 원우와 똑같이 보인다)
+     * school 은 학교 배지 (연합 3교시에서 어느 학교 사람인지 보인다).
+     * ref 는 상세 화면 참여자에게만 붙는 이 3교시 안의 참여 번호 — 신고·차단할 때 쓴다 (회원 번호는 내보내지 않는다).
      */
-    public record PersonView(String name, String cohortLabel, String departmentLabel, boolean me, boolean host,
-            boolean admin, boolean masked) {
+    public record PersonView(String name, String cohortLabel, String departmentLabel, SchoolTag school, boolean me,
+            boolean host, boolean owner, boolean masked, Long ref) {
     }
 
     public record MeetupSummary(
@@ -44,7 +49,13 @@ public final class MeetupDtos {
             boolean joinable,
             boolean joined,
             boolean hosting,
-            PersonView host) {
+            PersonView host,
+            /** 우리 기수만 모집하면 그 기수 (null 이면 누구나) */
+            Integer onlyCohort,
+            /** SCHOOL(우리 학교) · COHORT(우리 기수) · ALL(연합) */
+            MeetupAudience audience,
+            /** 연 사람의 학교 */
+            SchoolTag school) {
     }
 
     public record MeetupDetail(
@@ -76,7 +87,13 @@ public final class MeetupDtos {
             boolean canCancel,
             boolean canJoin,
             boolean canLeave,
-            Instant createdAt) {
+            Instant createdAt,
+            /** 우리 기수만 모집하면 그 기수 (null 이면 누구나) */
+            Integer onlyCohort,
+            /** SCHOOL(우리 학교) · COHORT(우리 기수) · ALL(연합) */
+            MeetupAudience audience,
+            /** 연 사람의 학교 */
+            SchoolTag school) {
     }
 
     public record MeetupCreateRequest(
@@ -117,7 +134,10 @@ public final class MeetupDtos {
 
             @Size(max = 300, message = "링크가 너무 길어요")
             @Pattern(regexp = "^$|^https://\\S+$", message = "오픈채팅 링크는 https:// 로 시작해야 해요")
-            String openChatUrl) {
+            String openChatUrl,
+
+            /** 누구에게 여는지: 우리 학교(기본, 비워도 됨) · 우리 기수 · 연합. 열 때만 정하고 바꿀 수 없다 */
+            MeetupAudience audience) {
     }
 
     public record MeetupUpdateRequest(

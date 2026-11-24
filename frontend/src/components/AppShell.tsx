@@ -2,7 +2,10 @@ import { NavLink, Outlet, useLocation, Link } from 'react-router'
 import { CircleUser, LoaderCircle, Megaphone, Plus, ShieldCheck, TrainFront, type LucideIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useSlowServer } from '../lib/hooks'
+import { affiliation, isStaff } from '../lib/person'
 import { Brand } from './Brand'
+import { RoleTag } from './PersonName'
+import { SchoolBadge } from './SchoolBadge'
 import { buttonClass } from './styles'
 
 interface NavItem {
@@ -16,7 +19,7 @@ function SlowServerBanner() {
   return (
     <div role="status" className="flex items-center justify-center gap-2 bg-exit px-4 py-2 text-sm font-semibold text-on-exit">
       <LoaderCircle className="size-4 animate-spin" aria-hidden />
-      서버를 깨우는 중이에요. 무료 서버라 처음엔 최대 1분 걸릴 수 있어요
+      서버 응답이 늦어지고 있어요. 잠시만 기다려 주세요
     </div>
   )
 }
@@ -24,14 +27,16 @@ function SlowServerBanner() {
 export function AppShell() {
   const { member } = useAuth()
   const slow = useSlowServer()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
+  // 연합 게시판을 보고 있으면 "3교시 열기"도 연합으로
+  const newMeetupPath = pathname === '/' && new URLSearchParams(search).get('board') === 'all' ? '/meetups/new?audience=ALL' : '/meetups/new'
 
   const items: NavItem[] = [
     { to: '/', label: '3교시', Icon: TrainFront, end: true },
     { to: '/notices', label: '공지', Icon: Megaphone },
     { to: '/me', label: '내 정보', Icon: CircleUser },
   ]
-  if (member?.role === 'ADMIN') items.push({ to: '/admin', label: '관리', Icon: ShieldCheck })
+  if (isStaff(member?.role)) items.push({ to: '/admin', label: '관리', Icon: ShieldCheck })
 
   const showFab = pathname === '/' || pathname === '/me'
 
@@ -44,7 +49,7 @@ export function AppShell() {
         </div>
         <div className="h-1 bg-accent" aria-hidden />
         <div className="px-5 pt-6">
-          <Link to="/meetups/new" className={buttonClass('primary', 'lg', 'w-full')}>
+          <Link to={newMeetupPath} className={buttonClass('primary', 'lg', 'w-full')}>
             <Plus className="size-5" strokeWidth={2.6} aria-hidden />
             3교시 열기
           </Link>
@@ -72,9 +77,13 @@ export function AppShell() {
         </nav>
         {member && (
           <div className="mt-auto border-t border-board-line px-6 py-5">
-            <p className="text-[15px] font-semibold text-on-board">{member.name}</p>
-            <p className="mt-0.5 text-sm text-on-board-2">
-              {member.cohortLabel} · @{member.loginId}
+            <p className="flex flex-wrap items-center gap-1.5 text-[15px] font-semibold text-on-board">
+              {member.name}
+              <SchoolBadge school={member.school} />
+              {member.role !== 'USER' && <RoleTag role={member.role} />}
+            </p>
+            <p className="mt-0.5 truncate text-sm text-on-board-2">
+              {affiliation(member.cohortLabel, member.departmentLabel)}
             </p>
           </div>
         )}
@@ -89,7 +98,8 @@ export function AppShell() {
           <div className="h-1 bg-accent" aria-hidden />
         </header>
         {slow && <SlowServerBanner />}
-        <main className="mx-auto w-full max-w-3xl flex-1 px-4 pt-6 pb-32 sm:px-6 lg:px-10 lg:pt-10 lg:pb-16">
+        {/* 모바일 아래 여백: 하단 탭(64px) + "3교시 열기" 버튼(52px)에 마지막 줄이 가리지 않게 */}
+        <main className="mx-auto w-full max-w-3xl flex-1 px-4 pt-6 pb-40 sm:px-6 lg:px-10 lg:pt-10 lg:pb-16">
           <Outlet />
         </main>
       </div>
@@ -124,7 +134,7 @@ export function AppShell() {
 
       {showFab && (
         <Link
-          to="/meetups/new"
+          to={newMeetupPath}
           className={buttonClass(
             'primary',
             'lg',

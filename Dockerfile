@@ -1,4 +1,4 @@
-# 안암3교시 — React 화면 + Spring Boot API 를 하나의 컨테이너로 (Render 무료 플랜용)
+# 안암3교시 — React 화면 + Spring Boot API 를 하나의 컨테이너로 (Render, 메모리 512MB)
 
 # ---------- 1) React 빌드 ----------
 FROM node:24-alpine AS web
@@ -25,7 +25,7 @@ RUN useradd --system --uid 1001 app
 COPY --from=api /app/target/anam3.jar app.jar
 USER app
 
-# 무료 플랜 메모리 512MB 에 맞춘 JVM 설정
+# 메모리 512MB (Render Starter) 에 맞춘 JVM 설정
 ENV SPRING_PROFILES_ACTIVE=prod \
     JAVA_TOOL_OPTIONS="-Xmx224m -Xss512k -XX:MaxMetaspaceSize=150m -XX:ReservedCodeCacheSize=48m -XX:+UseSerialGC -XX:TieredStopAtLevel=1"
 

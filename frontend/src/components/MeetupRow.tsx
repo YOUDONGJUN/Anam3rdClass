@@ -5,6 +5,7 @@ import { useMeetupAction } from '../api/queries'
 import { formatDayLabel, formatRemaining, formatTime } from '../lib/time'
 import { isLive, seatsCaption } from '../lib/meetup'
 import { CategoryBadges } from './CategoryBadge'
+import { AudienceBadge } from './CohortBadge'
 import { LineGauge } from './LineGauge'
 import { PersonName } from './PersonName'
 import { PurposeTags } from './PurposeTags'
@@ -71,6 +72,7 @@ export function MeetupRow({ meetup, showDate = false, now }: { meetup: MeetupSum
         </div>
 
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-2">
+          <AudienceBadge meetup={meetup} />
           <p className="flex max-w-full min-w-0 items-center gap-1">
             <MapPin className="size-3.5 shrink-0 text-ink-3" aria-hidden />
             <span className="truncate">{meetup.place}</span>
@@ -107,10 +109,18 @@ export function MeetupRow({ meetup, showDate = false, now }: { meetup: MeetupSum
             {seatsCaption(meetup)}
           </span>
           {recruiting && <span>· 마감 {formatRemaining(meetup.deadlineAt, now)} 전</span>}
-          <span className="hidden min-w-0 items-center gap-1 sm:flex">
-            · <PersonName person={meetup.host} showMe={false} />
-          </span>
+          {meetup.audience !== 'ALL' && (
+            <span className="hidden min-w-0 items-center gap-1 sm:flex">
+              · <PersonName person={meetup.host} showMe={false} />
+            </span>
+          )}
         </div>
+        {meetup.audience === 'ALL' && (
+          // 연합: 어느 학교 사람이 열었는지 늘 보여준다 (모바일에서도)
+          <p className="mt-1 flex min-w-0 items-center gap-1 text-[13px] text-ink-3">
+            <PersonName person={meetup.host} showMe={false} showSchool />
+          </p>
+        )}
       </div>
     </article>
   )

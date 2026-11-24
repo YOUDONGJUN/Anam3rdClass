@@ -1,7 +1,8 @@
 import { Link, useSearchParams } from 'react-router'
-import { ChevronRight, Megaphone, Plus } from 'lucide-react'
+import { ChevronRight, Globe2, Megaphone, Plus, School } from 'lucide-react'
 import { useMeetups, useNotices } from '../api/queries'
-import type { MeetupSummary } from '../api/types'
+import type { Board, MeetupSummary } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import { MeetupRow, MeetupRowSkeleton } from '../components/MeetupRow'
 import { EmptyState, ErrorState, Segmented } from '../components/ui'
 import { buttonClass, cardClass } from '../components/styles'
@@ -38,29 +39,78 @@ function PinnedNotice() {
   )
 }
 
+/** 우리 학교 게시판 · 연합 게시판 — 화면 맨 위 큰 탭 */
+function BoardTabs({ board, onChange, schoolName }: { board: Board; onChange: (b: Board) => void; schoolName: string }) {
+  const tabs: { value: Board; label: string; Icon: typeof School }[] = [
+    { value: 'school', label: schoolName, Icon: School },
+    { value: 'all', label: '연합', Icon: Globe2 },
+  ]
+  return (
+    <div role="tablist" aria-label="게시판" className="mb-6 grid grid-cols-2 gap-1 rounded-2xl bg-surface-2 p-1">
+      {tabs.map(({ value, label, Icon }) => {
+        const active = board === value
+        return (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(value)}
+            className={`flex h-12 items-center justify-center gap-2 rounded-xl text-[15px] font-bold transition-colors ${
+              active ? 'bg-board text-on-board shadow-[0_2px_8px_-2px_rgb(0_0_0/0.25)]' : 'text-ink-2 hover:text-ink'
+            }`}
+          >
+            <Icon className="size-[18px]" aria-hidden />
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function FeedPage() {
+  const { member } = useAuth()
   const [params, setParams] = useSearchParams()
   const scope = params.get('scope') === 'past' ? 'past' : 'upcoming'
-  const { data, isPending, isError, error, refetch } = useMeetups(scope)
+  const board: Board = params.get('board') === 'all' ? 'all' : 'school'
+  const { data, isPending, isError, error, refetch } = useMeetups(scope, board)
   const now = useNow()
+  const schoolName = member?.school.shortName ?? '우리 학교'
+
+  function go(next: { scope?: 'upcoming' | 'past'; board?: Board }) {
+    const s = next.scope ?? scope
+    const b = next.board ?? board
+    const p: Record<string, string> = {}
+    if (s === 'past') p.scope = 'past'
+    if (b === 'all') p.board = 'all'
+    setParams(p, { replace: true })
+  }
+
+  const federated = board === 'all'
+  const title = scope === 'past' ? (federated ? '지난 연합 3교시' : '지난 3교시') : federated ? '연합 3교시' : '열린 3교시'
+  const subtitle =
+    scope === 'past'
+      ? '성사되어 실제로 모였던 3교시예요.'
+      : federated
+        ? 'IT연합회 다섯 학교 누구나 보고 참여해요.'
+        : `${schoolName} 원우끼리, 수업 끝나고 3교시는 여기서.`
 
   return (
     <div>
       <PinnedNotice />
 
+      <BoardTabs board={board} onChange={(b) => go({ board: b })} schoolName={schoolName} />
+
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">
-            {scope === 'upcoming' ? '열린 3교시' : '지난 3교시'}
-          </h1>
-          <p className="mt-1 text-[15px] text-ink-2">
-            {scope === 'upcoming' ? '수업 끝나고, 3교시는 여기서.' : '성사되어 실제로 모였던 3교시예요.'}
-          </p>
+          <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">{title}</h1>
+          <p className="mt-1 text-[15px] text-ink-2">{subtitle}</p>
         </div>
         <Segmented
           label="3교시 보기"
           value={scope}
-          onChange={(v) => setParams(v === 'past' ? { scope: 'past' } : {}, { replace: true })}
+          onChange={(v) => go({ scope: v })}
           options={[
             { value: 'upcoming', label: '다가오는' },
             { value: 'past', label: '지난' },
@@ -80,12 +130,16 @@ export function FeedPage() {
         <div className={cardClass}>
           {scope === 'upcoming' ? (
             <EmptyState
-              title="아직 열린 3교시가 없어요"
-              body="먼저 열어 보는 건 어때요? 인원이 안 모이면 조용히 사라지니까 부담 없어요."
+              title={federated ? '아직 열린 연합 3교시가 없어요' : '아직 열린 3교시가 없어요'}
+              body={
+                federated
+                  ? '다른 학교 원우들과 만나 보고 싶다면 연합으로 열어 보세요.'
+                  : '먼저 열어 보는 건 어때요? 인원이 안 모이면 조용히 사라지니까 부담 없어요.'
+              }
               action={
-                <Link to="/meetups/new" className={buttonClass('primary')}>
+                <Link to={federated ? '/meetups/new?audience=ALL' : '/meetups/new'} className={buttonClass('primary')}>
                   <Plus className="size-4" strokeWidth={2.6} aria-hidden />
-                  3교시 열기
+                  {federated ? '연합 3교시 열기' : '3교시 열기'}
                 </Link>
               }
             />

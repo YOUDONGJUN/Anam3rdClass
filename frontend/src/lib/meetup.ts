@@ -114,6 +114,30 @@ export function peopleRule(min: number | null, max: number | null) {
   return `${head} · ${tail}`
 }
 
+export interface PeopleValues {
+  minPeople: number
+  /** 최소 인원 없음 (minPeople 무시) */
+  noMinimum: boolean
+  maxPeople: number
+  /** 인원 제한 없음 (maxPeople 무시) */
+  unlimited: boolean
+}
+
+/**
+ * 인원 입력을 바꿀 때마다 최대 인원이 최소 인원보다 작아지지 않게 맞춘다.
+ * 예: "최소 인원 없음"을 켠 채 최대를 2명으로 줄였다가 다시 끄면 최소(3명)에 맞춰 최대를 올린다.
+ */
+export function fitPeople<T extends PeopleValues>(v: T): T {
+  if (v.noMinimum || v.unlimited || v.maxPeople >= v.minPeople) return v
+  return { ...v, maxPeople: v.minPeople }
+}
+
+/** 제출 직전 인원 검사 (서버도 한 번 더 검사한다). 문제가 없으면 null */
+export function peopleError(min: number | null, max: number | null): string | null {
+  if (min !== null && max !== null && max < min) return '최대 인원은 최소 인원보다 같거나 많아야 해요'
+  return null
+}
+
 /** "3/6명" 또는 제한 없음이면 "3명" */
 export function headcount(m: Pick<MeetupSummary, 'participantCount' | 'maxPeople'>) {
   return m.maxPeople === null ? `${m.participantCount}명` : `${m.participantCount}/${m.maxPeople}명`

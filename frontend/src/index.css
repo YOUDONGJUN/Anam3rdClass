@@ -6,6 +6,11 @@
  * 모티브: 안암역(6호선) 지하철 사인 — 네이비 안내판, 6호선 황토색, 출구번호 노란색.
  * 번개 종류 색은 서울 지하철 노선 색에서 가져왔다 (src/lib/meetup.ts).
  * 색은 여기 변수로만 정의하고, 컴포넌트에서는 Tailwind 클래스(bg-board, text-ink-2 …)로 쓴다.
+ *
+ * 테마 (src/lib/theme.ts 가 <html> 에 붙인다)
+ *   data-theme="basic"  기본 — 네이비 안내판 + 6호선 황토색
+ *   data-theme="school" 학교 색 (기본값) — 안내판·버튼이 우리 학교 상징색. data-school 이 학교 코드
+ *   data-mode="light" | "dark"  밝게·어둡게 (자동이면 휴대폰 설정을 따른다)
  */
 @theme inline {
   --font-sans:
@@ -43,6 +48,13 @@
   --color-danger-ink: var(--danger-ink);
   --color-danger-soft: var(--danger-soft);
 
+  /* 통계 막대 (6호선 황토색 계열, 밝기·대비를 모드별로 맞춤) */
+  --color-chart-bar: var(--chart-bar);
+
+  /* 카카오 로그인 버튼 — 카카오 디자인 가이드 색 그대로 (두 모드 같음) */
+  --color-kakao: var(--kakao);
+  --color-on-kakao: var(--on-kakao);
+
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -79,43 +91,210 @@
   --danger: #d6363c;
   --danger-ink: #b3262c;
   --danger-soft: #fbe3e3;
+
+  --chart-bar: #bf6f2c;
+
+  --kakao: #fee500;
+  --on-kakao: rgb(0 0 0 / 0.85);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
+:root[data-mode='dark'] {
+  color-scheme: dark;
 
-    --bg: #0d131b;
-    --surface: #151d28;
-    --surface-2: #1c2633;
-    --ink: #edf0f4;
-    --ink-2: #b6beca;
-    --ink-3: #8c96a5;
-    --line: #273244;
-    --line-strong: #364357;
+  --bg: #0d131b;
+  --surface: #151d28;
+  --surface-2: #1c2633;
+  --ink: #edf0f4;
+  --ink-2: #b6beca;
+  --ink-3: #8c96a5;
+  --line: #273244;
+  --line-strong: #364357;
 
-    --board: #1b2636;
-    --board-2: #263347;
-    --board-line: #33425a;
-    --on-board: #f1f3f6;
-    --on-board-2: #9eabbd;
+  --board: #1b2636;
+  --board-2: #263347;
+  --board-line: #33425a;
+  --on-board: #f1f3f6;
+  --on-board-2: #9eabbd;
 
-    --accent: #e3934b;
-    --accent-ink: #f0a865;
-    --accent-soft: #3a2a1b;
-    --on-accent: #17110a;
+  --accent: #e3934b;
+  --accent-ink: #f0a865;
+  --accent-soft: #3a2a1b;
+  --on-accent: #17110a;
 
-    --exit: #ffcd3c;
-    --on-exit: #17140a;
+  --exit: #ffcd3c;
+  --on-exit: #17140a;
 
-    --ok: #2fc274;
-    --ok-ink: #5ad895;
-    --ok-soft: #133524;
+  --ok: #2fc274;
+  --ok-ink: #5ad895;
+  --ok-soft: #133524;
 
-    --danger: #ef5b5f;
-    --danger-ink: #ff8a8d;
-    --danger-soft: #3b1a1c;
-  }
+  --danger: #ef5b5f;
+  --danger-ink: #ff8a8d;
+  --danger-soft: #3b1a1c;
+
+  --chart-bar: #c47a3a;
+}
+
+/*
+ * 학교 상징색. 공식 색은 각 학교 홍보·상징 안내에서 가져왔다 (서강대·한양대는 확인 필요).
+ *   --school       안내판·버튼 (밝은 화면)
+ *   --school-pop   안내판 위에서 눈에 띄는 색 (띠, 안내판 위 버튼) — 안내판과 같은 색이면 묻혀서 따로 둔다
+ *   --school-bright 어두운 화면의 버튼·강조 (어두운 바탕에서 읽히게 밝힌 색)
+ * 성균관대는 공식 연두가 밝아서 안내판은 진녹, 띠·강조는 연두로 쓴다.
+ */
+:root[data-school='KU'] {
+  --school: #8b0029;
+  --on-school: #ffffff;
+  --school-pop: #ffffff;
+  --on-school-pop: #8b0029;
+  --school-bright: #f07a92;
+  --on-school-bright: #1a0008;
+}
+
+:root[data-school='YONSEI'] {
+  --school: #00205b;
+  --on-school: #ffffff;
+  --school-pop: #ffffff;
+  --on-school-pop: #00205b;
+  --school-bright: #7fa8ff;
+  --on-school-bright: #0a1530;
+}
+
+:root[data-school='SKKU'] {
+  --school: #124532;
+  --on-school: #ffffff;
+  --school-pop: #8dc63f;
+  --on-school-pop: #12301a;
+  --school-bright: #9fd65a;
+  --on-school-bright: #12301a;
+}
+
+:root[data-school='SOGANG'] {
+  --school: #b60005;
+  --on-school: #ffffff;
+  --school-pop: #ffffff;
+  --on-school-pop: #b60005;
+  --school-bright: #ff7a6e;
+  --on-school-bright: #1a0004;
+}
+
+:root[data-school='HANYANG'] {
+  --school: #0e4a84;
+  --on-school: #ffffff;
+  --school-pop: #ffffff;
+  --on-school-pop: #0e4a84;
+  --school-bright: #78aef0;
+  --on-school-bright: #0a1530;
+}
+
+/* 학교 색 테마 — 밝게. 바탕은 학교 색을 아주 조금 섞은 따뜻한 회색, 안내판은 학교 색 그대로 */
+:root[data-theme='school'][data-school] {
+  --bg: color-mix(in oklab, var(--school) 5%, #f6f5f3);
+  --surface: #ffffff;
+  --surface-2: color-mix(in oklab, var(--school) 6%, #f2f1ee);
+  --ink: #1b1a1f;
+  --ink-2: #4b4a52;
+  --ink-3: #6b6a73;
+  --line: color-mix(in oklab, var(--school) 9%, #e6e4e0);
+  --line-strong: color-mix(in oklab, var(--school) 15%, #d0cdc8);
+
+  --board: var(--school);
+  --board-2: color-mix(in oklab, var(--school) 84%, #ffffff);
+  --board-line: color-mix(in oklab, var(--school) 68%, #ffffff);
+  --on-board: #ffffff;
+  --on-board-2: color-mix(in oklab, #ffffff 78%, var(--school));
+
+  --accent: var(--school);
+  --accent-ink: var(--school);
+  --accent-soft: color-mix(in oklab, var(--school) 10%, #ffffff);
+  --on-accent: var(--on-school);
+
+  --chart-bar: var(--school);
+}
+
+/*
+ * 안내판 위에서는 강조색을 바꿔 끼운다 — 안내판과 같은 색 버튼·띠가 묻히지 않게.
+ * accent-ink 는 그대로 둔다: 안내판 위 "모집중" 같은 연한 바탕 표시의 글자색이라 학교 색이어야 읽힌다.
+ */
+:root[data-theme='school'][data-school][data-mode='light'] .bg-board {
+  --accent: var(--school-pop);
+  --on-accent: var(--on-school-pop);
+}
+
+/* 학교 색 테마 — 어둡게. 바탕·안내판은 학교 색을 섞은 어두운 색, 강조는 밝힌 학교 색 */
+:root[data-theme='school'][data-school][data-mode='dark'] {
+  --bg: color-mix(in oklab, var(--school) 14%, #0b0b0e);
+  --surface: color-mix(in oklab, var(--school) 11%, #141418);
+  --surface-2: color-mix(in oklab, var(--school) 16%, #1b1b20);
+  --ink: #f1f0f3;
+  --ink-2: #c0bec6;
+  --ink-3: #95939d;
+  --line: color-mix(in oklab, var(--school) 20%, #25252b);
+  --line-strong: color-mix(in oklab, var(--school) 26%, #33333a);
+
+  --board: color-mix(in oklab, var(--school) 62%, #0b0b0e);
+  --board-2: color-mix(in oklab, var(--school) 62%, #2a2a30);
+  --board-line: color-mix(in oklab, var(--school) 50%, #3a3a42);
+  --on-board: #f6f4f7;
+  --on-board-2: color-mix(in oklab, #ffffff 72%, var(--school));
+
+  --accent: var(--school-bright);
+  --accent-ink: var(--school-bright);
+  --accent-soft: color-mix(in oklab, var(--school) 32%, #141418);
+  --on-accent: var(--on-school-bright);
+
+  --chart-bar: var(--school-bright);
+}
+
+/*
+ * 학교 배지 "✓ 고려대" — 학교 이메일로 인증한 사람에게만 붙는다.
+ * 빨강 둘(고려대·서강대), 파랑 둘(연세대·한양대)은 색만으로 구분되지 않아서 학교 이름을 늘 글자로 쓴다.
+ * 배지 색은 화면 테마와 상관없이 학교마다 같다.
+ */
+.school-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 3px;
+  border-radius: 4px;
+  padding: 3px 6px 3px 5px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  background: var(--sb-bg, var(--board));
+  color: var(--sb-fg, var(--on-board));
+}
+
+.school-badge[data-code='KU'] {
+  --sb-bg: #8b0029;
+  --sb-fg: #ffffff;
+}
+
+.school-badge[data-code='YONSEI'] {
+  --sb-bg: #00205b;
+  --sb-fg: #ffffff;
+}
+
+.school-badge[data-code='SKKU'] {
+  --sb-bg: #8dc63f;
+  --sb-fg: #12301a;
+}
+
+.school-badge[data-code='SOGANG'] {
+  --sb-bg: #b60005;
+  --sb-fg: #ffffff;
+}
+
+.school-badge[data-code='HANYANG'] {
+  --sb-bg: #0e4a84;
+  --sb-fg: #ffffff;
+}
+
+/* 어두운 화면·안내판 위에서는 테두리를 얇게 둘러 바탕에 묻히지 않게 */
+:root[data-mode='dark'] .school-badge,
+.bg-board .school-badge {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.32);
 }
 
 @layer base {
@@ -154,6 +333,17 @@
   input::placeholder,
   textarea::placeholder {
     color: var(--ink-3);
+  }
+
+  /* iOS Safari: 날짜·시간 칸이 혼자 가운데 정렬되거나 칸 밖으로 넓어지지 않게 */
+  input[type='date'],
+  input[type='time'],
+  input[type='datetime-local'] {
+    min-width: 0;
+  }
+
+  ::-webkit-date-and-time-value {
+    text-align: left;
   }
 
   h1,

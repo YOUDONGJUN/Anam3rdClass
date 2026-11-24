@@ -1,0 +1,195 @@
+package com.anam3.school;
+
+import java.time.Clock;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.anam3.common.ApiException;
+import com.anam3.school.SchoolDtos.DepartmentRequest;
+import com.anam3.school.SchoolDtos.DepartmentView;
+import com.anam3.school.SchoolDtos.DomainView;
+import com.anam3.school.SchoolDtos.NewSchoolRequest;
+import com.anam3.school.SchoolDtos.SchoolRequest;
+import com.anam3.school.SchoolDtos.SchoolView;
+
+/**
+ * 학교 · 이메일 도메인 · 학과 · 학교별 최신 기수.
+ * 읽기는 누구나(가입 화면), 바꾸기는 대학원장만 (SecurityConfig, AdminController).
+ */
+@Service
+@Transactional
+public class SchoolService {
+
+    private final SchoolRepository schools;
+    private final SchoolEmailDomainRepository domains;
+    private final DepartmentRepository departments;
+    private final Clock clock;
+
+    public SchoolService(SchoolRepository schools, SchoolEmailDomainRepository domains,
+            DepartmentRepository departments, Clock clock) {
+        this.schools = schools;
+        this.domains = domains;
+        this.departments = departments;
+        this.clock = clock;
+    }
+
+    // ---------------- 읽기 ----------------
+
+    @Transactional(readOnly = true)
+    public List<School> all() {
+        return schools.findAllByOrderBySortOrderAscIdAsc();
+    }
+
+    /**
+     * 모든 학교와 도메인·학과. 가입 화면은 숨긴 학과를 빼고(includeHidden=false), 관리 화면은 모두 본다.
+     */
+    @Transactional(readOnly = true)
+    public List<SchoolView> views(boolean includeHidden) {
+        Map<Long, List<DomainView>> domainsBySchool = domains.findAllByOrderByIdAsc().stream()
+                .collect(Collectors.groupingBy(d -> d.getSchool().getId(),
+                        Collectors.mapping(DomainView::from, Collectors.toList())));
+        Map<Long, List<DepartmentView>> departmentsBySchool = departments.findAllByOrderBySortOrderAscIdAsc().stream()
+                .filter(d -> includeHidden || d.isActive())
+                .collect(Collectors.groupingBy(d -> d.getSchool().getId(),
+                        Collectors.mapping(DepartmentView::from, Collectors.toList())));
+        return all().stream()
+                .map(s -> new SchoolView(s.getId(), s.getCode(), s.getName(), s.getShortName(), s.getGraduateSchool(),
+                        s.getLatestCohort(), domainsBySchool.getOrDefault(s.getId(), List.of()),
+                        departmentsBySchool.getOrDefault(s.getId(), List.of())))
+                .toList();
+    }
+
+    /**
+     * 이메일 도메인이 등록된 학교면 그 학교. 하위 도메인도 같은 학교로 본다
+     * (hong@korea.ac.kr → 고려대학교, hong@g.skku.edu → 성균관대학교). 여러 개 맞으면 가장 긴 도메인.
+     */
+    @Transactional(readOnly = true)
+    public Optional<School> findForEmail(String email) {
+        int at = email == null ? -1 : email.lastIndexOf('@');
+        if (at < 0) {
+            return Optional.empty();
+        }
+        String emailDomain = email.substring(at + 1).toLowerCase(Locale.ROOT);
+        return domains.findAllByOrderByIdAsc().stream()
+                .filter(d -> d.matches(emailDomain))
+                .max(Comparator.comparingInt(d -> d.getDomain().length()))
+                .map(SchoolEmailDomain::getSchool);
+    }
+
+    /** 등록된 학교 이메일이 아니면 친절한 에러 */
+    @Transactional(readOnly = true)
+    public School requireForEmail(String email) {
+        return findForEmail(email).orElseThrow(() -> ApiException.badRequest("SCHOOL_EMAIL_REQUIRED",
+                "IT연합회 학교 이메일만 쓸 수 있어요 (" + String.join(", ", domainList()) + ")"));
+    }
+
+    @Transactional(readOnly = true)
+    public School require(Long schoolId) {
+        return schools.findById(schoolId).orElseThrow(() -> ApiException.notFound("학교를 찾을 수 없어요"));
+    }
+
+    /**
+     * 이 학교의 학과인지 확인해서 돌려준다. 숨긴 학과는 고를 수 없다 (지금 그 학과인 원우를 그대로 두는 건 된다).
+     */
+    @Transactional(readOnly = true)
+    public Department requireDepartment(School school, Long departmentId, Department current) {
+        Department department = departments.findById(departmentId)
+                .filter(d -> d.belongsTo(school))
+                .orElseThrow(() -> ApiException.badRequest("INVALID_DEPARTMENT", "학과를 다시 골라 주세요"));
+        boolean unchanged = current != null && current.getId().equals(department.getId());
+        if (!department.isActive() && !unchanged) {
+            throw ApiException.badRequest("INVALID_DEPARTMENT", "지금은 고를 수 없는 학과예요");
+        }
+        return department;
+    }
+
+    /** 1기 ~ 이 학교의 최신 기수만 허용 */
+    public void checkCohort(School school, int cohort) {
+        if (cohort < 1 || cohort > school.getLatestCohort()) {
+            throw ApiException.badRequest("INVALID_COHORT", "기수를 확인해 주세요");
+        }
+    }
+
+    // ---------------- 대학원장 전용 ----------------
+
+    public School addSchool(NewSchoolRequest req) {
+        String domain = normalizeDomain(req.emailDomain());
+        checkDomainFree(domain);
+        if (schools.existsByName(req.name().strip())) {
+            throw ApiException.conflict("DUPLICATE_SCHOOL", "이미 등록된 학교예요");
+        }
+        int nextOrder = all().stream().mapToInt(School::getSortOrder).max().orElse(0) + 1;
+        School school = schools.save(new School(req.name().strip(), req.shortName().strip(),
+                blankToNull(req.graduateSchool()), req.latestCohort(), nextOrder, clock.instant()));
+        domains.save(new SchoolEmailDomain(school, domain));
+        return school;
+    }
+
+    public School updateSchool(Long schoolId, SchoolRequest req) {
+        School school = require(schoolId);
+        school.update(req.name().strip(), req.shortName().strip(), blankToNull(req.graduateSchool()),
+                req.latestCohort());
+        return school;
+    }
+
+    public SchoolEmailDomain addDomain(Long schoolId, String rawDomain) {
+        School school = require(schoolId);
+        String domain = normalizeDomain(rawDomain);
+        checkDomainFree(domain);
+        return domains.save(new SchoolEmailDomain(school, domain));
+    }
+
+    /** 도메인 빼기. 학교마다 하나는 남아야 한다 (이미 가입한 원우는 그대로) */
+    public void removeDomain(Long schoolId, Long domainId) {
+        SchoolEmailDomain domain = domains.findById(domainId)
+                .filter(d -> d.getSchool().getId().equals(schoolId))
+                .orElseThrow(() -> ApiException.notFound("이메일 도메인을 찾을 수 없어요"));
+        if (domains.countBySchoolId(schoolId) <= 1) {
+            throw ApiException.badRequest("LAST_DOMAIN", "학교마다 이메일 도메인이 하나는 있어야 해요");
+        }
+        domains.delete(domain);
+    }
+
+    public Department addDepartment(Long schoolId, DepartmentRequest req) {
+        School school = require(schoolId);
+        return departments.save(new Department(school, req.name().strip(), req.shortName().strip(),
+                blankToNull(req.graduateSchool()), departments.maxSortOrder(schoolId) + 1, clock.instant()));
+    }
+
+    public Department updateDepartment(Long departmentId, DepartmentRequest req) {
+        Department department = departments.findById(departmentId)
+                .orElseThrow(() -> ApiException.notFound("학과를 찾을 수 없어요"));
+        department.update(req.name().strip(), req.shortName().strip(), blankToNull(req.graduateSchool()),
+                req.active() == null ? department.isActive() : req.active());
+        return department;
+    }
+
+    private void checkDomainFree(String domain) {
+        if (domains.existsByDomain(domain)) {
+            throw ApiException.conflict("DUPLICATE_DOMAIN", "이미 등록된 이메일 도메인이에요");
+        }
+    }
+
+    private static String normalizeDomain(String raw) {
+        String domain = raw.strip().toLowerCase(Locale.ROOT);
+        return domain.startsWith("@") ? domain.substring(1) : domain;
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.strip();
+    }
+
+    private List<String> domainList() {
+        return domains.findAllByOrderByIdAsc().stream()
+                .sorted(Comparator.comparingInt((SchoolEmailDomain d) -> d.getSchool().getSortOrder()))
+                .map(d -> "@" + d.getDomain())
+                .toList();
+    }
+}

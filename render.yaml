@@ -1,10 +1,11 @@
 # Render Blueprint — Render 대시보드 > New > Blueprint 에서 이 저장소를 고르면 자동으로 만들어진다.
-# 값이 비어 있는(sync: false) 환경변수는 생성 화면에서 직접 입력한다. 자세한 순서는 README "배포" 참고.
+# 값이 비어 있는(sync: false) 환경변수는 생성 화면에서 직접 입력한다. 자세한 내용은 README "배포" 참고.
 services:
   - type: web
     name: anam3
     runtime: docker
-    plan: free
+    # 무료(free) 플랜은 SMTP 포트(25·465·587)가 막혀 인증 메일을 못 보내고, 15분 쉬면 잠든다 → Starter(유료)
+    plan: starter
     region: singapore # 한국과 가장 가까운 리전
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -15,11 +16,19 @@ services:
         sync: false
       - key: JWT_SECRET # 로그인 토큰 서명 키 (Render 가 무작위 생성)
         generateValue: true
-      - key: INVITE_CODE # 가입용 입장 코드
+      - key: OWNER_EMAIL # 대학원장(최고 관리자)의 학교 이메일
         sync: false
-      - key: ADMIN_LOGIN_ID # 운영자 아이디
+      - key: KAKAO_REST_API_KEY # 카카오 디벨로퍼스 > 앱 > 플랫폼 키 > REST API 키
         sync: false
-      - key: ADMIN_PASSWORD # 운영자 비밀번호 (8자 이상)
+      - key: KAKAO_CLIENT_SECRET # 같은 화면의 클라이언트 시크릿
         sync: false
-      - key: ADMIN_NAME
-        value: 유동준
+      - key: SPRING_MAIL_HOST # 예: smtp.gmail.com
+        sync: false
+      - key: SPRING_MAIL_PORT # 예: 587
+        value: "587"
+      - key: SPRING_MAIL_USERNAME # 보내는 메일 주소 (Gmail 이면 그 주소)
+        sync: false
+      - key: SPRING_MAIL_PASSWORD # Gmail 앱 비밀번호 (2단계 인증 후 발급, 16자리)
+        sync: false
+      - key: SUPPORT_EMAIL # (선택) 약관·내 정보 화면의 문의 이메일
+        sync: false

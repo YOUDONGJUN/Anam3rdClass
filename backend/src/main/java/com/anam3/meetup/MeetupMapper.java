@@ -11,29 +11,44 @@ import com.anam3.meetup.MeetupDtos.MeetupDetail;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
 import com.anam3.meetup.MeetupDtos.PersonView;
 import com.anam3.member.Member;
+import com.anam3.school.SchoolDtos.SchoolTag;
 
 /**
- * 3교시를 화면용 응답으로 바꾸면서 <b>누가 누구 이름을 볼 수 있는지</b>를 결정한다.
+ * 3교시를 화면용 응답으로 바꾸면서 <b>누가 누구 이름을 볼 수 있는지</b>와 <b>무엇을 할 수 있는지</b>를 결정한다.
  *
  * <h3>공개 규칙 (민망함 방지)</h3>
  * <ul>
- *   <li>관리자가 볼 때: 모두 실명</li>
+ *   <li>대학원장이 볼 때: 모두 실명</li>
  *   <li>성사(최소 인원 달성)된 3교시의 참여자: 서로 실명 + 오픈채팅 링크.
  *       최소 인원이 없는(무조건 진행) 3교시는 열자마자 성사라서 참여하면 바로 실명</li>
- *   <li>그 외 모두 (성사 전, 미참여자, 무산된 3교시): "김*수 · 61기 · 인융" 처럼 가운데 마스킹</li>
+ *   <li>그 외 모두 (성사 전, 미참여자, 무산된 3교시): "김*대 · 61기 · 인융" 처럼 가운데 마스킹.
+ *       <b>교수도 여기에 해당한다</b> — 같은 학생이라 누가 어느 번개에 갔는지 보이면 안 된다</li>
  *   <li>내 이름은 나에게 항상 그대로</li>
- *   <li>관리자 본인의 이름은 누구에게나 그대로 ("관리자" 표시와 함께)</li>
+ *   <li>대학원장 본인의 이름은 누구에게나 그대로 ("대학원장" 표시와 함께)</li>
  * </ul>
+ *
+ * <h3>학교</h3>
+ * 연합이 아닌 3교시는 같은 학교 원우만 보고 참여한다. 연합 3교시는 다섯 학교 누구나 — 사람마다 학교 배지가 붙는다.
+ *
+ * <h3>관리</h3>
+ * 수정은 개설자·대학원장, 취소는 개설자·그 학교 교수·대학원장.
+ * (교수는 오픈채팅 링크를 볼 수 없어서 수정하면 링크가 지워지므로 수정은 막는다)
+ * <p>
  * 실명은 서버에서 가려서 내려보낸다. 화면(JS)에서 가리면 개발자도구로 다 보이기 때문.
  */
 @Component
 public class MeetupMapper {
 
     public static boolean canSeeRealNames(Meetup meetup, LoginMember viewer, boolean joined) {
-        if (viewer.isAdmin()) {
+        if (viewer.isOwner()) {
             return true;
         }
         return joined && meetup.isReached() && !meetup.isCanceled();
+    }
+
+    /** 지금 이 사람이 참여 버튼을 누를 수 있는지 (학교·기수 제한 포함) */
+    static boolean joinableBy(Meetup m, LoginMember viewer, Instant now) {
+        return m.isJoinableAt(now) && m.isOpenTo(viewer.schoolId(), viewer.cohort());
     }
 
     public MeetupSummary toSummary(Meetup m, LoginMember viewer, boolean joined, Instant now) {
@@ -41,43 +56,56 @@ public class MeetupMapper {
         return new MeetupSummary(
                 m.getId(), m.getTitle(), m.getPlace(), m.getCategories(), m.getPurposes(),
                 m.getMeetAt(), m.getDeadlineAt(), m.getMinPeople(), m.getMaxPeople(), m.getParticipantCount(),
-                m.statusAt(now), m.isJoinableAt(now), joined, m.isHostedBy(viewer.id()),
-                person(m.getHost(), viewer, revealed, true));
+                m.statusAt(now), joinableBy(m, viewer, now), joined, m.isHostedBy(viewer.id()),
+                person(m.getHost(), viewer, revealed, true, null), m.getOnlyCohort(), m.audience(),
+                SchoolTag.from(m.getSchool()));
     }
 
-    public MeetupDetail toDetail(Meetup m, List<Participation> participations, LoginMember viewer, Instant now) {
+    /**
+     * @param blocked 나와 연 사람 사이에 차단이 있으면 true — 참여 버튼을 감춘다
+     */
+    public MeetupDetail toDetail(Meetup m, List<Participation> participations, LoginMember viewer, boolean blocked,
+            Instant now) {
         boolean joined = participations.stream().anyMatch(p -> p.getMember().getId().equals(viewer.id()));
         boolean hosting = m.isHostedBy(viewer.id());
         boolean revealed = canSeeRealNames(m, viewer, joined);
-        boolean manageable = (hosting || viewer.isAdmin()) && m.isOpenAt(now);
+        boolean open = m.isOpenAt(now);
+        boolean canEdit = (hosting || viewer.isOwner()) && open;
+        boolean canCancel = (hosting || viewer.manages(m.getSchool().getId())) && open;
+        boolean joinable = joinableBy(m, viewer, now) && !blocked;
         boolean hasOpenChat = m.getOpenChatUrl() != null && !m.getOpenChatUrl().isBlank();
-        boolean canSeeOpenChat = viewer.isAdmin() || hosting || revealed;
+        boolean canSeeOpenChat = viewer.isOwner() || hosting || revealed;
 
         List<PersonView> people = participations.stream()
-                .map(p -> person(p.getMember(), viewer, revealed, m.isHostedBy(p.getMember().getId())))
+                .map(p -> person(p.getMember(), viewer, revealed, m.isHostedBy(p.getMember().getId()), p.getId()))
                 .toList();
 
         return new MeetupDetail(
                 m.getId(), m.getTitle(), m.getDescription(), m.getPlace(), m.getCategories(), m.getPurposes(),
                 m.getMeetAt(), m.getDeadlineAt(), m.getMinPeople(), m.getMaxPeople(), m.getParticipantCount(),
-                m.statusAt(now), m.isJoinableAt(now), joined, hosting,
-                person(m.getHost(), viewer, revealed, true),
+                m.statusAt(now), joinable, joined, hosting,
+                person(m.getHost(), viewer, revealed, true, null),
                 people,
                 revealed,
                 canSeeOpenChat && hasOpenChat ? m.getOpenChatUrl() : null,
                 hasOpenChat,
-                manageable,
-                manageable,
-                !joined && m.isJoinableAt(now),
+                canEdit,
+                canCancel,
+                !joined && joinable,
                 joined && !hosting && m.isRecruitingAt(now),
-                m.getCreatedAt());
+                m.getCreatedAt(),
+                m.getOnlyCohort(),
+                m.audience(),
+                SchoolTag.from(m.getSchool()));
     }
 
-    private PersonView person(Member member, LoginMember viewer, boolean revealed, boolean host) {
+    private PersonView person(Member member, LoginMember viewer, boolean revealed, boolean host, Long ref) {
         boolean me = member.getId().equals(viewer.id());
-        boolean admin = member.isAdmin();
-        boolean showReal = revealed || me || admin;
+        boolean owner = member.isOwner();
+        // 탈퇴한 원우는 이름이 이미 지워져 "탈퇴한 원우"로만 보인다
+        boolean showReal = revealed || me || owner || member.isWithdrawn();
         String name = showReal ? member.getName() : NameMasker.mask(member.getName());
-        return new PersonView(name, member.cohortLabel(), member.departmentShortLabel(), me, host, admin, !showReal);
+        return new PersonView(name, member.cohortLabel(), member.departmentShortLabel(),
+                SchoolTag.from(member.getSchool()), me, host, owner, !showReal, ref);
     }
 }

@@ -33,10 +33,12 @@ public class MeetupController {
         this.meetupService = meetupService;
     }
 
+    /** scope = upcoming | past, board = school(우리 학교) | all(연합) */
     @GetMapping
     public List<MeetupSummary> list(@AuthenticationPrincipal LoginMember me,
-            @RequestParam(defaultValue = "upcoming") String scope) {
-        return meetupService.list(me, scope);
+            @RequestParam(defaultValue = "upcoming") String scope,
+            @RequestParam(defaultValue = "school") String board) {
+        return meetupService.list(me, scope, board);
     }
 
     @PostMapping

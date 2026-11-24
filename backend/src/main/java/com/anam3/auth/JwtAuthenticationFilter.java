@@ -18,7 +18,7 @@ import com.anam3.member.MemberRepository;
 
 /**
  * Authorization: Bearer {token} 헤더를 읽어 로그인 사용자를 SecurityContext 에 넣는다.
- * 차단된 회원은 토큰이 있어도 로그인되지 않은 것으로 처리한다.
+ * 차단·탈퇴한 회원은 토큰이 있어도 로그인되지 않은 것으로 처리한다.
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -37,16 +37,33 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith(PREFIX)) {
-            jwtService.verify(header.substring(PREFIX.length()))
-                    .flatMap(members::findById)
-                    .filter(Member::isActive)
-                    .ifPresent(this::authenticate);
+            var member = jwtService.verify(header.substring(PREFIX.length()))
+                    .flatMap(members::findWithSchool)
+                    .filter(Member::isActive);
+            if (member.isPresent()) {
+                if (!member.get().hasAgreedTerms() && !allowedBeforeTerms(request)) {
+                    SecurityConfig.writeError(response, 403, "TERMS_REQUIRED", "이용약관에 먼저 동의해 주세요");
+                    return;
+                }
+                authenticate(member.get());
+            }
         }
         chain.doFilter(request, response);
     }
 
+    /** 약관에 동의하기 전(예전 회원)에는 보기와 약관 동의·탈퇴만 된다 */
+    private static boolean allowedBeforeTerms(HttpServletRequest request) {
+        String method = request.getMethod();
+        String path = request.getRequestURI();
+        return "GET".equals(method) || "HEAD".equals(method) || "OPTIONS".equals(method)
+                || path.startsWith("/api/auth/")
+                || ("POST".equals(method) && "/api/me/terms".equals(path))
+                || ("DELETE".equals(method) && "/api/me".equals(path));
+    }
+
     private void authenticate(Member member) {
-        LoginMember principal = new LoginMember(member.getId(), member.getRole());
+        LoginMember principal = new LoginMember(member.getId(), member.getRole(), member.getCohort(),
+                member.getSchool().getId());
         var authentication = new UsernamePasswordAuthenticationToken(principal, null,
                 List.of(new SimpleGrantedAuthority("ROLE_" + member.getRole().name())));
         SecurityContextHolder.getContext().setAuthentication(authentication);

@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthContext'
 import { AppShell } from './components/AppShell'
 import { Spinner } from './components/ui'
 import { useSlowServer } from './lib/hooks'
+import { isStaff } from './lib/person'
 import { AdminPage } from './pages/AdminPage'
 import { FeedPage } from './pages/FeedPage'
 import { MeetupDetailPage } from './pages/MeetupDetailPage'
@@ -11,24 +12,28 @@ import { MeetupCreatePage, MeetupEditPage } from './pages/MeetupFormPage'
 import { MyPage } from './pages/MyPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { NoticeCreatePage, NoticeDetailPage, NoticeEditPage, NoticesPage } from './pages/NoticePages'
+import { KakaoCallbackPage, SignupPage } from './pages/SignupPages'
+import { PrivacyPage, TermsGate, TermsPage } from './pages/TermsPages'
 import { WelcomePage } from './pages/WelcomePage'
 
-/** 로그인 상태를 확인하는 동안. 무료 서버가 잠들어 있으면 깨우는 중이라고 알려준다 */
+/** 로그인 상태를 확인하는 동안. 서버가 잠들어 있으면 깨우는 중이라고 알려준다 */
 function BootSplash() {
   const slow = useSlowServer()
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-5 px-6 text-center">
       <span className="flex size-14 items-center justify-center rounded-full bg-accent text-2xl font-black text-on-accent">3</span>
-      <Spinner label={slow ? '무료 서버를 깨우는 중이에요. 최대 1분 걸릴 수 있어요' : '들어가는 중'} />
+      <Spinner label={slow ? '서버를 깨우는 중이에요. 최대 1분 걸릴 수 있어요' : '들어가는 중'} />
     </div>
   )
 }
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { status } = useAuth()
+  const { status, member } = useAuth()
   const location = useLocation()
   if (status === 'loading') return <BootSplash />
   if (status === 'guest') return <Navigate to="/welcome" replace state={{ from: location.pathname + location.search }} />
+  // 약관이 생기기 전에 가입한 원우는 먼저 동의한다
+  if (member && !member.termsAgreed) return <TermsGate />
   return children
 }
 
@@ -39,9 +44,10 @@ function GuestOnly({ children }: { children: ReactNode }) {
   return children
 }
 
-function RequireAdmin({ children }: { children: ReactNode }) {
+/** 교수·대학원장만 */
+function RequireStaff({ children }: { children: ReactNode }) {
   const { member } = useAuth()
-  if (member?.role !== 'ADMIN') return <NotFoundPage />
+  if (!isStaff(member?.role)) return <NotFoundPage />
   return children
 }
 
@@ -53,6 +59,19 @@ export function App() {
         element={
           <GuestOnly>
             <WelcomePage />
+          </GuestOnly>
+        }
+      />
+      {/* 약관은 로그인 없이도 본다 (가입 화면에서 연다) */}
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      {/* 카카오가 돌려보내는 곳 — 로그인 처리 중이라 GuestOnly 로 감싸지 않는다 */}
+      <Route path="/auth/kakao/callback" element={<KakaoCallbackPage />} />
+      <Route
+        path="/signup"
+        element={
+          <GuestOnly>
+            <SignupPage />
           </GuestOnly>
         }
       />
@@ -75,9 +94,9 @@ export function App() {
         <Route
           path="admin"
           element={
-            <RequireAdmin>
+            <RequireStaff>
               <AdminPage />
-            </RequireAdmin>
+            </RequireStaff>
           }
         />
         <Route path="*" element={<NotFoundPage />} />

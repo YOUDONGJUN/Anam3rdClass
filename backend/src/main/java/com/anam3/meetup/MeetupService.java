@@ -23,6 +23,7 @@ import com.anam3.meetup.MeetupDtos.MeetupUpdateRequest;
 import com.anam3.member.Member;
 import com.anam3.member.MemberRepository;
 import com.anam3.safety.MemberBlockRepository;
+import com.anam3.safety.ReportRepository;
 
 @Service
 @Transactional
@@ -35,15 +36,17 @@ public class MeetupService {
     private final ParticipationRepository participations;
     private final MemberRepository members;
     private final MemberBlockRepository blocks;
+    private final ReportRepository reports;
     private final MeetupMapper mapper;
     private final Clock clock;
 
     public MeetupService(MeetupRepository meetups, ParticipationRepository participations, MemberRepository members,
-            MemberBlockRepository blocks, MeetupMapper mapper, Clock clock) {
+            MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, Clock clock) {
         this.meetups = meetups;
         this.participations = participations;
         this.members = members;
         this.blocks = blocks;
+        this.reports = reports;
         this.mapper = mapper;
         this.clock = clock;
     }
@@ -65,6 +68,9 @@ public class MeetupService {
         if (req.minPeople() != null && req.maxPeople() != null && req.maxPeople() < req.minPeople()) {
             throw ApiException.badRequest("INVALID_PEOPLE", "최대 인원은 최소 인원보다 같거나 많아야 해요");
         }
+        if (req.fee() == null && Boolean.TRUE.equals(req.feePrepaid())) {
+            throw ApiException.badRequest("INVALID_FEE", "선입금은 참여비가 있을 때만 고를 수 있어요");
+        }
         List<String> purposes = purposes(req.purposes());
         ContentFilter.check(req.title(), req.description(), req.place(), String.join(" ", purposes));
 
@@ -73,6 +79,7 @@ public class MeetupService {
         Meetup meetup = meetups.save(new Meetup(host, audience, req.title().strip(), clean(req.description()),
                 req.place().strip(), req.categories(), purposes, req.meetAt(), req.deadlineAt(), req.minPeople(),
                 req.maxPeople(), blankToNull(req.openChatUrl()), now));
+        meetup.applyOptions(Boolean.TRUE.equals(req.lateJoin()), req.fee(), Boolean.TRUE.equals(req.feePrepaid()));
         participations.save(new Participation(meetup, host, now));
         return detail(viewer, meetup.getId());
     }
@@ -155,6 +162,20 @@ public class MeetupService {
         return detail(viewer, id);
     }
 
+    /**
+     * 지우기는 개설자, 그 학교 교수, 대학원장 (취소와 달리 목록·기록에서 아예 사라진다).
+     * 참여 기록도 함께 지우고, 신고는 남긴다 (신고 당시 제목·내용이 신고에 보관돼 있다).
+     */
+    public void delete(LoginMember viewer, Long id) {
+        Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
+        if (!meetup.isHostedBy(viewer.id()) && !viewer.manages(meetup.getSchool().getId())) {
+            throw ApiException.forbidden("3교시를 연 사람만 지울 수 있어요");
+        }
+        reports.detachMeetup(id);
+        participations.deleteByMeetupId(id);
+        meetups.delete(meetup);
+    }
+
     public MeetupDetail join(LoginMember viewer, Long id) {
         Instant now = clock.instant();
         Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
@@ -170,7 +191,7 @@ public class MeetupService {
         if (blocks.existsBetween(viewer.id(), meetup.getHost().getId())) {
             throw new ApiException(HttpStatus.FORBIDDEN, "BLOCKED", "참여할 수 없는 3교시예요");
         }
-        if (!meetup.isRecruitingAt(now)) {
+        if (!meetup.isTakingJoinsAt(now)) {
             throw ApiException.badRequest("CLOSED", "모집이 마감된 3교시예요");
         }
         if (!meetup.isJoinableAt(now)) {

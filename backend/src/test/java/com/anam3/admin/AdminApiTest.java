@@ -295,4 +295,27 @@ class AdminApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].host.name").value("김*대"));
     }
+
+    @Test
+    void 대학원장은_원우를_탈퇴시킬_수_있다() throws Exception {
+        long id = memberId("godae");
+        long hosted = createMeetup(godae, 2, 6, Duration.ofHours(3), Duration.ofHours(2), null);
+
+        post(member(id) + "/withdraw", manager, null).andExpect(status().isForbidden());
+        post(member(id) + "/withdraw", godae, null).andExpect(status().isForbidden());
+        post(member(id) + "/withdraw", owner, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("WITHDRAWN"))
+                .andExpect(jsonPath("$.name").value("탈퇴한 원우"));
+
+        get("/api/me", godae).andExpect(status().isUnauthorized());
+        get("/api/meetups/" + hosted, manager).andExpect(jsonPath("$.status").value("CANCELED"));
+        post(member(id) + "/withdraw", owner, null).andExpect(jsonPath("$.code").value("ALREADY_WITHDRAWN"));
+        post(member(memberId("owner")) + "/withdraw", owner, null)
+                .andExpect(jsonPath("$.code").value("OWNER_CANNOT_WITHDRAW"));
+
+        // 같은 카카오 · 학교 이메일로 다시 가입하면 새 계정 (인증코드는 1분에 한 번)
+        clock.advance(Duration.ofMinutes(2));
+        signup("godae", "김고대", 61);
+    }
 }

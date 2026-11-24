@@ -13,12 +13,15 @@ import {
   PartyPopper,
   Pencil,
   Share2,
+  Trash2,
   Users,
+  Wallet,
 } from 'lucide-react'
 import { ApiError } from '../api/client'
-import { useMeetup, useMeetupAction } from '../api/queries'
+import { useDeleteMeetup, useMeetup, useMeetupAction } from '../api/queries'
 import type { MeetupDetail } from '../api/types'
 import { CategoryBadges } from '../components/CategoryBadge'
+import { MeetupOptionTags } from '../components/MeetupOptionTags'
 import { AudienceBadge } from '../components/CohortBadge'
 import { ParticipantRoute } from '../components/LineGauge'
 import { PersonName } from '../components/PersonName'
@@ -57,24 +60,24 @@ function StateNote({ m }: { m: MeetupDetail }) {
     case 'RECRUITING':
       title = `${left}명만 더 모이면 성사돼요`
       body = m.joined
-        ? '성사되면 함께하는 사람끼리 실명과 오픈채팅 링크가 공개돼요. 안 모이면 조용히 사라져요.'
-        : '참여해도 성사 전까지는 내 이름이 가려져요. 부담 없이 눌러 보세요.'
+        ? '성사되면 참여자끼리 실명·단톡방 공개'
+        : '성사 전까지 내 이름은 가려져요'
       break
     case 'CONFIRMED':
       tone = 'ok'
       title = m.minPeople === null ? '인원 상관없이 무조건 진행해요' : '성사된 3교시예요'
       body = m.joined
         ? m.openChatUrl
-          ? '오픈채팅방에서 만나요. 이제 서로 실명이 보여요.'
-          : '이제 서로 실명이 보여요. 개설자가 오픈채팅 링크를 곧 넣을 거예요.'
+          ? '단톡방에서 만나요. 이제 서로 실명이 보여요'
+          : '이제 서로 실명이 보여요. 단톡방 링크는 곧 올라와요'
         : m.canJoin
-          ? '지금 참여하면 바로 함께하는 사람들의 이름과 오픈채팅이 열려요.'
+          ? '지금 참여하면 바로 실명·단톡방이 열려요'
           : '모집이 끝났어요.'
       break
     case 'FAILED':
       tone = 'muted'
       title = '이번엔 인원이 모이지 않았어요'
-      body = '다른 사람들에겐 보이지 않아요. 다음에 또 열어 봐요.'
+      body = '나만 볼 수 있어요. 다음에 또 열어 봐요'
       break
     case 'DONE':
       tone = 'muted'
@@ -129,6 +132,7 @@ export function MeetupDetailPage() {
   const id = Number(useParams().id)
   const { data: m, isPending, isError, error, refetch } = useMeetup(id)
   const action = useMeetupAction()
+  const removeMeetup = useDeleteMeetup()
   const toast = useToast()
   const navigate = useNavigate()
   const now = useNow()
@@ -155,6 +159,17 @@ export function MeetupDetailPage() {
 
   const live = isLive(m.status)
   const hasActions = m.canJoin || Boolean(m.joined && m.revealed && m.openChatUrl) || live || m.canLeave
+
+  function remove() {
+    if (!window.confirm('3교시를 지울까요?\n\n• 목록과 기록에서 아예 사라져요\n• 참여자 기록도 함께 지워져요\n• 되돌릴 수 없어요')) return
+    removeMeetup.mutate(id, {
+      onSuccess: () => {
+        toast.show('3교시를 지웠어요', 'ok')
+        navigate('/', { replace: true })
+      },
+      onError: (e) => toast.show(e.message, 'error'),
+    })
+  }
 
   function run(kind: 'join' | 'leave' | 'cancel') {
     if (kind === 'cancel' && !window.confirm('3교시를 취소할까요? 참여자들에게는 "취소됨"으로 보여요.')) return
@@ -273,6 +288,15 @@ export function MeetupDetailPage() {
                 </dd>
               </div>
             )}
+            {(m.fee !== null || m.lateJoin) && (
+              <div className="flex items-center gap-2.5">
+                <dt className="sr-only">참여 방식</dt>
+                <Wallet className="size-4 shrink-0 text-on-board-2" aria-hidden />
+                <dd>
+                  <MeetupOptionTags meetup={m} tone="board" />
+                </dd>
+              </div>
+            )}
             <div className="flex items-center gap-2.5">
               <dt className="sr-only">연 사람</dt>
               <Users className="size-4 shrink-0 text-on-board-2" aria-hidden />
@@ -341,7 +365,7 @@ export function MeetupDetailPage() {
 
           {m.hosting && m.status !== 'CANCELED' && !m.openChatUrl && m.canEdit && (
             <div className={`${cardClass} px-5 py-4 text-[15px] text-ink-2`}>
-              오픈채팅 링크를 넣어 두면 성사됐을 때 참여자에게만 보여요.{' '}
+              단톡방 링크는 성사되면 참여자에게만 보여요.{' '}
               <Link to={`/meetups/${m.id}/edit`} className="font-semibold text-accent-ink underline underline-offset-4">
                 링크 넣기
               </Link>
@@ -376,6 +400,18 @@ export function MeetupDetailPage() {
                 </Button>
               )}
             </div>
+          )}
+          {/* 지우기: 연 사람·그 학교 교수·대학원장 — 취소와 달리 기록에서 사라진다 */}
+          {m.canDelete && (
+            <button
+              type="button"
+              onClick={remove}
+              disabled={removeMeetup.isPending}
+              className="inline-flex h-10 items-center justify-center gap-1.5 self-center rounded-lg px-3 text-sm font-semibold text-ink-3 hover:bg-danger-soft hover:text-danger-ink disabled:opacity-50 lg:self-start"
+            >
+              <Trash2 className="size-4" aria-hidden />
+              3교시 지우기
+            </button>
           )}
         </aside>
       </div>

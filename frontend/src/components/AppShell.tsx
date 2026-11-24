@@ -1,6 +1,8 @@
 import { NavLink, Outlet, useLocation, Link } from 'react-router'
-import { CircleUser, LoaderCircle, Megaphone, Plus, ShieldCheck, TrainFront, type LucideIcon } from 'lucide-react'
+import { CircleUser, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, TrainFront, type LucideIcon } from 'lucide-react'
+import { useAdminStats } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
+import { useToast } from './toastContext'
 import { useSlowServer } from '../lib/hooks'
 import { affiliation, isStaff } from '../lib/person'
 import { Brand } from './Brand'
@@ -13,6 +15,19 @@ interface NavItem {
   label: string
   Icon: LucideIcon
   end?: boolean
+  /** 처리할 일 수 (관리: 처리 안 된 신고) */
+  badge?: number
+}
+
+function NavBadge({ count, className = '' }: { count: number; className?: string }) {
+  return (
+    <span
+      className={`tabular inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-[11px] leading-none font-bold text-white ${className}`}
+      aria-label={`처리할 신고 ${count}건`}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
 }
 
 function SlowServerBanner() {
@@ -25,7 +40,13 @@ function SlowServerBanner() {
 }
 
 export function AppShell() {
-  const { member } = useAuth()
+  const { member, signOut } = useAuth()
+  const toast = useToast()
+  /** 확인 없이 바로 — 카카오로 금방 다시 들어올 수 있다 */
+  const logout = () => {
+    signOut()
+    toast.show('로그아웃했어요')
+  }
   const slow = useSlowServer()
   const { pathname, search } = useLocation()
   // 연합 게시판을 보고 있으면 "3교시 열기"도 연합으로
@@ -36,7 +57,11 @@ export function AppShell() {
     { to: '/notices', label: '공지', Icon: Megaphone },
     { to: '/me', label: '내 정보', Icon: CircleUser },
   ]
-  if (isStaff(member?.role)) items.push({ to: '/admin', label: '관리', Icon: ShieldCheck })
+  const staff = isStaff(member?.role)
+  const stats = useAdminStats(staff)
+  if (staff) items.push({ to: '/admin', label: '관리', Icon: ShieldCheck, badge: stats.data?.openReports })
+  // 관리 화면은 표·카드가 많아 더 넓게
+  const wide = pathname.startsWith('/admin')
 
   const showFab = pathname === '/' || pathname === '/me'
 
@@ -55,7 +80,7 @@ export function AppShell() {
           </Link>
         </div>
         <nav aria-label="주 메뉴" className="mt-6 flex flex-col gap-1 px-3">
-          {items.map(({ to, label, Icon, end }) => (
+          {items.map(({ to, label, Icon, end, badge }) => (
             <NavLink
               key={to}
               to={to}
@@ -70,6 +95,7 @@ export function AppShell() {
                 <>
                   <Icon className={`size-5 ${isActive ? 'text-accent' : ''}`} aria-hidden />
                   {label}
+                  {!!badge && <NavBadge count={badge} className="ml-auto" />}
                 </>
               )}
             </NavLink>
@@ -85,6 +111,14 @@ export function AppShell() {
             <p className="mt-0.5 truncate text-sm text-on-board-2">
               {affiliation(member.cohortLabel, member.departmentLabel)}
             </p>
+            <button
+              type="button"
+              onClick={logout}
+              className="-ml-2 mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-on-board-2 hover:bg-board-2 hover:text-on-board"
+            >
+              <LogOut className="size-4" aria-hidden />
+              로그아웃
+            </button>
           </div>
         )}
       </aside>
@@ -92,14 +126,24 @@ export function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* 모바일: 상단 안내판 + 6호선 띠 */}
         <header className="sticky top-0 z-30 bg-board pt-[env(safe-area-inset-top)] lg:hidden">
-          <div className="flex h-14 items-center px-4">
+          <div className="flex h-14 items-center justify-between gap-3 px-4">
             <Brand />
+            {member && (
+              <button
+                type="button"
+                onClick={logout}
+                className="-mr-2 inline-flex h-10 shrink-0 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-on-board-2 hover:text-on-board"
+              >
+                <LogOut className="size-4" aria-hidden />
+                로그아웃
+              </button>
+            )}
           </div>
           <div className="h-1 bg-accent" aria-hidden />
         </header>
         {slow && <SlowServerBanner />}
         {/* 모바일 아래 여백: 하단 탭(64px) + "3교시 열기" 버튼(52px)에 마지막 줄이 가리지 않게 */}
-        <main className="mx-auto w-full max-w-3xl flex-1 px-4 pt-6 pb-40 sm:px-6 lg:px-10 lg:pt-10 lg:pb-16">
+        <main className={`mx-auto w-full flex-1 px-4 pt-6 pb-40 sm:px-6 lg:px-10 lg:pt-10 lg:pb-16 ${wide ? 'max-w-5xl' : 'max-w-3xl'}`}>
           <Outlet />
         </main>
       </div>
@@ -110,20 +154,23 @@ export function AppShell() {
         className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface lg:hidden"
       >
         <div className="grid h-16" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
-          {items.map(({ to, label, Icon, end }) => (
+          {items.map(({ to, label, Icon, end, badge }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
               className={({ isActive }) =>
-                `flex flex-col items-center justify-center gap-1 text-[11px] font-semibold ${
+                `relative flex flex-col items-center justify-center gap-1 text-[11px] font-semibold ${
                   isActive ? 'text-ink' : 'text-ink-3'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <Icon className={`size-[22px] ${isActive ? 'text-accent-ink' : ''}`} strokeWidth={isActive ? 2.4 : 2} aria-hidden />
+                  <span className="relative">
+                    <Icon className={`size-[22px] ${isActive ? 'text-accent-ink' : ''}`} strokeWidth={isActive ? 2.4 : 2} aria-hidden />
+                    {!!badge && <NavBadge count={badge} className="absolute -top-1.5 left-3.5" />}
+                  </span>
                   {label}
                 </>
               )}

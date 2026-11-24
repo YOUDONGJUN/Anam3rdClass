@@ -64,7 +64,7 @@ export function NoticesPage() {
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
           <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">공지</h1>
-          <p className="mt-1 text-[15px] text-ink-2">우리 학교 원우끼리 보는 글과 대학원장의 연합 공지예요. 모임 소식, 수요조사, 분실물 무엇이든.</p>
+          <p className="mt-1 text-[15px] text-ink-2">우리 학교 소식과 연합 공지</p>
         </div>
         <Link to="/notices/new" className={buttonClass('primary', 'md')}>
           <Plus className="size-4" strokeWidth={2.6} aria-hidden />
@@ -265,7 +265,7 @@ function NoticeForm({ id, initial }: { id?: number; initial: { title: string; co
           />
           <span className="leading-relaxed">
             <b>연합 공지로 올리기</b>
-            <span className="block text-sm text-ink-3">IT연합회 다섯 학교 모두에게 보여요. 끄면 우리 학교에만 보여요.</span>
+            <span className="block text-sm text-ink-3">다섯 학교 모두에게 보여요</span>
           </span>
         </label>
       )}

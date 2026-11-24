@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { Check, History, Mail } from 'lucide-react'
 import { api, ApiError } from '../api/client'
@@ -12,6 +12,7 @@ import { Button, Field, FormError, Spinner } from '../components/ui'
 import { buttonClass, inputClass } from '../components/styles'
 import { TermsCheckbox } from './TermsPages'
 import { useNow } from '../lib/hooks'
+import { withEmailDomain } from '../lib/schools'
 import {
   clearSignupProgress,
   consumeKakaoState,
@@ -196,6 +197,7 @@ function EmailStep({ progress, onVerified }: { progress: SignupProgress; onVerif
   const options = useSignupOptions()
   const now = useNow(1000)
   const [email, setEmail] = useState('')
+  const emailRef = useRef<HTMLInputElement>(null)
   const [sent, setSent] = useState<(EmailCodeSent & { resendAt: number }) | null>(null)
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -204,6 +206,19 @@ function EmailStep({ progress, onVerified }: { progress: SignupProgress; onVerif
 
   const schools = options.data?.schools ?? []
   const resendIn = sent ? Math.max(0, Math.ceil((sent.resendAt - now.getTime()) / 1000)) : 0
+
+  /** 학교 메일 주소를 누르면 아이디 뒤에 붙인다. 아이디를 아직 안 썼으면 커서를 맨 앞에 둔다 */
+  function pickDomain(domain: string) {
+    const next = withEmailDomain(email, domain)
+    setEmail(next)
+    requestAnimationFrame(() => {
+      const input = emailRef.current
+      if (!input) return
+      input.focus()
+      const caret = next.startsWith('@') ? 0 : next.length
+      input.setSelectionRange(caret, caret)
+    })
+  }
 
   async function sendCode(e?: FormEvent) {
     e?.preventDefault()
@@ -260,7 +275,7 @@ function EmailStep({ progress, onVerified }: { progress: SignupProgress; onVerif
       <div>
         <h1 className="text-xl font-extrabold text-ink">학교 이메일로 한 번만 인증해요</h1>
         <p className="mt-1.5 text-[15px] leading-relaxed text-ink-2">
-          IT연합회 대학원 원우인지 확인하는 용도예요. 다른 사람에게 이메일은 보이지 않아요.
+          원우 확인용이에요. 이메일은 남에게 안 보여요.
         </p>
       </div>
 
@@ -269,10 +284,13 @@ function EmailStep({ progress, onVerified }: { progress: SignupProgress; onVerif
           {({ id, describedBy }) => (
             <input
               id={id}
-              type="email"
+              ref={emailRef}
+              type="text"
               inputMode="email"
               autoComplete="email"
               autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               aria-describedby={describedBy}
               className={inputClass}
               placeholder="학교 메일 주소"
@@ -283,14 +301,29 @@ function EmailStep({ progress, onVerified }: { progress: SignupProgress; onVerif
           )}
         </Field>
         {!sent && schools.length > 0 && (
-          <ul className="flex flex-col gap-1.5 rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2" aria-label="쓸 수 있는 학교 메일">
-            {schools.map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <SchoolBadge school={s} />
-                <span className="tabular">{s.emailDomains.map((d) => `@${d.domain}`).join(' · ')}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="rounded-xl bg-surface-2 px-3 py-2.5">
+            <p className="px-1 pb-1 text-[13px] text-ink-3">학교 메일 주소를 누르면 아이디 뒤에 붙어요</p>
+            <ul className="flex flex-col gap-0.5 text-sm text-ink-2" aria-label="쓸 수 있는 학교 메일">
+              {schools.map((s) => (
+                <li key={s.id} className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+                  <span className="px-1">
+                    <SchoolBadge school={s} />
+                  </span>
+                  {s.emailDomains.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => pickDomain(d.domain)}
+                      aria-label={`@${d.domain} 붙이기`}
+                      className="tabular min-h-9 rounded-lg px-2 text-left font-medium text-ink-2 transition-colors hover:bg-surface hover:text-accent-ink active:bg-surface"
+                    >
+                      @{d.domain}
+                    </button>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         {!sent ? (
           <Button type="submit" size="lg" loading={pending} disabled={!email.trim()}>
@@ -389,8 +422,7 @@ function LegacyClaim({ progress, onExpired }: { progress: SignupProgress; onExpi
       </summary>
       <form onSubmit={submit} className="mt-3 flex flex-col gap-3" noValidate>
         <p className="text-sm leading-relaxed text-ink-2">
-          예전 아이디·비밀번호를 넣으면 그 계정에 카카오와 학교 이메일을 연결해요. 예전 3교시 기록과 이름·기수·학과가
-          그대로 이어져요.
+          예전 기록과 이름·기수·학과가 그대로 이어져요.
         </p>
         <Field label="예전 아이디">
           {({ id }) => (
@@ -482,7 +514,7 @@ function ProfileStep({ progress }: { progress: SignupProgress }) {
         <LegacyClaim progress={progress} onExpired={setExpired} />
       )}
         <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
-        <Field label="이름" hint="실명으로 적어 주세요. 3교시가 성사되면 함께하는 사람에게만 보여요.">
+        <Field label="이름" hint="실명으로 · 성사된 3교시 참여자에게만 보여요">
           {({ id, describedBy }) => (
             <input
               id={id}
@@ -502,7 +534,9 @@ function ProfileStep({ progress }: { progress: SignupProgress }) {
           onDepartmentChange={setDepartmentId}
         />
         <p className="rounded-xl bg-exit/25 px-4 py-3 text-sm leading-relaxed text-ink">
-          가입하면 <b>이름·기수·학과는 직접 바꿀 수 없어요.</b> 바꿔야 하면 교수나 대학원장에게 요청해 주세요.
+          <b>이름·기수·학과는 가입 후 직접 못 바꿔요.</b>
+        <br />
+        수정은 교수·대학원장에게 요청해 주세요.
         </p>
         <TermsCheckbox checked={agree} onChange={setAgree} />
         <FormError message={error} />

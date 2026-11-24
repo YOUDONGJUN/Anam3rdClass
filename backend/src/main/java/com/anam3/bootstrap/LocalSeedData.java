@@ -114,6 +114,7 @@ public class LocalSeedData implements ApplicationRunner {
                 "오늘 머신러닝 수업 끝나고 가볍게 한잔해요. 늦게 와도 OK", "안암역 2번 출구 근처 치킨집",
                 List.of(MeetupCategory.BEER), List.of("친목", "잡담"), tonight, tonight.minus(Duration.ofMinutes(30)), 3,
                 6, "https://open.kakao.com/o/example", now);
+        m1.applyOptions(true, null, false); // 중간 합류 OK
         join(m1, anam, now);
 
         Meetup m2 = meetup(anam, MeetupAudience.SCHOOL, "과제 제출 기념 소주", "팀플 끝난 사람들 모여요 🙌", "참살이길 포차",
@@ -134,11 +135,13 @@ public class LocalSeedData implements ApplicationRunner {
                 "학교 상관없이 편하게 와요. 다들 무슨 연구 하는지 궁금해요", "신촌역 3번 출구 호프",
                 List.of(MeetupCategory.BEER, MeetupCategory.ANYTHING), List.of("친목", "네트워킹"),
                 tomorrow.plus(Duration.ofHours(2)), tomorrow, 4, 12, null, now);
+        united.applyOptions(true, 10000, false); // 중간 합류 OK · 참여비 1만 원(현장)
         join(united, myeongnyun, now);
 
-        meetup(myeongnyun, MeetupAudience.ALL, "보안 스터디 뒤풀이", "정보보호 쪽 분들 같이 얘기해요", "혜화역 근처",
+        Meetup study = meetup(myeongnyun, MeetupAudience.ALL, "보안 스터디 뒤풀이", "정보보호 쪽 분들 같이 얘기해요", "혜화역 근처",
                 List.of(MeetupCategory.SOJU), List.of("학업"), tonight.plus(Duration.ofHours(1)),
                 tonight.minus(Duration.ofMinutes(10)), 2, 6, null, now);
+        study.applyOptions(false, 20000, true); // 참여비 2만 원 선입금
 
         meetup(sinchon, MeetupAudience.SCHOOL, "연세대끼리 저녁", "우리 학교 사람만 보는 3교시예요", "신촌 굴다리",
                 List.of(MeetupCategory.ANYTHING), List.of(), tonight, tonight.minus(Duration.ofMinutes(20)), 2, 5,

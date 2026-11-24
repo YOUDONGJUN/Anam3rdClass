@@ -163,6 +163,12 @@ export interface MeetupSummary {
   audience: MeetupAudience
   /** 연 사람의 학교 */
   school: SchoolTag
+  /** 중간 합류 OK — 늦게 와도 되고, 성사 뒤에도 시작 전까지 참여 */
+  lateJoin: boolean
+  /** 참여비(원). null 이면 없음 */
+  fee: number | null
+  /** 참여비 선입금 */
+  feePrepaid: boolean
 }
 
 export interface MeetupDetail extends MeetupSummary {
@@ -176,6 +182,8 @@ export interface MeetupDetail extends MeetupSummary {
   canJoin: boolean
   canLeave: boolean
   createdAt: string
+  /** 지우기: 연 사람 · 그 학교 교수 · 대학원장 */
+  canDelete: boolean
 }
 
 export interface MeetupCreateInput {
@@ -193,6 +201,10 @@ export interface MeetupCreateInput {
   openChatUrl: string
   /** 우리 학교(기본) · 우리 기수 · 연합. 열 때만 정한다 */
   audience: MeetupAudience
+  lateJoin: boolean
+  /** null 이면 참여비 없음 */
+  fee: number | null
+  feePrepaid: boolean
 }
 
 export type MeetupUpdateInput = Pick<

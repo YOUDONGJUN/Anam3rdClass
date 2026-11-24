@@ -5,6 +5,15 @@ export function affiliation(cohortLabel: string | null | undefined, departmentLa
   return [cohortLabel, departmentLabel].filter(Boolean).join(' · ')
 }
 
+/** 이름 가운데를 가린다 (서버 NameMasker 와 같은 규칙): 김고대 → 김*대, 이수 → 이* */
+export function maskName(name: string): string {
+  const chars = [...name.trim()]
+  if (chars.length === 0) return '익명'
+  if (chars.length === 1) return '*'
+  if (chars.length === 2) return `${chars[0]}*`
+  return chars[0] + chars.slice(1, -1).map((c) => (c === ' ' ? ' ' : '*')).join('') + chars[chars.length - 1]
+}
+
 /** 직책 이름 — 대학원 느낌으로. 바꾸고 싶으면 여기 한 곳만 고치면 된다 */
 export const ROLE_LABEL: Record<Role, string> = {
   OWNER: '대학원장',

@@ -87,6 +87,18 @@ public class Meetup {
     @Column(nullable = false)
     private boolean canceled;
 
+    /** 중간 합류 OK: 늦게 와도 되고, 성사된 뒤에도 모임 시작 전까지 참여할 수 있다 */
+    @Column(name = "late_join", nullable = false)
+    private boolean lateJoin;
+
+    /** 참여비(원). null 이면 참여비 없음 */
+    @Column
+    private Integer fee;
+
+    /** 참여비를 미리 보내야 하는지 */
+    @Column(name = "fee_prepaid", nullable = false)
+    private boolean feePrepaid;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -146,8 +158,38 @@ public class Meetup {
         return !canceled && now.isBefore(deadlineAt) && now.isBefore(meetAt);
     }
 
+    /**
+     * 참여를 받는 중인지: 모집 마감 전. '중간 합류 OK'면 성사된 뒤에도 모임 시작 전까지 받는다
+     * (마감까지 최소 인원이 안 모여 무산된 3교시는 받지 않는다)
+     */
+    public boolean isTakingJoinsAt(Instant now) {
+        if (canceled || !now.isBefore(meetAt)) {
+            return false;
+        }
+        return now.isBefore(deadlineAt) || (lateJoin && isReached());
+    }
+
     public boolean isJoinableAt(Instant now) {
-        return isRecruitingAt(now) && !isFull();
+        return isTakingJoinsAt(now) && !isFull();
+    }
+
+    /** 열 때만 정한다 (중간 합류 · 참여비는 고칠 수 없다) */
+    public void applyOptions(boolean lateJoin, Integer fee, boolean feePrepaid) {
+        this.lateJoin = lateJoin;
+        this.fee = fee;
+        this.feePrepaid = fee != null && feePrepaid;
+    }
+
+    public boolean isLateJoin() {
+        return lateJoin;
+    }
+
+    public Integer getFee() {
+        return fee;
+    }
+
+    public boolean isFeePrepaid() {
+        return feePrepaid;
     }
 
     public boolean isOpenAt(Instant now) {

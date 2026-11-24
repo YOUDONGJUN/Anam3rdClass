@@ -5,10 +5,16 @@ import java.util.List;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ReportRepository extends JpaRepository<Report, Long> {
+
+    /** 3교시를 지워도 신고는 남긴다 (신고 당시 내용은 targetSnapshot 에 있다) */
+    @Modifying
+    @Query("update Report r set r.meetup = null where r.meetup.id = :meetupId")
+    int detachMeetup(@Param("meetupId") Long meetupId);
 
     /** 이 사람이 최근에 한 신고 (같은 대상을 또 신고하는지, 하루 한도를 넘었는지 본다) */
     List<Report> findByReporterIdAndCreatedAtAfter(Long reporterId, Instant since);

@@ -7,6 +7,7 @@ import java.util.Set;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -15,6 +16,11 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
     boolean existsByMeetupIdAndMemberId(Long meetupId, Long memberId);
 
     Optional<Participation> findByMeetupIdAndMemberId(Long meetupId, Long memberId);
+
+    /** 3교시를 지울 때 참여 기록도 함께 */
+    @Modifying
+    @Query("delete from Participation p where p.meetup.id = :meetupId")
+    int deleteByMeetupId(@Param("meetupId") Long meetupId);
 
     /** 남이 연, 아직 열려 있는 3교시 중 이 원우가 참여한 것 (번호만 — 잠가서 새로 읽는다) */
     @Query("""

@@ -58,7 +58,7 @@ public class MeetupMapper {
                 m.getMeetAt(), m.getDeadlineAt(), m.getMinPeople(), m.getMaxPeople(), m.getParticipantCount(),
                 m.statusAt(now), joinableBy(m, viewer, now), joined, m.isHostedBy(viewer.id()),
                 person(m.getHost(), viewer, revealed, true, null), m.getOnlyCohort(), m.audience(),
-                SchoolTag.from(m.getSchool()));
+                SchoolTag.from(m.getSchool()), m.isLateJoin(), m.getFee(), m.isFeePrepaid());
     }
 
     /**
@@ -72,6 +72,7 @@ public class MeetupMapper {
         boolean open = m.isOpenAt(now);
         boolean canEdit = (hosting || viewer.isOwner()) && open;
         boolean canCancel = (hosting || viewer.manages(m.getSchool().getId())) && open;
+        boolean canDelete = hosting || viewer.manages(m.getSchool().getId());
         boolean joinable = joinableBy(m, viewer, now) && !blocked;
         boolean hasOpenChat = m.getOpenChatUrl() != null && !m.getOpenChatUrl().isBlank();
         boolean canSeeOpenChat = viewer.isOwner() || hosting || revealed;
@@ -96,7 +97,11 @@ public class MeetupMapper {
                 m.getCreatedAt(),
                 m.getOnlyCohort(),
                 m.audience(),
-                SchoolTag.from(m.getSchool()));
+                SchoolTag.from(m.getSchool()),
+                m.isLateJoin(),
+                m.getFee(),
+                m.isFeePrepaid(),
+                canDelete);
     }
 
     private PersonView person(Member member, LoginMember viewer, boolean revealed, boolean host, Long ref) {

@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router'
-import { ChevronRight, FileText, LogOut, Mail, ShieldCheck, UserX } from 'lucide-react'
-import { useAuthConfig, useBlocks, useMyMeetups, useUnblock, useWithdraw } from '../api/queries'
+import { ChevronRight, Crown, EyeOff, FileText, LogOut, Mail, Pencil, ShieldCheck, Users, UserX } from 'lucide-react'
+import { useAdminStats, useAuthConfig, useBlocks, useMyMeetups, useUnblock, useWithdraw } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
 import { MeetupRow, MeetupRowSkeleton } from '../components/MeetupRow'
 import { RoleTag } from '../components/PersonName'
@@ -9,7 +9,7 @@ import { Button, EmptyState, ErrorState, Segmented } from '../components/ui'
 import { buttonClass, cardClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
-import { affiliation, isStaff } from '../lib/person'
+import { affiliation, isStaff, maskName } from '../lib/person'
 import { isThemedSchool, type ThemeColor, type ThemeMode } from '../lib/theme'
 import { useTheme } from '../theme/ThemeContext'
 
@@ -93,6 +93,29 @@ function BlockedPeople() {
 
 const rowClass = 'flex h-14 w-full items-center gap-3 px-5 text-left text-[15px] font-semibold text-ink hover:bg-surface-2'
 
+/** 대학원장·교수: 관리 화면 바로가기 + 처리할 일 */
+function StaffShortcut() {
+  const stats = useAdminStats()
+  const open = stats.data?.openReports ?? 0
+  return (
+    <Link
+      to="/admin"
+      className={`${cardClass} flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-2`}
+    >
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-board text-on-board">
+        <ShieldCheck className="size-5" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-bold text-ink">관리 화면</span>
+        <span className={`block text-sm ${open > 0 ? 'font-semibold text-danger-ink' : 'text-ink-3'}`}>
+          {open > 0 ? `처리 안 된 신고 ${open}건` : '처리할 신고 없음'}
+        </span>
+      </span>
+      <ChevronRight className="size-5 shrink-0 text-ink-3" aria-hidden />
+    </Link>
+  )
+}
+
 export function MyPage() {
   const { member, signOut } = useAuth()
   const { data, isPending, isError, error, refetch } = useMyMeetups()
@@ -122,9 +145,25 @@ export function MyPage() {
     })
   }
 
+  const staff = isStaff(member.role)
+
   return (
     <div className="flex flex-col gap-8">
-      <section className="overflow-hidden rounded-3xl bg-board text-on-board">
+      <section
+        className={`overflow-hidden rounded-3xl bg-board text-on-board ${
+          member.role === 'OWNER' ? 'ring-4 ring-exit ring-offset-0' : ''
+        }`}
+      >
+        {staff && (
+          <div
+            className={`flex items-center gap-2 px-6 py-2.5 text-sm font-bold ${
+              member.role === 'OWNER' ? 'bg-exit text-on-exit' : 'bg-board-2 text-on-board'
+            }`}
+          >
+            {member.role === 'OWNER' ? <Crown className="size-4" aria-hidden /> : <ShieldCheck className="size-4" aria-hidden />}
+            {member.role === 'OWNER' ? '대학원장 · IT연합회 다섯 학교 관리' : `교수 · ${member.school.shortName} 관리`}
+          </div>
+        )}
         <div className="flex items-center gap-4 px-6 py-6">
           <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-accent text-xl font-black text-on-accent">
             {member.name.slice(0, 1)}
@@ -144,16 +183,44 @@ export function MyPage() {
             {member.email && <p className="mt-0.5 truncate text-sm text-on-board-2">{member.email}</p>}
           </div>
         </div>
-        <p className="border-t border-board-line px-6 py-3 text-sm leading-relaxed text-on-board-2">
-          다른 사람에게는 이름이 가운데가 가려진 채로 보여요. 성사된 3교시의 참여자와 교수·대학원장(관리 화면)에게만 실명이 보여요.
-          <br />
-          이름·기수·학과를 바꿔야 하면 교수나 대학원장에게 요청해 주세요.
-        </p>
+        <ul className="flex flex-col gap-2 border-t border-board-line px-6 py-4 text-sm text-on-board-2">
+          {member.role === 'OWNER' ? (
+            <>
+              <li className="flex items-center gap-2.5">
+                <Users className="size-4 shrink-0" aria-hidden />
+                <span>대학원장 이름은 누구에게나 실명으로 보여요</span>
+              </li>
+              <li className="flex items-center gap-2.5">
+                <Pencil className="size-4 shrink-0" aria-hidden />
+                <span>내 정보는 관리 › 원우에서 고쳐요</span>
+              </li>
+            </>
+          ) : (
+            <>
+              <li className="flex items-center gap-2.5">
+                <EyeOff className="size-4 shrink-0" aria-hidden />
+                <span>
+                  이름은 <b className="font-semibold text-on-board">{maskName(member.name)}</b>처럼 가려져요
+                </span>
+              </li>
+              <li className="flex items-center gap-2.5">
+                <Users className="size-4 shrink-0" aria-hidden />
+                <span>성사된 3교시 참여자에겐 실명</span>
+              </li>
+              <li className="flex items-center gap-2.5">
+                <Pencil className="size-4 shrink-0" aria-hidden />
+                <span>{member.role === 'MANAGER' ? '정보 수정은 대학원장에게 요청' : '정보 수정은 교수·대학원장에게 요청'}</span>
+              </li>
+            </>
+          )}
+        </ul>
       </section>
+
+      {staff && <StaffShortcut />}
 
       {!member.departmentId && (
         <p className="rounded-2xl bg-exit/25 px-5 py-4 text-[15px] font-semibold text-ink">
-          학과가 비어 있어요. 교수나 대학원장에게 학과를 넣어 달라고 요청해 주세요.
+          학과가 비어 있어요. 교수·대학원장에게 요청해 주세요.
         </p>
       )}
 
@@ -170,7 +237,7 @@ export function MyPage() {
           <div className={cardClass}>
             <EmptyState
               title="아직 함께한 3교시가 없어요"
-              body="내가 연 3교시와 참여한 3교시가 여기에 모여요. 무산된 것도 나만 볼 수 있게 남아요."
+              body="내가 열고 참여한 3교시가 여기 모여요"
               action={
                 <Link to="/" className={buttonClass('secondary')}>
                   열린 3교시 보기
@@ -193,13 +260,6 @@ export function MyPage() {
 
       <section className={`${cardClass} divide-y divide-line overflow-hidden`}>
         <h2 className="sr-only">계정</h2>
-        {isStaff(member.role) && (
-          <Link to="/admin" className={rowClass}>
-            <ShieldCheck className="size-5 text-ink-3" aria-hidden />
-            관리 페이지
-            <ChevronRight className="ml-auto size-4 text-ink-3" aria-hidden />
-          </Link>
-        )}
         <Link to="/terms" className={rowClass}>
           <FileText className="size-5 text-ink-3" aria-hidden />
           이용약관
@@ -220,7 +280,8 @@ export function MyPage() {
         <button
           type="button"
           onClick={() => {
-            if (window.confirm('로그아웃할까요? 다음에는 카카오로 바로 들어올 수 있어요.')) signOut()
+            signOut()
+            toast.show('로그아웃했어요')
           }}
           className={`${rowClass} text-danger-ink hover:bg-danger-soft`}
         >
@@ -231,7 +292,7 @@ export function MyPage() {
 
       {member.role === 'OWNER' ? (
         <p className="text-center text-[13px] text-ink-3">
-          대학원장은 탈퇴할 수 없어요. 서버 설정(OWNER_EMAIL)에서 대학원장을 먼저 바꿔 주세요.
+          대학원장은 탈퇴할 수 없어요
         </p>
       ) : (
         <div className="flex justify-center">

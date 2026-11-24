@@ -63,6 +63,13 @@ public class MeetupController {
         return meetupService.cancel(me, id);
     }
 
+    /** 지우기: 개설자 · 그 학교 교수 · 대학원장 */
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
+        meetupService.delete(me, id);
+    }
+
     @PostMapping("/{id}/join")
     public MeetupDetail join(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
         return meetupService.join(me, id);

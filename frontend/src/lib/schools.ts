@@ -12,3 +12,12 @@ export const PLACE_PRESETS: Record<string, string[]> = {
 export function placePresets(code: string | null | undefined): string[] {
   return (code && PLACE_PRESETS[code]) || []
 }
+
+/**
+ * 가입 화면에서 학교 메일 주소(@korea.ac.kr)를 누르면 쓰던 아이디 뒤에 붙인다.
+ * '@' 뒤에 이미 뭔가 썼으면 그 부분을 바꾼다: "hong@ko" + korea.ac.kr → "hong@korea.ac.kr"
+ */
+export function withEmailDomain(value: string, domain: string): string {
+  const local = value.trim().split('@')[0].trim()
+  return `${local}@${domain}`
+}

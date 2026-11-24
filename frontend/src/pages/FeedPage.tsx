@@ -133,8 +133,8 @@ export function FeedPage() {
               title={federated ? '아직 열린 연합 3교시가 없어요' : '아직 열린 3교시가 없어요'}
               body={
                 federated
-                  ? '다른 학교 원우들과 만나 보고 싶다면 연합으로 열어 보세요.'
-                  : '먼저 열어 보는 건 어때요? 인원이 안 모이면 조용히 사라지니까 부담 없어요.'
+                  ? '다른 학교 원우와 만나 보세요'
+                  : '안 모이면 조용히 사라져요. 부담 없이 열어 보세요'
               }
               action={
                 <Link to={federated ? '/meetups/new?audience=ALL' : '/meetups/new'} className={buttonClass('primary')}>
@@ -144,7 +144,7 @@ export function FeedPage() {
               }
             />
           ) : (
-            <EmptyState title="아직 성사된 3교시가 없어요" body="첫 번째 성사의 주인공이 되어 보세요." />
+            <EmptyState title="아직 성사된 3교시가 없어요" body="첫 성사의 주인공이 되어 보세요" />
           )}
         </div>
       ) : (

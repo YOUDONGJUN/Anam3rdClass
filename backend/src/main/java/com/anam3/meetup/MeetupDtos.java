@@ -55,7 +55,13 @@ public final class MeetupDtos {
             /** SCHOOL(우리 학교) · COHORT(우리 기수) · ALL(연합) */
             MeetupAudience audience,
             /** 연 사람의 학교 */
-            SchoolTag school) {
+            SchoolTag school,
+            /** 중간 합류 OK */
+            boolean lateJoin,
+            /** 참여비(원). null 이면 없음 */
+            Integer fee,
+            /** 참여비 선입금 */
+            boolean feePrepaid) {
     }
 
     public record MeetupDetail(
@@ -93,7 +99,15 @@ public final class MeetupDtos {
             /** SCHOOL(우리 학교) · COHORT(우리 기수) · ALL(연합) */
             MeetupAudience audience,
             /** 연 사람의 학교 */
-            SchoolTag school) {
+            SchoolTag school,
+            /** 중간 합류 OK */
+            boolean lateJoin,
+            /** 참여비(원). null 이면 없음 */
+            Integer fee,
+            /** 참여비 선입금 */
+            boolean feePrepaid,
+            /** 지우기: 연 사람 · 그 학교 교수 · 대학원장 */
+            boolean canDelete) {
     }
 
     public record MeetupCreateRequest(
@@ -137,7 +151,18 @@ public final class MeetupDtos {
             String openChatUrl,
 
             /** 누구에게 여는지: 우리 학교(기본, 비워도 됨) · 우리 기수 · 연합. 열 때만 정하고 바꿀 수 없다 */
-            MeetupAudience audience) {
+            MeetupAudience audience,
+
+            /** 중간 합류 OK (비우면 아니오). 열 때만 정한다 */
+            Boolean lateJoin,
+
+            /** 참여비(원). 비우면 참여비 없음. 열 때만 정한다 */
+            @Min(value = 1000, message = "참여비는 1,000원 이상으로 적어 주세요")
+            @Max(value = 1000000, message = "참여비는 100만 원까지 적을 수 있어요")
+            Integer fee,
+
+            /** 참여비 선입금 (참여비가 있을 때만) */
+            Boolean feePrepaid) {
     }
 
     public record MeetupUpdateRequest(

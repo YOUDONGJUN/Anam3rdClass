@@ -103,6 +103,12 @@ public class AdminController {
         return adminService.assignEmail(me, id, req.email());
     }
 
+    /** 대학원장 전용: 탈퇴시키기 */
+    @PostMapping("/members/{id}/withdraw")
+    public AdminMemberView withdraw(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
+        return adminService.withdraw(me, id);
+    }
+
     // ---------------- 학교 · 학과 (바꾸기는 대학원장 전용) ----------------
 
     /** 모든 학교와 도메인·학과 (숨긴 학과 포함) */

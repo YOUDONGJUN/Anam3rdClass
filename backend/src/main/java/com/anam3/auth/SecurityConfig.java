@@ -45,7 +45,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/admin/schools").hasAnyRole("MANAGER", "OWNER")
                         .requestMatchers("/api/admin/schools/**", "/api/admin/departments/**").hasRole("OWNER")
                         .requestMatchers(HttpMethod.POST, "/api/admin/schools").hasRole("OWNER")
-                        .requestMatchers("/api/admin/members/*/role", "/api/admin/members/*/email").hasRole("OWNER")
+                        .requestMatchers("/api/admin/members/*/role", "/api/admin/members/*/email", "/api/admin/members/*/withdraw")
+                        .hasRole("OWNER")
                         // 교수·대학원장: 나머지 관리 화면
                         .requestMatchers("/api/admin/**").hasAnyRole("MANAGER", "OWNER")
                         .requestMatchers("/api/**").authenticated()

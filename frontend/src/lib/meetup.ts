@@ -146,3 +146,13 @@ export function headcount(m: Pick<MeetupSummary, 'participantCount' | 'maxPeople
 export function isLive(status: MeetupStatus) {
   return status === 'RECRUITING' || status === 'CONFIRMED'
 }
+
+/** 참여비: 10000 → "1만 원", 15000 → "15,000원" */
+export function formatFee(fee: number): string {
+  return fee % 10000 === 0 ? `${fee / 10000}만 원` : `${fee.toLocaleString('ko-KR')}원`
+}
+
+/** "참여비 1만 원 · 선입금" */
+export function feeLabel(fee: number, prepaid: boolean): string {
+  return `참여비 ${formatFee(fee)}${prepaid ? ' · 선입금' : ''}`
+}

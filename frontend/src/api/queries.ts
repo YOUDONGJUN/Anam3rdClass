@@ -124,6 +124,20 @@ export function useMeetupAction() {
   })
 }
 
+/** 3교시 지우기 (취소와 달리 목록·기록에서 아예 사라진다) */
+export function useDeleteMeetup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api<void>(`/api/meetups/${id}`, { method: 'DELETE' }),
+    onSuccess: (_d, id) => {
+      qc.removeQueries({ queryKey: keys.meetup(id) })
+      qc.invalidateQueries({ queryKey: ['meetups'] })
+      qc.invalidateQueries({ queryKey: keys.myMeetups })
+      qc.invalidateQueries({ queryKey: keys.admin })
+    },
+  })
+}
+
 // ---------------- 공지 ----------------
 
 export function useNotices() {
@@ -219,8 +233,8 @@ export function useWithdraw() {
 
 // ---------------- 관리 (교수 · 대학원장) ----------------
 
-export function useAdminStats() {
-  return useQuery({ queryKey: [...keys.admin, 'stats'], queryFn: () => api<AdminStats>('/api/admin/stats') })
+export function useAdminStats(enabled = true) {
+  return useQuery({ queryKey: [...keys.admin, 'stats'], queryFn: () => api<AdminStats>('/api/admin/stats'), enabled })
 }
 
 export function useAdminMembers() {
@@ -342,6 +356,18 @@ export function useUpdateMemberProfile() {
     mutationFn: ({ id, ...input }: { id: number; name: string; cohort: number; departmentId: number }) =>
       api<AdminMember>(`/api/admin/members/${id}/profile`, { method: 'PUT', body: input }),
     onSuccess: refresh,
+  })
+}
+
+/** 탈퇴시키기 (대학원장 전용) */
+export function useWithdrawMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api<AdminMember>(`/api/admin/members/${id}/withdraw`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.admin })
+      qc.invalidateQueries({ queryKey: ['meetups'] })
+    },
   })
 }
 

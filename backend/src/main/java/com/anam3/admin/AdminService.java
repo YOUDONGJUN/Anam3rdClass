@@ -92,6 +92,16 @@ public class AdminService {
         return view(viewer, member);
     }
 
+    /**
+     * 대학원장 전용: 원우를 탈퇴시킨다 (본인 탈퇴와 같다 — 이름·이메일·카카오 연결을 지우고 "탈퇴한 원우"로 남는다.
+     * 연 3교시는 취소, 모집 중인 3교시에서는 빠진다). 같은 학교 이메일로 다시 가입할 수 있다.
+     */
+    public AdminMemberView withdraw(LoginMember viewer, Long memberId) {
+        Member member = load(memberId);
+        accountService.withdraw(member);
+        return view(viewer, member);
+    }
+
     /** 대학원장 전용: 교수 임명(MANAGER)·해임(USER). 교수는 자기 학교 원우만 관리한다 */
     public AdminMemberView changeRole(LoginMember viewer, Long memberId, MemberRole role) {
         Member member = load(memberId);

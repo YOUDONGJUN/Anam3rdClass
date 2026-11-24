@@ -52,9 +52,16 @@ public class AccountService {
      * 대학원장(OWNER_EMAIL)은 탈퇴할 수 없다 — 먼저 서버 설정에서 대학원장을 바꿔야 한다.
      */
     public void withdraw(LoginMember viewer) {
-        Member member = load(viewer);
+        withdraw(load(viewer));
+    }
+
+    /** 본인 탈퇴와 대학원장이 시키는 탈퇴가 같이 쓴다 */
+    public void withdraw(Member member) {
         if (member.isOwner()) {
             throw ApiException.badRequest("OWNER_CANNOT_WITHDRAW", "대학원장은 탈퇴할 수 없어요. 대학원장을 먼저 넘겨 주세요");
+        }
+        if (member.isWithdrawn()) {
+            throw ApiException.badRequest("ALREADY_WITHDRAWN", "이미 탈퇴한 원우예요");
         }
         Instant now = clock.instant();
         releaseOpenMeetups(member, now);

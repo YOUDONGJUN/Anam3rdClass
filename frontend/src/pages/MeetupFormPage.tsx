@@ -25,9 +25,9 @@ import { placePresets } from '../lib/schools'
 import { ceilTo10Minutes, formatDateTime, fromKstInputValue, kstAt, toKstInputValue } from '../lib/time'
 
 const DEADLINES = [
+  { value: '10', label: '10분 전', minutes: 10 },
   { value: '30', label: '30분 전', minutes: 30 },
   { value: '60', label: '1시간 전', minutes: 60 },
-  { value: '180', label: '3시간 전', minutes: 180 },
   { value: '0', label: '모일 때까지', minutes: 0 },
 ] as const
 
@@ -50,6 +50,13 @@ interface FormValues {
   openChatUrl: string
   /** 누구에게 여는지: 우리 학교 · 우리 기수 · 연합 (열 때만 정한다) */
   audience: MeetupAudience
+  /** 중간 합류 OK */
+  lateJoin: boolean
+  /** 참여비 있음 */
+  hasFee: boolean
+  /** 참여비(원) 입력값 */
+  fee: string
+  feePrepaid: boolean
 }
 
 /** 제출 직전 시간 검사 (서버도 한 번 더 검사한다) */
@@ -180,7 +187,7 @@ function CategoryPicker({ value, onChange }: { value: MeetupCategory[]; onChange
   return (
     <fieldset>
       <legend className="mb-1 text-[15px] font-semibold text-ink">무엇을 마실까요</legend>
-      <p className="mb-3 text-sm text-ink-3">여러 개 골라도 돼요. 소맥이면 소주랑 맥주 둘 다!</p>
+      <p className="mb-3 text-sm text-ink-3">여러 개 골라도 돼요</p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {CATEGORY_ORDER.map((c) => {
           const meta = CATEGORY[c]
@@ -329,6 +336,8 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
       if (timeError || !meetAt || !deadlineAt) return setError(timeError ?? '모임 시간을 정해 주세요')
       const peopleProblem = peopleError(minPeople, maxPeople)
       if (peopleProblem) return setError(peopleProblem)
+      const fee = v.hasFee ? Number(v.fee) : null
+      if (fee !== null && !(fee >= 1000 && fee <= 1_000_000)) return setError('참여비는 1,000원 ~ 100만 원으로 적어 주세요')
       const d = await create.mutateAsync({
         title: v.title,
         description: v.description,
@@ -341,6 +350,9 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
         maxPeople,
         openChatUrl: v.openChatUrl,
         audience: v.audience,
+        lateJoin: v.lateJoin,
+        fee,
+        feePrepaid: fee !== null && v.feePrepaid,
       })
       toast.show(
         v.audience === 'COHORT'
@@ -372,8 +384,6 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
       </Field>
 
       <CategoryPicker value={v.categories} onChange={(c) => set('categories', c)} />
-
-      <PurposePicker value={v.purposes} onChange={(p) => set('purposes', p)} />
 
       {!editing && (
         <fieldset className="flex flex-col gap-3">
@@ -412,13 +422,13 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
           {meetAt && deadlineAt && (
             <p className="text-sm text-ink-3">
               {formatDateTime(meetAt)} 모임 · <b className="font-semibold text-ink-2">{formatDateTime(deadlineAt)}</b>
-              {v.noMinimum ? '에 모집을 마감해요' : '까지 최소 인원이 안 모이면 조용히 사라져요'}
+              {v.noMinimum ? '에 모집 마감' : '까지 안 모이면 조용히 사라져요'}
             </p>
           )}
         </fieldset>
       )}
 
-      <Field label="어디서" hint="칩은 빠른 입력용이에요. 학교 앞 가게 이름을 그대로 적어도 되고, 다른 동네도 괜찮아요.">
+      <Field label="어디서" hint="가게 이름을 그대로 적어도 돼요">
         {({ id, describedBy }) => (
           <div className="flex flex-col gap-3">
             <input
@@ -485,7 +495,7 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
             </p>
             {v.noMinimum && (
               <p className="text-sm leading-relaxed text-ink-3">
-                열자마자 ‘확정’으로 보여요. 참여한 사람끼리는 바로 이름과 오픈채팅이 보여요.
+                열자마자 확정 · 참여자끼리 바로 실명·단톡방 공개
               </p>
             )}
           </div>
@@ -537,38 +547,94 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
         </fieldset>
       )}
 
-      <Field label="한마디" optional>
-        {({ id }) => (
-          <textarea
-            id={id}
-            rows={3}
-            maxLength={500}
-            className={`${inputClass} h-auto py-3 leading-relaxed`}
-            placeholder="예: 늦게 와도 괜찮아요. 1차만 가볍게!"
-            value={v.description}
-            onChange={(e) => set('description', e.target.value)}
+      {!editing && (
+        <fieldset className="flex flex-col gap-3">
+          <legend className="mb-2 text-[15px] font-semibold text-ink">참여 방식</legend>
+          <NoLimitToggle
+            checked={v.lateJoin}
+            onChange={(on) => set('lateJoin', on)}
+            label="중간 합류 OK"
+            sub="늦게 와도 돼요 · 성사 뒤에도 시작 전까지 참여"
           />
-        )}
-      </Field>
+          <div className={`${cardClass} flex flex-col gap-3 px-4 py-4`}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[15px] font-semibold text-ink">참여비</span>
+              <div className="flex gap-1.5" role="radiogroup" aria-label="참여비">
+                <Chip active={!v.hasFee} onClick={() => set('hasFee', false)}>
+                  없음
+                </Chip>
+                <Chip active={v.hasFee} onClick={() => set('hasFee', true)}>
+                  있음
+                </Chip>
+              </div>
+            </div>
+            {v.hasFee && (
+              <>
+                <div className="relative">
+                  <input
+                    aria-label="참여비 금액"
+                    type="number"
+                    inputMode="numeric"
+                    min={1000}
+                    max={1000000}
+                    step={1000}
+                    className={`${inputClass} tabular pr-10 font-semibold`}
+                    placeholder="예: 10000"
+                    value={v.fee}
+                    onChange={(e) => set('fee', e.target.value)}
+                  />
+                  <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-ink-3">원</span>
+                </div>
+                <NoLimitToggle
+                  checked={v.feePrepaid}
+                  onChange={(on) => set('feePrepaid', on)}
+                  label="선입금"
+                  sub="참여할 때 미리 보내요 · 계좌는 단톡방에서"
+                />
+              </>
+            )}
+          </div>
+        </fieldset>
+      )}
 
-      <Field
-        label="카카오톡 오픈채팅 링크"
-        optional
-        hint="성사되면 참여자에게만 보여요. 카카오톡 › 채팅 › 오픈채팅 › 만들기 후 링크를 복사해 붙여 넣어 주세요. 나중에 넣어도 돼요."
-      >
-        {({ id, describedBy }) => (
-          <input
-            id={id}
-            type="url"
-            inputMode="url"
-            aria-describedby={describedBy}
-            className={inputClass}
-            placeholder="https://open.kakao.com/o/…"
-            value={v.openChatUrl}
-            onChange={(e) => set('openChatUrl', e.target.value.trim())}
-          />
-        )}
-      </Field>
+      {/* 선택 항목은 아래에 모은다 */}
+      <div className="flex flex-col gap-8 border-t border-line pt-8">
+        <p className="-mb-5 text-sm font-bold text-ink-3">선택 · 비워도 돼요</p>
+        <PurposePicker value={v.purposes} onChange={(p) => set('purposes', p)} />
+
+        <Field label="한마디" optional>
+          {({ id }) => (
+            <textarea
+              id={id}
+              rows={3}
+              maxLength={500}
+              className={`${inputClass} h-auto py-3 leading-relaxed`}
+              placeholder="예: 늦게 와도 괜찮아요. 1차만 가볍게!"
+              value={v.description}
+              onChange={(e) => set('description', e.target.value)}
+            />
+          )}
+        </Field>
+
+        <Field
+          label="카카오톡 오픈채팅 링크"
+          optional
+          hint="성사되면 참여자에게만 보여요 · 나중에 넣어도 돼요"
+        >
+          {({ id, describedBy }) => (
+            <input
+              id={id}
+              type="url"
+              inputMode="url"
+              aria-describedby={describedBy}
+              className={inputClass}
+              placeholder="https://open.kakao.com/o/…"
+              value={v.openChatUrl}
+              onChange={(e) => set('openChatUrl', e.target.value.trim())}
+            />
+          )}
+        </Field>
+      </div>
 
       <FormError message={error} />
 
@@ -592,7 +658,7 @@ function defaults(audience: MeetupAudience): FormValues {
     categories: ['BEER'],
     purposes: [],
     meetAt: toKstInputValue(first),
-    deadline: first.getTime() - 30 * 60_000 > now.getTime() ? '30' : '0',
+    deadline: first.getTime() - 10 * 60_000 > now.getTime() ? '10' : '0',
     place: '',
     minPeople: 3,
     noMinimum: false,
@@ -601,6 +667,10 @@ function defaults(audience: MeetupAudience): FormValues {
     description: '',
     openChatUrl: '',
     audience,
+    lateJoin: false,
+    hasFee: false,
+    fee: '',
+    feePrepaid: false,
   }
 }
 
@@ -620,6 +690,10 @@ function fromDetail(d: MeetupDetail): FormValues & { id: number } {
     description: d.description,
     openChatUrl: d.openChatUrl ?? '',
     audience: d.audience,
+    lateJoin: d.lateJoin,
+    hasFee: d.fee !== null,
+    fee: d.fee === null ? '' : String(d.fee),
+    feePrepaid: d.feePrepaid,
   }
 }
 
@@ -646,7 +720,7 @@ export function MeetupCreatePage() {
   const [initial] = useState(() => defaults(params.get('audience') === 'ALL' ? 'ALL' : 'SCHOOL'))
   return (
     <div className="max-w-2xl">
-      <Header title="3교시 열기" sub="이름은 가려진 채로 열려요. 인원이 안 모이면 조용히 사라지니 부담 갖지 마세요." />
+      <Header title="3교시 열기" sub="안 모이면 조용히 사라져요. 부담 없이!" />
       <MeetupForm initial={initial} editing={false} />
     </div>
   )
@@ -660,7 +734,7 @@ export function MeetupEditPage() {
   if (!data.canEdit) return <ErrorState message="이 3교시는 수정할 수 없어요" />
   return (
     <div className="max-w-2xl">
-      <Header title="3교시 수정" sub="시간과 인원은 바꿀 수 없어요. 바꿔야 하면 취소하고 새로 열어 주세요." />
+      <Header title="3교시 수정" sub="시간·인원은 못 바꿔요. 취소하고 새로 열어 주세요" />
       <MeetupForm initial={fromDetail(data)} editing />
     </div>
   )

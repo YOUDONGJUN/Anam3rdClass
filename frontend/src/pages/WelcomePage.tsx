@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
+import { EyeOff, MailCheck, ShieldCheck } from 'lucide-react'
 import { api, ApiError } from '../api/client'
 import { useAuthConfig, useDevMembers, useSignupOptions } from '../api/queries'
 import type { AuthStep, DevMember } from '../api/types'
@@ -43,15 +44,13 @@ function KakaoLoginButton({ from }: { from: string }) {
         <KakaoSymbol />
         {leaving ? '카카오로 이동하는 중…' : '카카오로 시작하기'}
       </button>
-      {config.isError && <FormError message="서버에 연결하지 못했어요. 잠시 후 새로고침해 주세요" />}
+      {config.isError && <FormError message="서버에 연결하지 못했어요. 새로고침해 주세요" />}
       {config.data && !clientId &&
         (config.data.devLogin ? (
           // 로컬 개발 서버: 키 없이도 아래 개발용 로그인으로 들어갈 수 있다
-          <p className="text-center text-[13px] text-ink-3">
-            카카오 키(KAKAO_REST_API_KEY)를 넣고 서버를 켜면 카카오 로그인을 시험할 수 있어요
-          </p>
+          <p className="text-center text-[13px] text-ink-3">카카오 키가 없어서 아래 개발용 로그인을 써요</p>
         ) : (
-          <FormError message="카카오 로그인이 아직 준비되지 않았어요. 관리자에게 알려 주세요" />
+          <FormError message="카카오 로그인 준비 중이에요. 관리자에게 알려 주세요" />
         ))}
     </div>
   )
@@ -83,7 +82,7 @@ function DevLogin({ from }: { from: string }) {
   return (
     <section className="mt-6 rounded-2xl border border-dashed border-line-strong px-4 py-4">
       <p className="text-sm font-bold text-ink">개발용 로그인</p>
-      <p className="mt-0.5 text-[13px] text-ink-3">로컬 서버에서만 보여요. 카카오·메일 없이 샘플 계정으로 들어가요.</p>
+      <p className="mt-0.5 text-[13px] text-ink-3">로컬 서버 전용 · 샘플 계정</p>
       <div className="mt-3 flex flex-col gap-2">
         {(members.data ?? []).map((m) => (
           <Button
@@ -108,10 +107,17 @@ function DevLogin({ from }: { from: string }) {
   )
 }
 
+/** 카드 안 짧은 안내: 아이콘 + 한 줄 */
+const PROMISES = [
+  { Icon: MailCheck, text: '학교 메일로 한 번만 인증' },
+  { Icon: EyeOff, text: <>이름은 <b className="font-semibold text-ink">김*대</b>처럼 가려져요</> },
+  { Icon: ShieldCheck, text: 'IT연합회 원우만 들어와요' },
+]
+
 const STEPS = [
-  { title: '3교시를 열어요', body: '시간, 장소, 인원만 정하면 끝. 이름은 가운데가 가려져요.' },
-  { title: '사람이 모여요', body: '누가 왔는지는 몰라도 몇 명 모였는지는 실시간으로 보여요.' },
-  { title: '성사되면 공개', body: '최소 인원이 차면 참여자끼리만 실명과 오픈채팅 링크가 열려요. 안 모이면 조용히 사라져요.' },
+  { title: '3교시를 열어요', body: '시간·장소·인원만 정하면 끝' },
+  { title: '사람이 모여요', body: '몇 명 모였는지 바로 보여요' },
+  { title: '성사되면 공개', body: '참여자끼리 실명·단톡방 공개' },
 ]
 
 export function WelcomePage() {
@@ -122,42 +128,37 @@ export function WelcomePage() {
   const schools = options.data?.schools ?? []
 
   return (
-    <div className="min-h-dvh bg-bg">
-      <div className="mx-auto grid max-w-6xl gap-0 lg:min-h-dvh lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-16 lg:px-10 lg:py-12">
-        {/* 역 이름판 */}
-        <section className="flex flex-col">
-          <div className="overflow-hidden bg-board text-on-board pt-[env(safe-area-inset-top)] lg:rounded-3xl">
-            <div className="px-6 pt-10 pb-7 sm:px-10 lg:pt-14">
-              <h1 className="text-[56px] leading-[0.95] font-black tracking-[-0.04em] sm:text-7xl">안암3교시</h1>
-              <p className="mt-3 text-base font-medium tracking-wide text-on-board-2">Anam 3rd Period</p>
-            </div>
-            <div className="h-3 bg-accent" aria-hidden />
-            <div className="flex items-center justify-between px-6 py-3.5 text-sm font-semibold text-on-board-2 sm:px-10">
-              <span>← 1·2교시 · 수업</span>
-              <span>귀가 · 막차 →</span>
-            </div>
+    <div className="min-h-dvh bg-bg lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      {/* 역 이름판 — 모바일은 위, 데스크톱은 왼쪽 절반을 꽉 채운다 */}
+      <section className="flex flex-col bg-board pt-[env(safe-area-inset-top)] text-on-board lg:sticky lg:top-0 lg:h-dvh">
+        <div className="flex-1 px-6 pt-10 pb-8 sm:px-10 lg:flex lg:flex-col lg:justify-center lg:px-16 lg:pb-12">
+          <p className="text-sm font-semibold text-on-board-2">IT연합회 대학원 번개</p>
+          <h1 className="mt-2 text-[52px] leading-[0.95] font-black tracking-[-0.04em] sm:text-7xl xl:text-8xl">안암3교시</h1>
+          <p className="mt-5 text-xl leading-snug font-bold lg:text-2xl">
+            수업 끝나고,
+            <br />
+            한잔할 사람?
+          </p>
+          <div className="mt-12 hidden lg:block">
+            <Steps onBoard />
           </div>
-
-          <div className="hidden px-6 pt-10 sm:px-10 lg:block lg:px-0">
-            <p className="text-xl leading-relaxed font-bold text-ink">
-              수업 끝나고 한잔하고 싶은데,
-              <br />
-              먼저 말 꺼내기 민망했죠?
-            </p>
-            <Steps />
+        </div>
+        <div>
+          <div className="h-3 bg-accent" aria-hidden />
+          <div className="flex items-center justify-between px-6 py-3.5 text-sm font-semibold text-on-board-2 sm:px-10 lg:px-16">
+            <span>← 1·2교시 · 수업</span>
+            <span>귀가 · 막차 →</span>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* 로그인 */}
-        <section className="px-4 py-8 sm:px-10 lg:px-0 lg:py-0">
-          <div className="mx-auto max-w-md rounded-3xl border border-line bg-surface p-6 shadow-[0_12px_40px_-16px_rgb(0_0_0/0.18)] sm:p-8">
-            <p className="mb-1 text-lg font-bold text-ink">IT연합회 대학원 번개 모임</p>
-            <p className="mb-3 text-[15px] leading-relaxed text-ink-2">
-              수업 끝나고 모이는 번개, 여기선 <b className="text-ink">3교시</b>라고 불러요. 우리 학교끼리도, 다섯 학교
-              연합으로도 모여요.
-            </p>
+      {/* 로그인 */}
+      <section className="flex flex-col px-4 pt-6 pb-10 sm:px-10 lg:min-h-dvh lg:justify-center lg:px-16 lg:py-12">
+        <div className="mx-auto w-full max-w-sm">
+          <div className="rounded-3xl border border-line bg-surface p-6 shadow-[0_12px_40px_-16px_rgb(0_0_0/0.18)] sm:p-7">
+            <h2 className="text-xl font-extrabold tracking-[-0.02em] text-ink">다섯 학교 대학원 원우끼리</h2>
             {schools.length > 0 && (
-              <ul className="mb-6 flex flex-wrap gap-1.5" aria-label="함께하는 학교">
+              <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="함께하는 학교">
                 {schools.map((s) => (
                   <li key={s.id}>
                     <SchoolBadge school={s} />
@@ -165,22 +166,28 @@ export function WelcomePage() {
                 ))}
               </ul>
             )}
-            <KakaoLoginButton from={from} />
-            <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-ink-2">
-              처음이면 <b className="text-ink">학교 이메일</b>로 한 번만 인증해요. IT연합회 대학원 원우만 들어올 수
-              있어요. 다른 사람에게 이름은 <b className="text-ink">김*대 · 61기 · 인융</b>처럼 가려져 보여요.
-            </p>
+            <div className="mt-6">
+              <KakaoLoginButton from={from} />
+            </div>
+            <ul className="mt-5 flex flex-col gap-2.5 border-t border-line pt-5">
+              {PROMISES.map(({ Icon, text }, i) => (
+                <li key={i} className="flex items-center gap-3 text-[15px] text-ink-2">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-2 text-ink-3">
+                    <Icon className="size-4" aria-hidden />
+                  </span>
+                  <span>{text}</span>
+                </li>
+              ))}
+            </ul>
             {config.data?.devLogin && <DevLogin from={from} />}
           </div>
 
-          <div className="mx-auto max-w-md px-2 pt-10 lg:hidden">
-            <p className="text-lg leading-relaxed font-bold text-ink">
-              수업 끝나고 한잔하고 싶은데, 먼저 말 꺼내기 민망했죠?
-            </p>
+          <div className="mt-10 px-2 lg:hidden">
             <Steps />
           </div>
-          <p className="mx-auto mt-10 max-w-md px-2 text-center text-xs leading-relaxed text-ink-3">
-            학생들이 만든 비공식 커뮤니티예요. 학교 공식 서비스가 아니에요.
+
+          <p className="mt-10 px-2 text-center text-xs leading-relaxed text-ink-3">
+            학생들이 만든 비공식 커뮤니티예요
             <br />
             <Link to="/terms" className="underline underline-offset-4 hover:text-ink">
               이용약관
@@ -190,36 +197,39 @@ export function WelcomePage() {
               개인정보 처리방침
             </Link>
           </p>
-        </section>
-      </div>
+        </div>
+      </section>
     </div>
   )
 }
 
-/** 3단계를 노선도처럼 */
-function Steps() {
+/** 3단계를 노선도처럼. onBoard 면 안내판(진한 바탕) 위 색 */
+function Steps({ onBoard = false }: { onBoard?: boolean }) {
+  const title = onBoard ? 'text-on-board' : 'text-ink'
+  const body = onBoard ? 'text-on-board-2' : 'text-ink-2'
+  const ring = onBoard ? 'var(--board)' : 'var(--bg)'
   return (
-    <ol className="mt-6">
-      {STEPS.map((s, i) => (
-        <li key={s.title} className="relative flex gap-4 pb-6 last:pb-0">
-          {i < STEPS.length - 1 && (
-            // 역(24px) 중심 12px 에 4px 선의 가운데를 맞춘다
-            <span aria-hidden className="absolute top-3 left-2.5 h-full w-1 bg-accent" />
-          )}
-          <span
-            aria-hidden
-            className={`relative z-10 mt-0.5 shrink-0 rounded-full ${
-              i === STEPS.length - 1
-                ? 'size-6 border-4 border-ok bg-surface shadow-[inset_0_0_0_3px_var(--surface),inset_0_0_0_10px_var(--ok)]'
-                : 'size-6 border-4 border-accent bg-accent'
-            }`}
-          />
-          <div>
-            <p className="font-bold text-ink">{s.title}</p>
-            <p className="mt-1 text-[15px] leading-relaxed text-ink-2">{s.body}</p>
-          </div>
-        </li>
-      ))}
+    <ol>
+      {STEPS.map((s, i) => {
+        const last = i === STEPS.length - 1
+        return (
+          <li key={s.title} className="relative flex gap-4 pb-7 last:pb-0">
+            {!last && (
+              // 역(24px) 중심 12px 에 4px 선의 가운데를 맞춘다
+              <span aria-hidden className="absolute top-3 left-2.5 h-full w-1 bg-accent" />
+            )}
+            <span
+              aria-hidden
+              className={`relative z-10 mt-0.5 size-6 shrink-0 rounded-full border-4 ${last ? 'border-ok' : 'border-accent bg-accent'}`}
+              style={last ? { backgroundColor: ring, boxShadow: `inset 0 0 0 3px ${ring}, inset 0 0 0 10px var(--ok)` } : undefined}
+            />
+            <div className="min-w-0">
+              <p className={`font-bold ${title}`}>{s.title}</p>
+              <p className={`mt-0.5 text-[15px] ${body}`}>{s.body}</p>
+            </div>
+          </li>
+        )
+      })}
     </ol>
   )
 }

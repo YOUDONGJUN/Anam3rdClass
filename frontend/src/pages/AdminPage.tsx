@@ -5,14 +5,20 @@ import {
   ArrowUp,
   Ban,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleCheck,
   Eye,
   EyeOff,
+  Flag,
+  History,
   Pencil,
   RotateCcw,
+  TriangleAlert,
   UserCheck,
   UserMinus,
+  UserX,
   X,
 } from 'lucide-react'
 import {
@@ -27,6 +33,7 @@ import {
   useResolveReport,
   useSchoolAdmin,
   useUpdateMemberProfile,
+  useWithdrawMember,
 } from '../api/queries'
 import type { AdminMember, Department, Report, School } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -54,7 +61,7 @@ import {
 import { affiliation, ROLE_LABEL } from '../lib/person'
 import { formatRelative } from '../lib/time'
 
-type Tab = 'overview' | 'members' | 'reports' | 'meetups' | 'schools'
+type Tab = 'home' | 'members' | 'reports' | 'meetups' | 'schools'
 
 const PAGE_SIZE = 20
 
@@ -62,40 +69,200 @@ function useIsOwner() {
   return useAuth().member?.role === 'OWNER'
 }
 
-// ---------------- 현황 ----------------
+// ---------------- 홈: 할 일 + 한눈에 ----------------
 
-function Overview() {
+/** 최신 기수를 아직 공개 자료 임시값(99)으로 둔 학교 */
+const PLACEHOLDER_COHORT = 99
+
+interface Task {
+  key: string
+  tone: 'danger' | 'warn' | 'info'
+  Icon: typeof Flag
+  title: string
+  detail?: string
+  action: string
+  tab: Tab
+}
+
+function TaskList({ tasks, onGo }: { tasks: Task[]; onGo: (tab: Tab) => void }) {
+  if (tasks.length === 0) {
+    return (
+      <div className={`${cardClass} flex items-center gap-3 px-5 py-4`}>
+        <CircleCheck className="size-5 shrink-0 text-ok" aria-hidden />
+        <p className="font-semibold text-ink">지금 처리할 일이 없어요</p>
+      </div>
+    )
+  }
+  const tone = {
+    danger: 'bg-danger-soft text-danger-ink',
+    warn: 'bg-exit/30 text-ink',
+    info: 'bg-surface-2 text-ink-2',
+  }
+  return (
+    <ul className={`${cardClass} divide-y divide-line overflow-hidden`}>
+      {tasks.map((t) => (
+        <li key={t.key}>
+          <button
+            type="button"
+            onClick={() => onGo(t.tab)}
+            className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-surface-2"
+          >
+            <span className={`flex size-9 shrink-0 items-center justify-center rounded-full ${tone[t.tone]}`}>
+              <t.Icon className="size-4" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-bold text-ink">{t.title}</span>
+              {t.detail && <span className="mt-0.5 block truncate text-sm text-ink-3">{t.detail}</span>}
+            </span>
+            <span className="flex shrink-0 items-center gap-0.5 text-sm font-semibold text-accent-ink">
+              {t.action}
+              <ChevronRight className="size-4" aria-hidden />
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function AdminHome({ onGo }: { onGo: (tab: Tab) => void }) {
+  const isOwner = useIsOwner()
   const stats = useAdminStats()
+  const members = useAdminMembers()
+  const meetups = useAdminMeetups()
+  const reports = useAdminReports()
+  const schools = useAdminSchools()
+  const now = useNow()
+
+  if (stats.isPending || members.isPending || meetups.isPending || reports.isPending || schools.isPending) return <Spinner />
+  const failed = [stats, members, meetups, reports, schools].find((q) => q.isError)
+  if (failed?.error) return <ErrorState message={failed.error.message} onRetry={() => failed.refetch()} />
+  if (!stats.data || !members.data || !meetups.data || !reports.data || !schools.data) return null
+
   const s = stats.data
-  const items = s
-    ? [
-        { label: '원우', value: s.members },
-        { label: '3교시', value: s.meetups },
-        { label: '성사', value: s.confirmedMeetups },
-        { label: '공지', value: s.notices },
-        { label: '처리 안 된 신고', value: s.openReports },
-      ]
-    : []
+  const current = members.data.filter((m) => m.status !== 'WITHDRAWN')
+  const openReports = reports.data.filter((r) => r.status === 'OPEN')
+  const placeholder = schools.data.filter((x) => x.latestCohort === PLACEHOLDER_COHORT)
+  const noDepartments = schools.data.filter((x) => !x.departments.some((d) => d.active))
+  const legacy = current.filter((m) => !m.kakaoLinked && m.status === 'ACTIVE')
+
+  const tasks: Task[] = []
+  if (openReports.length > 0)
+    tasks.push({
+      key: 'reports',
+      tone: 'danger',
+      Icon: Flag,
+      title: `처리 안 된 신고 ${openReports.length}건`,
+      detail: REASON_LABEL[openReports[0].reason] + (openReports.length > 1 ? ` 외 ${openReports.length - 1}건` : ''),
+      action: '확인',
+      tab: 'reports',
+    })
+  if (isOwner && placeholder.length > 0)
+    tasks.push({
+      key: 'cohort',
+      tone: 'warn',
+      Icon: TriangleAlert,
+      title: `최신 기수 확인 필요 ${placeholder.length}곳`,
+      detail: placeholder.map((x) => x.shortName).join(' · '),
+      action: '설정',
+      tab: 'schools',
+    })
+  if (isOwner && noDepartments.length > 0)
+    tasks.push({
+      key: 'departments',
+      tone: 'warn',
+      Icon: TriangleAlert,
+      title: `학과가 없는 학교 ${noDepartments.length}곳`,
+      detail: noDepartments.map((x) => x.shortName).join(' · '),
+      action: '설정',
+      tab: 'schools',
+    })
+  if (isOwner && legacy.length > 0)
+    tasks.push({
+      key: 'legacy',
+      tone: 'info',
+      Icon: History,
+      title: `카카오 미연결 원우 ${legacy.length}명`,
+      detail: '예전 계정 · 처음 들어올 때 이어져요',
+      action: '보기',
+      tab: 'members',
+    })
+
+  const kpis = [
+    { label: '원우', value: s.members },
+    { label: '3교시', value: s.meetups },
+    { label: '성사', value: s.confirmedMeetups },
+    { label: '공지', value: s.notices },
+  ]
+
+  const upcoming = meetups.data
+    .filter((m) => (m.status === 'RECRUITING' || m.status === 'CONFIRMED') && new Date(m.meetAt) > now)
+    .sort((a, b) => a.meetAt.localeCompare(b.meetAt))
+    .slice(0, 3)
 
   return (
-    <section className={`${cardClass} grid grid-cols-2 divide-line sm:grid-cols-5 sm:divide-x`}>
-      {stats.isPending ? (
-        <div className="col-span-full">
-          <Spinner />
-        </div>
-      ) : stats.isError ? (
-        <div className="col-span-full">
-          <ErrorState message={stats.error.message} onRetry={() => stats.refetch()} />
-        </div>
-      ) : (
-        items.map((it) => (
-          <div key={it.label} className="px-5 py-4">
-            <p className="text-sm text-ink-3">{it.label}</p>
-            <p className="tabular mt-1 text-2xl font-extrabold text-ink">{it.value.toLocaleString('ko-KR')}</p>
+    <div className="flex flex-col gap-8">
+      <section className="flex flex-col gap-3">
+        <h2 className="px-1 text-[17px] font-extrabold text-ink">할 일</h2>
+        <TaskList tasks={tasks} onGo={onGo} />
+      </section>
+
+      <section className={`${cardClass} grid grid-cols-2 sm:grid-cols-4 sm:divide-x sm:divide-line`} aria-label="한눈에">
+        {kpis.map((k) => (
+          <div key={k.label} className="px-5 py-4">
+            <p className="text-sm text-ink-3">{k.label}</p>
+            <p className="tabular mt-0.5 text-2xl font-extrabold text-ink">{k.value.toLocaleString('ko-KR')}</p>
           </div>
-        ))
+        ))}
+      </section>
+
+      {isOwner ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="px-1 text-[17px] font-extrabold text-ink">학교별</h2>
+          <ul className={`${cardClass} divide-y divide-line overflow-hidden`}>
+            {schools.data.map((school) => {
+              const count = current.filter((m) => m.school.id === school.id).length
+              const meetupCount = meetups.data.filter((m) => m.school.id === school.id).length
+              const reportCount = openReports.filter((r) => r.school?.id === school.id).length
+              const temp = school.latestCohort === PLACEHOLDER_COHORT
+              return (
+                <li key={school.id} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-5 py-3.5">
+                  <span className="flex min-w-0 flex-1 basis-40 items-center gap-2">
+                    <SchoolBadge school={school} />
+                    <span className="truncate text-sm text-ink-3">{school.graduateSchool}</span>
+                  </span>
+                  <span className="tabular flex shrink-0 items-center gap-3 text-sm text-ink-2">
+                    <span>원우 <b className="text-ink">{count}</b></span>
+                    <span>3교시 <b className="text-ink">{meetupCount}</b></span>
+                    <span className={reportCount > 0 ? 'font-semibold text-danger-ink' : ''}>
+                      신고 <b>{reportCount}</b>
+                    </span>
+                    <span className={temp ? 'rounded bg-exit/30 px-1.5 py-0.5 font-semibold text-ink' : ''}>
+                      {temp ? '기수 미정' : `최신 ${school.latestCohort}기`}
+                    </span>
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ) : (
+        <section className="flex flex-col gap-3">
+          <h2 className="px-1 text-[17px] font-extrabold text-ink">다가오는 우리 학교 3교시</h2>
+          {upcoming.length === 0 ? (
+            <div className={cardClass}>
+              <EmptyState title="다가오는 3교시가 없어요" />
+            </div>
+          ) : (
+            <div className={`${cardClass} divide-y divide-line overflow-hidden`}>
+              {upcoming.map((m) => (
+                <MeetupRow key={m.id} meetup={m} now={now} showDate />
+              ))}
+            </div>
+          )}
+        </section>
       )}
-    </section>
+    </div>
   )
 }
 
@@ -156,7 +323,7 @@ function MemberStats({ list: all, multiSchool }: { list: AdminMember[]; multiSch
     { label: '카카오 미연결', value: unlinked },
   ]
   return (
-    <section className={`${cardClass} flex flex-col gap-6 px-5 py-5`} aria-label="원우 통계">
+    <section className={`${cardClass} flex flex-col px-5 py-4`} aria-label="원우 통계">
       <div className="grid grid-cols-2 gap-y-3 sm:grid-cols-4">
         {tiles.map((t) => (
           <div key={t.label}>
@@ -165,11 +332,17 @@ function MemberStats({ list: all, multiSchool }: { list: AdminMember[]; multiSch
           </div>
         ))}
       </div>
-      <div className="grid gap-6 sm:grid-cols-2">
-        {multiSchool && <BarList title="학교별 원우" buckets={countBySchool(list)} total={list.length} />}
-        <BarList title="기수별 원우" buckets={countByCohort(list)} total={list.length} />
-        <BarList title="학과별 원우" buckets={countByDepartment(list)} total={list.length} />
-      </div>
+      <details className="group mt-3 border-t border-line pt-3">
+        <summary className="flex cursor-pointer list-none items-center gap-1 text-sm font-semibold text-ink-2">
+          학교·학과·기수별 보기
+          <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden />
+        </summary>
+        <div className="mt-4 grid gap-6 sm:grid-cols-2">
+          {multiSchool && <BarList title="학교별 원우" buckets={countBySchool(list)} total={list.length} />}
+          <BarList title="학과별 원우" buckets={countByDepartment(list)} total={list.length} />
+          <BarList title="기수별 원우" buckets={countByCohort(list)} total={list.length} />
+        </div>
+      </details>
     </section>
   )
 }
@@ -199,17 +372,25 @@ function FilterSelect({
 
 function MemberFilterBar({
   list,
+  schools,
   filters,
   onChange,
 }: {
   list: AdminMember[]
+  /** 등록된 모든 학교 (원우가 없는 학교도 보인다) */
+  schools: School[]
   filters: MemberFilters
   onChange: (next: MemberFilters) => void
 }) {
-  const schools = useMemo(() => countBySchool(list), [list])
-  const cohorts = useMemo(() => countByCohort(list), [list])
-  const departments = useMemo(() => countByDepartment(list), [list])
+  const isOwner = useIsOwner()
   const set = (patch: Partial<MemberFilters>) => onChange({ ...filters, ...patch })
+  const current = list.filter((m) => m.status !== 'WITHDRAWN')
+  const countOf = (schoolId: number) => current.filter((m) => m.school.id === schoolId).length
+  // 학교를 고르면 학과·기수는 그 학교 것만
+  const picked = filters.school === 'all' ? null : schools.find((s) => s.id === filters.school) ?? null
+  const scoped = picked ? list.filter((m) => m.school.id === picked.id) : list
+  const cohorts = countByCohort(scoped.filter((m) => m.status !== 'WITHDRAWN'))
+  const departmentSchools = picked ? [picked] : isOwner ? schools : schools.filter((s) => list.some((m) => m.school.id === s.id))
 
   return (
     <div className="flex flex-col gap-3">
@@ -221,40 +402,50 @@ function MemberFilterBar({
         value={filters.q}
         onChange={(e) => set({ q: e.target.value })}
       />
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <FilterSelect
-          label="학교"
-          value={String(filters.school)}
-          onChange={(v) => set({ school: v === 'all' ? v : Number(v) })}
-        >
-          <option value="all">전체</option>
-          {schools.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
-            </option>
-          ))}
-        </FilterSelect>
-        <FilterSelect
-          label="기수"
-          value={String(filters.cohort)}
-          onChange={(v) => set({ cohort: v })}
-        >
-          <option value="all">전체</option>
-          {cohorts.map((c) => (
-            <option key={c.key} value={c.key}>
-              {c.label}
-            </option>
-          ))}
-        </FilterSelect>
+      <div className={`grid grid-cols-2 gap-2 ${isOwner ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
+        {isOwner && (
+          <FilterSelect
+            label="학교"
+            value={String(filters.school)}
+            // 학교를 바꾸면 학과·기수는 처음부터
+            onChange={(v) => set({ school: v === 'all' ? v : Number(v), department: 'all', cohort: 'all' })}
+          >
+            <option value="all">전체 ({current.length})</option>
+            {schools.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.shortName} ({countOf(s.id)})
+              </option>
+            ))}
+          </FilterSelect>
+        )}
         <FilterSelect
           label="학과"
           value={String(filters.department)}
           onChange={(v) => set({ department: v === 'all' || v === 'none' ? v : Number(v) })}
         >
           <option value="all">전체</option>
-          {departments.map((d) => (
-            <option key={d.key} value={d.key}>
-              {d.label}
+          {departmentSchools.length === 1
+            ? departmentSchools[0].departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))
+            : departmentSchools.map((s) => (
+                <optgroup key={s.id} label={s.shortName}>
+                  {s.departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+          <option value="none">학과 미입력</option>
+        </FilterSelect>
+        <FilterSelect label="기수" value={String(filters.cohort)} onChange={(v) => set({ cohort: v })}>
+          <option value="all">전체</option>
+          {cohorts.map((c) => (
+            <option key={c.key} value={c.key}>
+              {c.label}
             </option>
           ))}
         </FilterSelect>
@@ -265,7 +456,7 @@ function MemberFilterBar({
           <option value="USER">{ROLE_LABEL.USER}</option>
         </FilterSelect>
         <FilterSelect label="상태" value={filters.status} onChange={(v) => set({ status: v as MemberFilters['status'] })}>
-          <option value="all">전체</option>
+          <option value="all">전체 (탈퇴 빼고)</option>
           <option value="ACTIVE">활동 중</option>
           <option value="BANNED">차단됨</option>
           <option value="WITHDRAWN">탈퇴</option>
@@ -357,12 +548,13 @@ function MembersGrid({ list, onOpen }: { list: AdminMember[]; onOpen: (m: AdminM
     <div className="flex flex-col gap-3">
       {/* 데스크톱: 표 */}
       <div className={`${cardClass} hidden overflow-x-auto md:block`}>
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[720px] text-sm">
           <thead className="border-b border-line">
             <tr>
               <SortHeader label="이름" sortKey="name" sort={sort} onSort={onSort} />
-              <SortHeader label="소속" sortKey="cohort" sort={sort} onSort={onSort} />
               <SortHeader label="학교" sortKey="school" sort={sort} onSort={onSort} />
+              <SortHeader label="학과" sortKey="department" sort={sort} onSort={onSort} />
+              <SortHeader label="기수" sortKey="cohort" sort={sort} onSort={onSort} />
               <th scope="col" className="px-3 py-2.5 text-left text-xs font-semibold text-ink-3">
                 이메일
               </th>
@@ -384,12 +576,13 @@ function MembersGrid({ list, onOpen }: { list: AdminMember[]; onOpen: (m: AdminM
                     <StatusBadges m={m} />
                   </span>
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap text-ink-2">
-                  {affiliation(m.cohortLabel, m.departmentShortLabel)}
-                </td>
                 <td className="px-3 py-2.5 whitespace-nowrap">
                   <SchoolBadge school={m.school} />
                 </td>
+                <td className="max-w-44 truncate px-3 py-2.5 text-ink-2" title={m.departmentLabel ?? undefined}>
+                  {m.departmentLabel ?? '–'}
+                </td>
+                <td className="tabular px-3 py-2.5 whitespace-nowrap text-ink-2">{m.cohortLabel}</td>
                 <td className="max-w-48 truncate px-3 py-2.5 text-ink-2">{m.email ?? '–'}</td>
                 <td className="px-3 py-2.5 text-right whitespace-nowrap text-ink-3">{formatRelative(m.createdAt)}</td>
               </tr>
@@ -408,7 +601,7 @@ function MembersGrid({ list, onOpen }: { list: AdminMember[]; onOpen: (m: AdminM
                 <SchoolBadge school={m.school} />
                 <StatusBadges m={m} />
               </span>
-              <span className="text-sm text-ink-2">{affiliation(m.cohortLabel, m.departmentShortLabel)}</span>
+              <span className="text-sm text-ink-2">{[m.departmentLabel, m.cohortLabel].filter(Boolean).join(' · ')}</span>
               {m.email && <span className="truncate text-[13px] text-ink-3">{m.email}</span>}
             </button>
           </li>
@@ -446,6 +639,7 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
   const changeRole = useChangeRole()
   const updateProfile = useUpdateMemberProfile()
   const assignEmail = useAssignEmail()
+  const withdrawMember = useWithdrawMember()
 
   const [name, setName] = useState(m.name)
   const [cohort, setCohort] = useState(String(m.cohort))
@@ -483,7 +677,7 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
       {
         onSuccess: () => {
           setEmail('')
-          toast.show('학교 이메일을 넣어 뒀어요. 본인이 그 이메일로 인증하면 이 계정으로 이어져요', 'ok')
+          toast.show('이메일을 넣었어요. 본인이 인증하면 이어져요', 'ok')
         },
         onError: fail,
       },
@@ -522,7 +716,7 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
       <div className="flex flex-col gap-6 px-5 py-5">
         {withdrawn && (
           <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2">
-            탈퇴한 원우예요. 이름·이메일·카카오 연결은 지워졌어요.
+            탈퇴한 원우예요. 개인정보는 지워졌어요.
           </p>
         )}
         {!withdrawn && !canManage && (
@@ -534,7 +728,7 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
         {canManage && (
           <form onSubmit={saveProfile} className="flex flex-col gap-4" noValidate>
             <h3 className="text-[15px] font-extrabold">이름·기수·학과 고치기</h3>
-            <p className="-mt-2 text-sm text-ink-3">원우는 직접 못 바꿔요. 요청을 받으면 여기서 고쳐 주세요.</p>
+            <p className="-mt-2 text-sm text-ink-3">원우가 요청하면 여기서 고쳐요</p>
             <Field label="이름">
               {({ id }) => <input id={id} className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />}
             </Field>
@@ -555,8 +749,9 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
           <form onSubmit={saveEmail} className="flex flex-col gap-3 border-t border-line pt-5" noValidate>
             <h3 className="text-[15px] font-extrabold">학교 이메일 넣어 두기</h3>
             <p className="-mt-1 text-sm leading-relaxed text-ink-3">
-              아직 카카오로 로그인하지 않은 예전 회원이에요. 본인 학교 이메일을 넣어 두면, 본인이 카카오로 로그인해 그
-              이메일을 인증할 때 이 계정(3교시 기록 포함)으로 이어져요.
+              카카오로 아직 안 들어온 예전 회원이에요.
+              <br />
+              이메일을 넣어 두면 본인 인증 때 이 계정으로 이어져요.
             </p>
             <div className="flex gap-2">
               <input
@@ -586,7 +781,7 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
                   const next = m.role === 'MANAGER' ? 'USER' : 'MANAGER'
                   const message =
                     next === 'MANAGER'
-                      ? `${m.name} 님을 ${m.school.shortName} 교수로 임명할까요? ${m.school.shortName} 원우 차단·프로필 수정, 3교시 취소, 공지·신고 관리를 할 수 있게 돼요.`
+                      ? `${m.name} 님을 ${m.school.shortName} 교수로 임명할까요?\n\n${m.school.shortName} 원우·3교시·공지·신고를 관리하게 돼요.`
                       : `${m.name} 님의 교수 직책을 내려놓을까요?`
                   if (!window.confirm(message)) return
                   changeRole.mutate(
@@ -625,6 +820,37 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
           </div>
         )}
 
+        {isOwner && !withdrawn && m.role !== 'OWNER' && (
+          <div className="flex flex-col gap-2 rounded-xl border border-danger/40 px-4 py-4">
+            <p className="text-[15px] font-extrabold text-danger-ink">탈퇴시키기</p>
+            <p className="text-sm text-ink-2">이름·이메일·카카오 연결을 지워요. 되돌릴 수 없어요.</p>
+            <Button
+              size="sm"
+              variant="danger"
+              className="self-start"
+              loading={withdrawMember.isPending}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `${m.name} 님을 탈퇴시킬까요?\n\n• 이름·이메일·카카오 연결이 지워져요\n• 연 3교시는 취소, 모집 중인 3교시에서는 빠져요\n• 같은 학교 이메일로 다시 가입할 수는 있어요`,
+                  )
+                )
+                  return
+                withdrawMember.mutate(m.id, {
+                  onSuccess: () => {
+                    toast.show('탈퇴시켰어요', 'ok')
+                    ref.current?.close()
+                  },
+                  onError: fail,
+                })
+              }}
+            >
+              <UserX className="size-4" aria-hidden />
+              탈퇴시키기
+            </Button>
+          </div>
+        )}
+
         <FormError message={error} />
       </div>
     </dialog>
@@ -633,24 +859,26 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
 
 function Members() {
   const { data, isPending, isError, error, refetch } = useAdminMembers()
+  const schools = useAdminSchools()
   const isOwner = useIsOwner()
   const [filters, setFilters] = useState<MemberFilters>(EMPTY_FILTERS)
   const [openId, setOpenId] = useState<number | null>(null)
 
   const filtered = useMemo(() => (data ? filterMembers(data, filters) : []), [data, filters])
 
-  if (isPending) return <Spinner />
+  if (isPending || schools.isPending) return <Spinner />
   if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
+  if (schools.isError) return <ErrorState message={schools.error.message} onRetry={() => schools.refetch()} />
 
-  const multiSchool = new Set(data.map((m) => m.school.id)).size > 1
+  const multiSchool = isOwner
   const opened = openId === null ? undefined : data.find((m) => m.id === openId)
 
   return (
     <div className="flex flex-col gap-5">
-      <MemberFilterBar list={data} filters={filters} onChange={setFilters} />
+      <MemberFilterBar list={data} schools={schools.data} filters={filters} onChange={setFilters} />
       <MemberStats list={filtered} multiSchool={multiSchool} />
       {!isOwner && (
-        <p className="px-1 text-sm text-ink-3">우리 학교 원우만 보여요. 교수에게는 원우 이메일이 가려져 보여요.</p>
+        <p className="px-1 text-sm text-ink-3">우리 학교 원우 · 이메일은 가려져요</p>
       )}
       <MembersGrid list={filtered} onOpen={(m) => setOpenId(m.id)} />
       {/* 목록이 새로 고쳐져도 같은 원우를 계속 보여준다 */}
@@ -676,9 +904,7 @@ function Meetups() {
   return (
     <div className="flex flex-col gap-3">
       <p className="px-1 text-sm text-ink-3">
-        {isOwner ? '다섯 학교의 3교시가 모두 보여요. ' : '우리 학교 원우가 연 3교시가 보여요. '}
-        무산·취소된 것과 다른 기수 전용 3교시도 보여요.{' '}
-        {isOwner ? '대학원장에게는 모두 실명으로 보여요.' : '교수에게도 이름은 원우와 똑같이 가려져요.'}
+        {isOwner ? '다섯 학교 · 무산·취소 포함 · 실명' : '우리 학교 · 무산·취소 포함 · 이름은 가려져요'}
       </p>
       <div className={`${cardClass} divide-y divide-line overflow-hidden`}>
         {data.map((m) => (
@@ -804,9 +1030,8 @@ function Reports() {
   if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
   return (
     <div className="flex flex-col gap-3">
-      <p className="px-1 text-sm leading-relaxed text-ink-3">
-        {isOwner ? '다섯 학교의 신고가 모두 보여요.' : '우리 학교 3교시·공지·원우에 대한 신고가 보여요.'} 신고한 사람은
-        보이지 않아요. 확인하면 글을 지우거나 3교시를 취소하고, 필요하면 이용을 막아요.
+      <p className="px-1 text-sm text-ink-3">
+        {isOwner ? '다섯 학교 신고' : '우리 학교 신고'} · 신고한 사람은 안 보여요
       </p>
       {data.length === 0 ? (
         <div className={cardClass}>
@@ -870,7 +1095,7 @@ function SchoolInfoForm({ school }: { school: School }) {
           />
         )}
       </Field>
-      <Field label="최신 기수" hint="가입할 때 1기부터 이 기수까지 고를 수 있어요">
+      <Field label="최신 기수" hint="가입 때 1기 ~ 이 기수 중에 골라요">
         {({ id, describedBy }) => (
           <div className="relative">
             <input
@@ -913,7 +1138,7 @@ function DomainList({ school, editable }: { school: School; editable: boolean })
                 type="button"
                 aria-label={`@${d.domain} 빼기`}
                 onClick={() => {
-                  if (!window.confirm(`@${d.domain} 을 빼면 이 도메인으로는 새로 인증할 수 없어요. 뺄까요?`)) return
+                  if (!window.confirm(`@${d.domain} 을 뺄까요?\n이 도메인으로는 새로 인증할 수 없어요.`)) return
                   removeDomain.mutate(
                     { schoolId: school.id, domainId: d.id },
                     { onSuccess: () => toast.show('도메인을 뺐어요', 'ok'), onError: (e) => toast.show(e.message, 'error') },
@@ -927,7 +1152,7 @@ function DomainList({ school, editable }: { school: School; editable: boolean })
           </li>
         ))}
       </ul>
-      <p className="text-[13px] text-ink-3">하위 도메인도 같은 학교로 봐요 (skku.edu 면 g.skku.edu 도).</p>
+      <p className="text-[13px] text-ink-3">하위 도메인도 포함돼요 (skku.edu → g.skku.edu)</p>
       {editable && (
         <form
           noValidate
@@ -1066,10 +1291,7 @@ function DepartmentList({ school, editable }: { school: School; editable: boolea
       )}
       {editable && (
         <>
-          <p className="text-[13px] text-ink-3">
-            숨긴 학과는 가입할 때 고를 수 없지만, 이미 그 학과인 원우에게는 그대로 보여요. 짧은 이름은 이름 옆에 붙어요 (김*대 ·
-            61기 · <b>인융</b>). 대학원은 학교에 적은 대학원과 다를 때만 적어요 (예: 연세대 공학대학원).
-          </p>
+          <p className="text-[13px] text-ink-3">숨긴 학과는 가입 때 안 보여요 · 대학원은 학교와 다를 때만</p>
           <form
             noValidate
             className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"
@@ -1123,18 +1345,45 @@ function DepartmentList({ school, editable }: { school: School; editable: boolea
 }
 
 function SchoolCard({ school, editable }: { school: School; editable: boolean }) {
+  const [open, setOpen] = useState(false)
+  const temp = school.latestCohort === PLACEHOLDER_COHORT
+  const departments = school.departments.filter((d) => d.active).length
   return (
-    <section className={`${cardClass} flex flex-col gap-5 px-5 py-5`} aria-label={school.name}>
-      <header className="flex flex-wrap items-center gap-2">
-        <SchoolBadge school={school} />
-        <h3 className="text-[17px] font-extrabold text-ink">{school.name}</h3>
-        <span className="text-sm text-ink-3">
-          {[school.graduateSchool, `최신 ${school.latestCohort}기`].filter(Boolean).join(' · ')}
+    <section className={`${cardClass} overflow-hidden`} aria-label={school.name}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-surface-2"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <SchoolBadge school={school} />
+            <span className="text-[17px] font-extrabold text-ink">{school.name}</span>
+          </span>
+          <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink-3">
+            {school.graduateSchool && <span>{school.graduateSchool}</span>}
+            <span className={temp ? 'font-semibold text-danger-ink' : ''}>
+              {temp ? '최신 기수 미정' : `최신 ${school.latestCohort}기`}
+            </span>
+            <span>학과 {departments}</span>
+            <span>도메인 {school.emailDomains.length}</span>
+          </span>
         </span>
-      </header>
-      {editable && <SchoolInfoForm key={`${school.name}-${school.shortName}-${school.graduateSchool}-${school.latestCohort}`} school={school} />}
-      <DomainList school={school} editable={editable} />
-      <DepartmentList school={school} editable={editable} />
+        <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-accent-ink">
+          {editable ? (open ? '접기' : '고치기') : open ? '접기' : '보기'}
+          <ChevronDown className={`size-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+        </span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-6 border-t border-line px-5 py-5">
+          {editable && (
+            <SchoolInfoForm key={`${school.name}-${school.shortName}-${school.graduateSchool}-${school.latestCohort}`} school={school} />
+          )}
+          <DomainList school={school} editable={editable} />
+          <DepartmentList school={school} editable={editable} />
+        </div>
+      )}
     </section>
   )
 }
@@ -1165,11 +1414,12 @@ function AddSchoolForm() {
   }
 
   return (
-    <section className={`${cardClass} px-5 py-5`}>
-      <h2 className="text-[17px] font-extrabold text-ink">학교 추가</h2>
-      <p className="mt-1 text-sm leading-relaxed text-ink-2">
-        새로 넣은 학교는 기본 색으로 보여요. 학교 색 테마는 다섯 학교만 있어요.
-      </p>
+    <details className={`${cardClass} group px-5 py-4`}>
+      <summary className="flex cursor-pointer list-none items-center gap-1 font-bold text-ink">
+        학교 추가
+        <ChevronDown className="size-4 text-ink-3 transition-transform group-open:rotate-180" aria-hidden />
+        <span className="ml-auto text-sm font-medium text-ink-3">새 학교는 기본 색</span>
+      </summary>
       <form onSubmit={submit} className="mt-4 grid gap-3 sm:grid-cols-[1fr_8rem_1fr_auto] sm:items-end" noValidate>
         <Field label="학교 이름">
           {({ id }) => <input id={id} className={inputClass} placeholder="예: 국민대학교" value={name} onChange={(e) => setName(e.target.value)} />}
@@ -1198,7 +1448,7 @@ function AddSchoolForm() {
           <FormError message={error} />
         </div>
       </form>
-    </section>
+    </details>
   )
 }
 
@@ -1208,11 +1458,9 @@ function Schools() {
   if (schools.isPending) return <Spinner />
   if (schools.isError) return <ErrorState message={schools.error.message} onRetry={() => schools.refetch()} />
   return (
-    <div className="flex flex-col gap-6">
-      <p className="px-1 text-sm leading-relaxed text-ink-3">
-        {isOwner
-          ? '연세대·성균관대·서강대·한양대의 학과와 최신 기수는 공개 자료로 넣은 임시값이에요. 각 학교 원우에게 확인해서 고쳐 주세요.'
-          : '학교 정보는 대학원장만 바꿀 수 있어요. 고칠 게 있으면 대학원장에게 알려 주세요.'}
+    <div className="flex flex-col gap-3">
+      <p className="px-1 text-sm text-ink-3">
+        {isOwner ? '학과·최신 기수는 공개 자료로 넣은 값이에요. 학교별로 확인해 주세요' : '학교 정보는 대학원장만 고칠 수 있어요'}
       </p>
       {schools.data.map((s) => (
         <SchoolCard key={s.id} school={s} editable={isOwner} />
@@ -1224,17 +1472,19 @@ function Schools() {
 
 export function AdminPage() {
   const { member } = useAuth()
-  const [tab, setTab] = useState<Tab>('members')
+  const [tab, setTab] = useState<Tab>('home')
+  const stats = useAdminStats()
+  const open = stats.data?.openReports ?? 0
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">
             관리
             {member && member.role !== 'USER' && <RoleTag role={member.role} />}
           </h1>
           <p className="mt-1 text-[15px] text-ink-2">
-            {member?.role === 'OWNER' ? '다섯 학교 원우·신고·3교시와 학교 정보' : `${member?.school.shortName} 원우·신고·3교시`}
+            {member?.role === 'OWNER' ? '다섯 학교 전체' : `${member?.school.shortName}`}
           </p>
         </div>
         <Segmented
@@ -1242,15 +1492,15 @@ export function AdminPage() {
           value={tab}
           onChange={setTab}
           options={[
+            { value: 'home', label: '홈' },
+            { value: 'reports', label: open > 0 ? `신고 ${open}` : '신고' },
             { value: 'members', label: '원우' },
-            { value: 'reports', label: '신고' },
-            { value: 'overview', label: '현황' },
             { value: 'meetups', label: '3교시' },
             { value: 'schools', label: '학교' },
           ]}
         />
       </div>
-      {tab === 'overview' && <Overview />}
+      {tab === 'home' && <AdminHome onGo={setTab} />}
       {tab === 'members' && <Members />}
       {tab === 'reports' && <Reports />}
       {tab === 'meetups' && <Meetups />}

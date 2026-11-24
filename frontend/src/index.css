@@ -351,6 +351,13 @@
   h3 {
     text-wrap: balance;
   }
+
+  /* 단락: 마지막 줄에 한 어절만 남지 않게 */
+  p,
+  li,
+  dd {
+    text-wrap: pretty;
+  }
 }
 
 @layer utilities {

@@ -66,6 +66,12 @@ describe('filterMembers', () => {
     expect(filterMembers(list, { ...EMPTY_FILTERS, cohort: '2-3' }).map((m) => m.id)).toEqual([5])
   })
 
+  it('탈퇴한 원우는 상태에서 "탈퇴"를 골랐을 때만 보인다', () => {
+    const withGone = [...list, member({ id: 9, name: '탈퇴한 원우', status: 'WITHDRAWN' })]
+    expect(filterMembers(withGone, EMPTY_FILTERS).map((m) => m.id)).not.toContain(9)
+    expect(filterMembers(withGone, { ...EMPTY_FILTERS, status: 'WITHDRAWN' }).map((m) => m.id)).toEqual([9])
+  })
+
   it('학과 미입력도 고를 수 있다', () => {
     expect(filterMembers(list, { ...EMPTY_FILTERS, department: 'none' }).map((m) => m.id)).toEqual([4])
   })

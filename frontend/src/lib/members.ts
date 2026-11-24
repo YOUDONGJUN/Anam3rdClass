@@ -30,7 +30,8 @@ export function filterMembers(list: readonly AdminMember[], f: MemberFilters): A
     if (f.department === 'none' ? m.departmentId !== null : f.department !== 'all' && m.departmentId !== f.department)
       return false
     if (f.role !== 'all' && m.role !== f.role) return false
-    if (f.status !== 'all' && m.status !== f.status) return false
+    // 탈퇴한 원우는 상태에서 "탈퇴"를 골랐을 때만 보인다
+    if (f.status === 'all' ? m.status === 'WITHDRAWN' : m.status !== f.status) return false
     if (!q) return true
     return [m.name, m.email ?? '', m.cohortLabel, m.departmentLabel ?? '', m.school.name, m.school.shortName].some(
       (s) => s.toLowerCase().includes(q),

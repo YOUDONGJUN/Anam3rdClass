@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import { MeetupOptionTags } from './MeetupOptionTags'
 import { MapPin } from 'lucide-react'
 import type { MeetupSummary } from '../api/types'
 import { useMeetupAction } from '../api/queries'
@@ -78,6 +79,7 @@ export function MeetupRow({ meetup, showDate = false, now }: { meetup: MeetupSum
             <span className="truncate">{meetup.place}</span>
           </p>
           {meetup.purposes.length > 0 && <PurposeTags purposes={meetup.purposes} />}
+          <MeetupOptionTags meetup={meetup} />
         </div>
 
         <div className="mt-3 flex items-center gap-3">

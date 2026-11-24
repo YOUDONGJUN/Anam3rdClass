@@ -93,7 +93,7 @@ export function AffiliationFields({ schoolId, cohort, departmentId, onCohortChan
           })}
           {school && school.departments.length === 0 && (
             <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2">
-              아직 등록된 학과가 없어요. 대학원장에게 학과를 넣어 달라고 알려 주세요.
+              등록된 학과가 없어요. 대학원장에게 알려 주세요.
             </p>
           )}
         </div>

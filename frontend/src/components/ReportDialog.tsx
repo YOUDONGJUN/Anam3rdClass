@@ -54,7 +54,7 @@ export function ReportDialog({ target, onClose }: { target: ReportTargetInfo; on
   }
 
   function doBlock() {
-    if (!window.confirm('차단할까요? 서로가 연 3교시가 목록에 안 보이고, 서로의 3교시에 참여할 수 없어요.')) return
+    if (!window.confirm('차단할까요?\n\n• 서로가 연 3교시가 안 보여요\n• 서로의 3교시에 참여할 수 없어요')) return
     setError(null)
     block.mutate(target.id, {
       onSuccess: () => {
@@ -130,7 +130,7 @@ export function ReportDialog({ target, onClose }: { target: ReportTargetInfo; on
           />
         </label>
         <p className="text-[13px] leading-relaxed text-ink-3">
-          신고는 교수·대학원장에게만 가고, 누가 신고했는지는 아무에게도 보이지 않아요.
+          교수·대학원장만 봐요. 누가 신고했는지는 아무도 몰라요.
         </p>
         <Button type="submit" variant="danger" loading={report.isPending}>
           <Flag className="size-4" aria-hidden />
@@ -141,7 +141,7 @@ export function ReportDialog({ target, onClose }: { target: ReportTargetInfo; on
           <div className="mt-2 flex flex-col gap-2 border-t border-line pt-5">
             <p className="text-[15px] font-bold">차단하기</p>
             <p className="text-sm leading-relaxed text-ink-2">
-              서로가 연 3교시가 목록에 안 보이고, 서로의 3교시에 참여할 수 없어요. 상대에게는 알리지 않아요.
+              서로의 3교시가 안 보이고 참여도 못 해요. 상대는 몰라요.
             </p>
             <Button variant="secondary" loading={block.isPending} onClick={doBlock}>
               <Ban className="size-4" aria-hidden />

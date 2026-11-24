@@ -431,4 +431,97 @@ class MeetupApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.onlyCohort").isEmpty())
                 .andExpect(jsonPath("$.canJoin").value(true));
     }
+
+    // ---------- 중간 합류 · 참여비 · 지우기 ----------
+
+    private String optionsJson(Integer min, boolean lateJoin, Integer fee, Boolean feePrepaid) {
+        return """
+                {"title":"치맥 번개","description":"","place":"안암역 앞","categories":["BEER"],"purposes":[],
+                 "meetAt":"%s","deadlineAt":"%s","minPeople":%s,"maxPeople":6,"openChatUrl":"",
+                 "audience":"SCHOOL","lateJoin":%s,"fee":%s,"feePrepaid":%s}
+                """.formatted(T0.plus(IN_2H), T0.plus(IN_1H), min, lateJoin, fee, feePrepaid);
+    }
+
+    @Test
+    void 참여비와_선입금_중간_합류는_열_때_정한다() throws Exception {
+        long id = ((Number) read(post("/api/meetups", host, optionsJson(2, true, 15000, true))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.lateJoin").value(true))
+                .andExpect(jsonPath("$.fee").value(15000))
+                .andExpect(jsonPath("$.feePrepaid").value(true)), "$.id")).longValue();
+        get("/api/meetups", horang)
+                .andExpect(jsonPath("$[?(@.id == " + id + ")].fee").value(15000))
+                .andExpect(jsonPath("$[?(@.id == " + id + ")].lateJoin").value(true));
+
+        // 참여비 없이 선입금은 안 된다, 참여비는 1,000원 이상
+        post("/api/meetups", host, optionsJson(2, false, null, true))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_FEE"));
+        post("/api/meetups", host, optionsJson(2, false, 500, false)).andExpect(status().isBadRequest());
+
+        // 비우면 참여비 없음 · 중간 합류 아님
+        long plain = createMeetup(host, 2, 6, IN_2H, IN_1H, null);
+        get("/api/meetups/" + plain, host)
+                .andExpect(jsonPath("$.fee").isEmpty())
+                .andExpect(jsonPath("$.feePrepaid").value(false))
+                .andExpect(jsonPath("$.lateJoin").value(false));
+    }
+
+    @Test
+    void 중간_합류_OK면_성사된_뒤에도_모임_시작_전까지_참여할_수_있다() throws Exception {
+        long late = ((Number) read(post("/api/meetups", host, optionsJson(2, true, null, false)), "$.id")).longValue();
+        long strict = createMeetup(host, 2, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + late + "/join", anam, null).andExpect(status().isOk());
+        post("/api/meetups/" + strict + "/join", anam, null).andExpect(status().isOk());
+
+        clock.advance(Duration.ofMinutes(90)); // 마감(1시간) 지남, 모임(2시간) 전
+        get("/api/meetups/" + late, horang).andExpect(jsonPath("$.canJoin").value(true));
+        post("/api/meetups/" + late + "/join", horang, null).andExpect(status().isOk());
+        get("/api/meetups/" + strict, horang).andExpect(jsonPath("$.canJoin").value(false));
+        post("/api/meetups/" + strict + "/join", horang, null)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CLOSED"));
+
+        clock.advance(Duration.ofMinutes(31)); // 모임 시작 뒤에는 받지 않는다
+        post("/api/meetups/" + late + "/join", outsider, null).andExpect(jsonPath("$.code").value("CLOSED"));
+    }
+
+    @Test
+    void 중간_합류_OK라도_마감까지_못_모여_무산되면_참여할_수_없다() throws Exception {
+        long late = ((Number) read(post("/api/meetups", host, optionsJson(3, true, null, false)), "$.id")).longValue();
+        clock.advance(Duration.ofMinutes(90));
+        post("/api/meetups/" + late + "/join", horang, null).andExpect(jsonPath("$.code").value("CLOSED"));
+    }
+
+    @Test
+    void 지우기는_개설자_그_학교_교수_대학원장만_하고_신고는_남는다() throws Exception {
+        long id = createMeetup(host, 2, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + id + "/join", horang, null).andExpect(status().isOk());
+        post("/api/reports", horang, """
+                {"targetType":"MEETUP","targetId":%d,"reason":"SPAM","detail":""}
+                """.formatted(id)).andExpect(status().isNoContent());
+
+        get("/api/meetups/" + id, horang).andExpect(jsonPath("$.canDelete").value(false));
+        get("/api/meetups/" + id, host).andExpect(jsonPath("$.canDelete").value(true));
+        delete("/api/meetups/" + id, horang).andExpect(status().isForbidden());
+        delete("/api/meetups/" + id, host).andExpect(status().isNoContent());
+        get("/api/meetups/" + id, host).andExpect(status().isNotFound());
+        get("/api/me/meetups", horang).andExpect(jsonPath("$", hasSize(0)));
+
+        // 신고는 남고, 신고 당시 내용으로 확인한다
+        get("/api/admin/reports", ownerToken())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].meetupId").isEmpty())
+                .andExpect(jsonPath("$[0].targetSnapshot").value("치맥 번개\n수업 끝나고 한잔"));
+
+        // 교수는 우리 학교 3교시만, 대학원장은 모두
+        long other = createMeetup(host, 2, 6, IN_2H, IN_1H, null);
+        String yonseiManager = managerToken("prof@yonsei.ac.kr", "정교수", 1);
+        delete("/api/meetups/" + other, yonseiManager).andExpect(status().isForbidden());
+        String kuManager = managerToken("professor", "정교수", 58);
+        get("/api/meetups/" + other, kuManager).andExpect(jsonPath("$.canDelete").value(true));
+        delete("/api/meetups/" + other, kuManager).andExpect(status().isNoContent());
+        long third = createMeetup(host, 2, 6, IN_2H, IN_1H, null);
+        delete("/api/meetups/" + third, ownerToken()).andExpect(status().isNoContent());
+    }
 }

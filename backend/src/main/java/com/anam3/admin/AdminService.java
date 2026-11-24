@@ -126,8 +126,8 @@ public class AdminService {
     public AdminMemberView assignEmail(LoginMember viewer, Long memberId, String rawEmail) {
         Member member = load(memberId);
         requireNotWithdrawn(member);
-        if (member.getKakaoId() != null) {
-            throw ApiException.badRequest("ALREADY_LINKED", "이미 카카오로 로그인한 원우예요. 이메일은 본인 인증으로만 바뀌어요");
+        if (member.getKakaoId() != null || member.hasEmailPassword()) {
+            throw ApiException.badRequest("ALREADY_LINKED", "이미 로그인하는 원우예요. 이메일은 본인 인증으로만 바뀌어요");
         }
         String email = Emails.normalize(rawEmail);
         School school = schoolService.requireForEmail(email);

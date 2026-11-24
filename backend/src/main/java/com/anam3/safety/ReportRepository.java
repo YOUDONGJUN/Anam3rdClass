@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.anam3.member.MemberRole;
+
 public interface ReportRepository extends JpaRepository<Report, Long> {
 
     /** 3교시를 지워도 신고는 남긴다 (신고 당시 내용은 targetSnapshot 에 있다) */
@@ -27,16 +29,22 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
             """)
     List<Report> findForOwner(Pageable pageable);
 
-    /** 교수: 자기 학교 신고만 */
+    /** 교수: 자기 학교 신고 중 일반 원우가 대상인 것만 (교수·대학원장이 대상이면 대학원장만 본다) */
     @Query("""
             select r from Report r left join fetch r.meetup left join fetch r.notice
-              left join fetch r.member left join fetch r.school
-            where r.school.id = :schoolId
+              left join fetch r.member target left join fetch r.school
+            where r.school.id = :schoolId and (target is null or target.role = :user)
             order by r.status asc, r.createdAt desc, r.id desc
             """)
-    List<Report> findForSchool(@Param("schoolId") Long schoolId, Pageable pageable);
+    List<Report> findForSchool(@Param("schoolId") Long schoolId, @Param("user") MemberRole user, Pageable pageable);
 
     long countByStatus(Report.Status status);
 
-    long countBySchoolIdAndStatus(Long schoolId, Report.Status status);
+    /** 교수 현황: 자기 학교의, 일반 원우가 대상인 처리 안 된 신고 수 */
+    @Query("""
+            select count(r) from Report r left join r.member target
+            where r.school.id = :schoolId and r.status = :status and (target is null or target.role = :user)
+            """)
+    long countForSchool(@Param("schoolId") Long schoolId, @Param("status") Report.Status status,
+            @Param("user") MemberRole user);
 }

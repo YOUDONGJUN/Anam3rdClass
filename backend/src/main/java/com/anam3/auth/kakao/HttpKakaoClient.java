@@ -28,6 +28,8 @@ import com.anam3.common.AppProperties;
  *   <li>인가 코드 → 카카오 토큰 (kauth.kakao.com/oauth/token, 클라이언트 시크릿 포함)</li>
  *   <li>카카오 토큰 → 회원번호 (kapi.kakao.com/v2/user/me)</li>
  * </ol>
+ * 앱(안드로이드)은 카카오 SDK 로 받은 토큰을 보낸다 → 토큰 정보(kapi.kakao.com/v1/user/access_token_info)에서
+ * 우리 앱(KAKAO_APP_ID)의 토큰인지 확인하고 회원번호를 쓴다.
  */
 @Component
 public class HttpKakaoClient implements KakaoClient {
@@ -35,16 +37,19 @@ public class HttpKakaoClient implements KakaoClient {
     private static final Logger log = LoggerFactory.getLogger(HttpKakaoClient.class);
     private static final String TOKEN_URL = "https://kauth.kakao.com/oauth/token";
     private static final String USER_URL = "https://kapi.kakao.com/v2/user/me";
+    private static final String TOKEN_INFO_URL = "https://kapi.kakao.com/v1/user/access_token_info";
     private static final ParameterizedTypeReference<Map<String, Object>> JSON = new ParameterizedTypeReference<>() {
     };
 
     private final RestClient rest;
     private final String restApiKey;
     private final String clientSecret;
+    private final Long appId;
 
     public HttpKakaoClient(AppProperties props) {
         this.restApiKey = props.kakao() == null ? null : blankToNull(props.kakao().restApiKey());
         this.clientSecret = props.kakao() == null ? null : blankToNull(props.kakao().clientSecret());
+        this.appId = props.kakaoAppId();
 
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
@@ -77,6 +82,37 @@ public class HttpKakaoClient implements KakaoClient {
         } catch (RestClientResponseException e) {
             // 인가 코드 재사용(KOE320), Redirect URI 불일치(KOE006), 시크릿 불일치(KOE010) 등
             log.warn("카카오 로그인 실패: {} {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw loginFailed();
+        } catch (RestClientException e) {
+            log.warn("카카오 서버에 연결하지 못했습니다", e);
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "KAKAO_UNAVAILABLE",
+                    "카카오 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요");
+        }
+    }
+
+    @Override
+    public long fetchUserIdByAccessToken(String accessToken) {
+        if (appId == null) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "KAKAO_NOT_CONFIGURED",
+                    "앱 카카오 로그인이 아직 준비되지 않았어요. 관리자에게 알려 주세요");
+        }
+        try {
+            Map<String, Object> info = rest.get()
+                    .uri(TOKEN_INFO_URL)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                    .retrieve()
+                    .body(JSON);
+            if (info == null || !(info.get("id") instanceof Number id) || !(info.get("app_id") instanceof Number app)) {
+                throw loginFailed();
+            }
+            if (app.longValue() != appId) {
+                // 다른 카카오 앱에서 받은 토큰 → 남의 앱으로 우리 회원 행세를 못 하게 막는다
+                log.warn("다른 카카오 앱의 토큰으로 로그인하려 했습니다: app_id={}", app);
+                throw loginFailed();
+            }
+            return id.longValue();
+        } catch (RestClientResponseException e) {
+            log.warn("카카오 앱 로그인 실패: {} {}", e.getStatusCode(), e.getResponseBodyAsString());
             throw loginFailed();
         } catch (RestClientException e) {
             log.warn("카카오 서버에 연결하지 못했습니다", e);

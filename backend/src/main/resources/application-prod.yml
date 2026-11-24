@@ -10,6 +10,8 @@ app:
 
 spring:
   datasource:
+    # DATABASE_URL 이 없을 때 jar 안의 H2(메모리 DB)로 조용히 뜨지 않고 시작을 멈춘다
+    embedded-database-connection: none
     hikari:
       maximum-pool-size: 5
       minimum-idle: 0

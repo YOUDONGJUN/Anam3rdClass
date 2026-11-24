@@ -17,6 +17,7 @@ import type {
   NoticeDetail,
   NoticeInput,
   NoticeSummary,
+  PushType,
   Report,
   ReportInput,
   Role,
@@ -224,6 +225,13 @@ export function useUnblock() {
 
 export function useAgreeTerms() {
   return useMutation({ mutationFn: () => api<Member>('/api/me/terms', { method: 'POST' }) })
+}
+
+/** 끌 앱 알림 종류 (보낸 목록으로 통째로 바꾼다) → 바뀐 내 정보 */
+export function usePushSettings() {
+  return useMutation({
+    mutationFn: (off: PushType[]) => api<Member>('/api/me/push/settings', { method: 'PUT', body: { off } }),
+  })
 }
 
 /** 탈퇴 — 되돌릴 수 없다 */

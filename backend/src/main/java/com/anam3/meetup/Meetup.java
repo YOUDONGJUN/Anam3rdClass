@@ -105,6 +105,10 @@ public class Meetup {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /** 모집 마감 30분 전 알림을 보낸 시각 (마감을 바꾸면 다시 비운다 → 새 마감 전에 또 알린다) */
+    @Column(name = "deadline_reminded_at")
+    private Instant deadlineRemindedAt;
+
     protected Meetup() {
     }
 
@@ -260,6 +264,9 @@ public class Meetup {
 
     /** 시간 바꾸기 (시간 규칙은 MeetupService 가 먼저 본다) */
     public void reschedule(Instant meetAt, Instant deadlineAt, Instant now) {
+        if (!deadlineAt.equals(this.deadlineAt)) {
+            this.deadlineRemindedAt = null;
+        }
         this.meetAt = meetAt;
         this.deadlineAt = deadlineAt;
         this.updatedAt = now;

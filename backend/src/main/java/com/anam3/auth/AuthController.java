@@ -14,9 +14,12 @@ import com.anam3.auth.AuthDtos.AuthConfig;
 import com.anam3.auth.AuthDtos.AuthStep;
 import com.anam3.auth.AuthDtos.EmailCodeRequest;
 import com.anam3.auth.AuthDtos.EmailCodeSent;
+import com.anam3.auth.AuthDtos.EmailLoginRequest;
 import com.anam3.auth.AuthDtos.EmailVerifyRequest;
+import com.anam3.auth.AuthDtos.KakaoAppLoginRequest;
 import com.anam3.auth.AuthDtos.KakaoLoginRequest;
 import com.anam3.auth.AuthDtos.LegacyClaimRequest;
+import com.anam3.auth.AuthDtos.PasswordSetRequest;
 import com.anam3.auth.AuthDtos.SignupOptions;
 import com.anam3.auth.AuthDtos.SignupRequest;
 
@@ -48,6 +51,24 @@ public class AuthController {
         return authService.kakaoLogin(req);
     }
 
+    /** 앱(안드로이드): 카카오톡으로 로그인해서 받은 카카오 액세스 토큰으로 로그인 */
+    @PostMapping("/kakao/app")
+    public AuthStep kakaoApp(@Valid @RequestBody KakaoAppLoginRequest req) {
+        return authService.kakaoAppLogin(req);
+    }
+
+    /** 카카오 없이 시작 (가입 · 비밀번호 찾기 · 비밀번호 만들기): 학교 이메일 인증용 가입 토큰 */
+    @PostMapping("/email/start")
+    public AuthStep emailStart() {
+        return authService.emailStart();
+    }
+
+    /** 학교 이메일 + 비밀번호로 로그인 */
+    @PostMapping("/email/login")
+    public AuthStep emailLogin(@Valid @RequestBody EmailLoginRequest req) {
+        return authService.emailLogin(req);
+    }
+
     @PostMapping("/email/code")
     public EmailCodeSent emailCode(@Valid @RequestBody EmailCodeRequest req) {
         return authService.sendEmailCode(req);
@@ -62,6 +83,12 @@ public class AuthController {
     @ResponseStatus(HttpStatus.CREATED)
     public AuthStep signup(@Valid @RequestBody SignupRequest req) {
         return authService.signup(req);
+    }
+
+    /** 이미 가입한 학교 이메일을 인증한 뒤 새 비밀번호 (비밀번호 찾기 · 카카오 가입자의 비밀번호 만들기) */
+    @PostMapping("/password")
+    public AuthStep password(@Valid @RequestBody PasswordSetRequest req) {
+        return authService.setPassword(req);
     }
 
     /** 예전(아이디·비밀번호) 회원: 학교 이메일 인증 뒤 예전 아이디·비밀번호로 예전 계정을 잇는다 */

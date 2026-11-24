@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">안암3교시</string>
+    <string name="title_activity_main">안암3교시</string>
+    <string name="package_name">kr.anam3.app</string>
+    <string name="custom_url_scheme">kr.anam3.app</string>
+    <!-- 푸시 알림 채널 (lib/native.ts 의 PUSH_CHANNEL, 서버 FcmPushSender 와 같은 값) -->
+    <string name="push_channel_id" translatable="false">anam3</string>
+</resources>

@@ -21,5 +21,12 @@ export function loadedMainScript(doc: Document = document): string | null {
 
 /** 쓰던 내용이 날아갈 수 있는 화면 (여기서는 바로 새로고침하지 않고 다른 화면으로 옮길 때 한다) */
 export function isEditingPath(path: string) {
-  return /\/(new|edit)\/?$/.test(path) || path.startsWith('/signup') || path === '/me' || path.startsWith('/admin')
+  return (
+    /\/(new|edit)\/?$/.test(path) ||
+    path.startsWith('/signup') ||
+    path.startsWith('/password') ||
+    path.startsWith('/login/email') ||
+    path === '/me' ||
+    path.startsWith('/admin')
+  )
 }

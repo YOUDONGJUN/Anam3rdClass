@@ -71,8 +71,8 @@ public class MeetupMapper {
         boolean revealed = canSeeRealNames(m, viewer, joined);
         boolean open = m.isOpenAt(now);
         boolean canEdit = (hosting || viewer.isOwner()) && open;
-        boolean canCancel = (hosting || viewer.manages(m.getSchool().getId())) && open;
-        boolean canDelete = hosting || viewer.manages(m.getSchool().getId());
+        boolean canCancel = MeetupService.canModerate(m, viewer) && open;
+        boolean canDelete = MeetupService.canModerate(m, viewer);
         boolean joinable = joinableBy(m, viewer, now) && !blocked;
         boolean hasOpenChat = m.getOpenChatUrl() != null && !m.getOpenChatUrl().isBlank();
         boolean canSeeOpenChat = viewer.isOwner() || hosting || revealed;

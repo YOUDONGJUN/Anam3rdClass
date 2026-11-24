@@ -27,8 +27,12 @@ public class EmailVerification {
     @Column(nullable = false, length = 120)
     private String email;
 
+    /**
+     * 코드를 요청한 사람 (요청 횟수를 센다): 카카오로 시작했으면 카카오 회원번호, 이메일로 시작했으면 가입 토큰의 임의 음수.
+     * 이메일 로그인이 생기기 전 이름 그대로 kakao_id 열에 둔다
+     */
     @Column(name = "kakao_id", nullable = false)
-    private Long kakaoId;
+    private Long requesterId;
 
     @Column(name = "code_hash", nullable = false, length = 64)
     private String codeHash;
@@ -48,9 +52,9 @@ public class EmailVerification {
     protected EmailVerification() {
     }
 
-    public EmailVerification(String email, long kakaoId, String codeHash, Instant expiresAt, Instant now) {
+    public EmailVerification(String email, long requesterId, String codeHash, Instant expiresAt, Instant now) {
         this.email = email;
-        this.kakaoId = kakaoId;
+        this.requesterId = requesterId;
         this.codeHash = codeHash;
         this.attempts = 0;
         this.expiresAt = expiresAt;
@@ -82,8 +86,8 @@ public class EmailVerification {
         return email;
     }
 
-    public Long getKakaoId() {
-        return kakaoId;
+    public Long getRequesterId() {
+        return requesterId;
     }
 
     public String getCodeHash() {

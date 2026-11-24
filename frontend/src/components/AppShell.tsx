@@ -6,6 +6,7 @@ import { useToast } from './toastContext'
 import { useSlowServer } from '../lib/hooks'
 import { affiliation, isStaff } from '../lib/person'
 import { Brand } from './Brand'
+import { MadeBy } from './MadeBy'
 import { RoleTag } from './PersonName'
 import { SchoolBadge } from './SchoolBadge'
 import { buttonClass } from './styles'
@@ -119,6 +120,7 @@ export function AppShell() {
               <LogOut className="size-4" aria-hidden />
               로그아웃
             </button>
+            <MadeBy onBoard className="mt-4" />
           </div>
         )}
       </aside>

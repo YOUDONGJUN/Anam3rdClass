@@ -44,7 +44,15 @@ export interface Member {
   role: Role
   /** false 면 약관 동의 화면부터 (예전 회원) */
   termsAgreed: boolean
+  /** 로그인 방법: 카카오 연결 · 학교 이메일 + 비밀번호 */
+  kakaoLinked: boolean
+  hasPassword: boolean
+  /** 끈 앱 알림 종류 */
+  pushOff: PushType[]
 }
+
+/** 앱 알림 종류 (서버 PushType) */
+export type PushType = 'JOIN' | 'REACHED' | 'DEADLINE' | 'CHANGED' | 'NOTICE' | 'FEDERATION'
 
 export interface Department {
   id: number
@@ -96,8 +104,9 @@ export interface AuthResponse {
  * - EMAIL_REQUIRED: 처음 온 카카오 계정 → 학교 이메일 인증 (signupToken)
  * - PROFILE_REQUIRED: 이메일 인증 끝 → 이름·기수·학과 입력 (signupToken, email, schoolId, schoolName)
  */
+/** PASSWORD_REQUIRED: 이메일로 시작했는데 이미 가입한 학교 이메일 — 새 비밀번호를 정하면 로그인 */
 export interface AuthStep {
-  step: 'DONE' | 'EMAIL_REQUIRED' | 'PROFILE_REQUIRED'
+  step: 'DONE' | 'EMAIL_REQUIRED' | 'PROFILE_REQUIRED' | 'PASSWORD_REQUIRED'
   token: string | null
   member: Member | null
   signupToken: string | null
@@ -240,6 +249,8 @@ export interface NoticeSummary {
   pinned: boolean
   /** 연합 공지 (다섯 학교 모두에게 보인다) */
   federated: boolean
+  /** 이 학교 원우에게만 보이는 공지 (연합이면 null) */
+  school: SchoolTag | null
   createdAt: string
   updatedAt: string
 }
@@ -251,6 +262,7 @@ export interface NoticeDetail {
   author: AuthorView
   pinned: boolean
   federated: boolean
+  school: SchoolTag | null
   canEdit: boolean
   canPin: boolean
   createdAt: string
@@ -262,6 +274,8 @@ export interface NoticeInput {
   content: string
   /** 연합 공지로 쓰기 (대학원장만, 새로 쓸 때만) */
   federated?: boolean
+  /** 이 학교에만 보이는 공지 (대학원장만 다른 학교를 고른다, 새로 쓸 때만). 비우면 우리 학교 */
+  schoolId?: number | null
 }
 
 /** 관리 화면 원우 그리드 한 줄. 교수에게는 email 이 가려져 온다 (ho**@korea.ac.kr) */
@@ -278,8 +292,9 @@ export interface AdminMember {
   departmentShortLabel: string | null
   role: Role
   status: MemberStatus
-  /** false 면 아직 카카오로 로그인하지 않은 예전 회원 (탈퇴한 원우도) */
+  /** 로그인 방법: 카카오 · 학교 이메일 + 비밀번호. 둘 다 false 면 아직 안 들어온 예전 회원 (탈퇴한 원우도) */
   kakaoLinked: boolean
+  hasPassword: boolean
   createdAt: string
 }
 

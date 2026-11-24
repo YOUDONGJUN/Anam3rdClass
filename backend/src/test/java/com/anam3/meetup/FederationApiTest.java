@@ -111,7 +111,8 @@ class FederationApiTest extends ApiTestSupport {
                 {"title":"연합 공지","content":"다섯 학교 모두에게","federated":true}
                 """).andExpect(status().isCreated()).andExpect(jsonPath("$.federated").value(true)), "$.id"))
                 .longValue();
-        long ku = ((Number) read(post("/api/notices", godae, """
+        String kuManager = managerToken("prof", "최교수", 61);
+        long ku = ((Number) read(post("/api/notices", kuManager, """
                 {"title":"고려대 공지","content":"고려대만"}
                 """).andExpect(jsonPath("$.federated").value(false)), "$.id")).longValue();
         post("/api/notices", sinchon, """

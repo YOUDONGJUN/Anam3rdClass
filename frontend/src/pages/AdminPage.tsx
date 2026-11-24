@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleCheck,
+  Copy,
   Eye,
   EyeOff,
   Flag,
@@ -52,6 +53,8 @@ import {
   countBySchool,
   EMPTY_FILTERS,
   filterMembers,
+  findDuplicates,
+  isLegacy,
   sortMembers,
   type Bucket,
   type MemberFilters,
@@ -135,7 +138,7 @@ function AdminHome({ onGo }: { onGo: (tab: Tab) => void }) {
   const now = useNow()
 
   if (stats.isPending || members.isPending || meetups.isPending || reports.isPending || schools.isPending) return <Spinner />
-  const failed = [stats, members, meetups, reports, schools].find((q) => q.isError)
+  const failed = [stats, members, meetups, reports, schools].find((q) => q.isError && !q.data)
   if (failed?.error) return <ErrorState message={failed.error.message} onRetry={() => failed.refetch()} />
   if (!stats.data || !members.data || !meetups.data || !reports.data || !schools.data) return null
 
@@ -144,7 +147,8 @@ function AdminHome({ onGo }: { onGo: (tab: Tab) => void }) {
   const openReports = reports.data.filter((r) => r.status === 'OPEN')
   const placeholder = schools.data.filter((x) => x.latestCohort === PLACEHOLDER_COHORT)
   const noDepartments = schools.data.filter((x) => !x.departments.some((d) => d.active))
-  const legacy = current.filter((m) => !m.kakaoLinked && m.status === 'ACTIVE')
+  const legacy = current.filter((m) => isLegacy(m) && m.status === 'ACTIVE')
+  const duplicates = findDuplicates(members.data)
 
   const tasks: Task[] = []
   if (openReports.length > 0)
@@ -177,12 +181,26 @@ function AdminHome({ onGo }: { onGo: (tab: Tab) => void }) {
       action: '설정',
       tab: 'schools',
     })
+  if (duplicates.length > 0)
+    tasks.push({
+      key: 'duplicates',
+      tone: 'warn',
+      Icon: Copy,
+      title: `중복 가입 의심 ${duplicates.length}건`,
+      detail:
+        duplicates
+          .slice(0, 2)
+          .map((g) => `${g[0].school.shortName} ${g[0].name} ${g[0].cohortLabel} · ${g.length}개 계정`)
+          .join(', ') + (duplicates.length > 2 ? ` 외 ${duplicates.length - 2}건` : ''),
+      action: '보기',
+      tab: 'members',
+    })
   if (isOwner && legacy.length > 0)
     tasks.push({
       key: 'legacy',
       tone: 'info',
       Icon: History,
-      title: `카카오 미연결 원우 ${legacy.length}명`,
+      title: `아직 안 들어온 예전 회원 ${legacy.length}명`,
       detail: '예전 계정 · 처음 들어올 때 이어져요',
       action: '보기',
       tab: 'members',
@@ -315,12 +333,12 @@ function MemberStats({ list: all, multiSchool }: { list: AdminMember[]; multiSch
   // 탈퇴한 원우는 세지 않는다 (현황 탭과 같은 기준)
   const list = all.filter((m) => m.status !== 'WITHDRAWN')
   const active = list.filter((m) => m.status === 'ACTIVE').length
-  const unlinked = list.filter((m) => !m.kakaoLinked).length
+  const unlinked = list.filter(isLegacy).length
   const tiles = [
     { label: '원우', value: list.length },
     { label: '활동 중', value: active },
     { label: '차단', value: list.filter((m) => m.status === 'BANNED').length },
-    { label: '카카오 미연결', value: unlinked },
+    { label: '예전 회원', value: unlinked },
   ]
   return (
     <section className={`${cardClass} flex flex-col px-5 py-4`} aria-label="원우 통계">
@@ -482,9 +500,14 @@ function StatusBadges({ m }: { m: AdminMember }) {
           탈퇴
         </span>
       )}
-      {!m.kakaoLinked && m.status !== 'WITHDRAWN' && (
+      {isLegacy(m) && (
         <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] leading-none font-bold text-ink-3">
-          카카오 미연결
+          예전 회원
+        </span>
+      )}
+      {!m.kakaoLinked && m.hasPassword && m.status !== 'WITHDRAWN' && (
+        <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] leading-none font-bold text-ink-3">
+          이메일 가입
         </span>
       )}
     </>
@@ -745,7 +768,7 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
           </form>
         )}
 
-        {isOwner && !m.kakaoLinked && !withdrawn && (
+        {isOwner && isLegacy(m) && (
           <form onSubmit={saveEmail} className="flex flex-col gap-3 border-t border-line pt-5" noValidate>
             <h3 className="text-[15px] font-extrabold">학교 이메일 넣어 두기</h3>
             <p className="-mt-1 text-sm leading-relaxed text-ink-3">
@@ -858,7 +881,7 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
 }
 
 function Members() {
-  const { data, isPending, isError, error, refetch } = useAdminMembers()
+  const { data, isPending, error, refetch } = useAdminMembers()
   const schools = useAdminSchools()
   const isOwner = useIsOwner()
   const [filters, setFilters] = useState<MemberFilters>(EMPTY_FILTERS)
@@ -867,8 +890,10 @@ function Members() {
   const filtered = useMemo(() => (data ? filterMembers(data, filters) : []), [data, filters])
 
   if (isPending || schools.isPending) return <Spinner />
-  if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
-  if (schools.isError) return <ErrorState message={schools.error.message} onRetry={() => schools.refetch()} />
+  // 처음 불러오기가 실패했을 때만 (열어 둔 원우 수정 창은 다시 불러오기가 실패해도 그대로)
+  if (!data) return <ErrorState message={error?.message ?? '불러오지 못했어요'} onRetry={() => refetch()} />
+  if (!schools.data)
+    return <ErrorState message={schools.error?.message ?? '불러오지 못했어요'} onRetry={() => schools.refetch()} />
 
   const multiSchool = isOwner
   const opened = openId === null ? undefined : data.find((m) => m.id === openId)
@@ -890,11 +915,11 @@ function Members() {
 // ---------------- 3교시 ----------------
 
 function Meetups() {
-  const { data, isPending, isError, error, refetch } = useAdminMeetups()
+  const { data, isPending, error, refetch } = useAdminMeetups()
   const isOwner = useIsOwner()
   const now = useNow()
   if (isPending) return <Spinner />
-  if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
+  if (!data) return <ErrorState message={error?.message ?? '불러오지 못했어요'} onRetry={() => refetch()} />
   if (data.length === 0)
     return (
       <div className={cardClass}>
@@ -1024,10 +1049,10 @@ function ReportCard({ r }: { r: Report }) {
 }
 
 function Reports() {
-  const { data, isPending, isError, error, refetch } = useAdminReports()
+  const { data, isPending, error, refetch } = useAdminReports()
   const isOwner = useIsOwner()
   if (isPending) return <Spinner />
-  if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
+  if (!data) return <ErrorState message={error?.message ?? '불러오지 못했어요'} onRetry={() => refetch()} />
   return (
     <div className="flex flex-col gap-3">
       <p className="px-1 text-sm text-ink-3">
@@ -1456,7 +1481,8 @@ function Schools() {
   const schools = useAdminSchools()
   const isOwner = useIsOwner()
   if (schools.isPending) return <Spinner />
-  if (schools.isError) return <ErrorState message={schools.error.message} onRetry={() => schools.refetch()} />
+  if (!schools.data)
+    return <ErrorState message={schools.error?.message ?? '불러오지 못했어요'} onRetry={() => schools.refetch()} />
   return (
     <div className="flex flex-col gap-3">
       <p className="px-1 text-sm text-ink-3">

@@ -25,6 +25,7 @@ import com.anam3.meetup.MeetupDtos.PeopleChange;
 import com.anam3.meetup.MeetupDtos.ScheduleChange;
 import com.anam3.member.Member;
 import com.anam3.member.MemberRepository;
+import com.anam3.push.PushNotifier;
 import com.anam3.safety.MemberBlockRepository;
 import com.anam3.safety.ReportRepository;
 
@@ -41,16 +42,19 @@ public class MeetupService {
     private final MemberBlockRepository blocks;
     private final ReportRepository reports;
     private final MeetupMapper mapper;
+    private final PushNotifier notifier;
     private final Clock clock;
 
     public MeetupService(MeetupRepository meetups, ParticipationRepository participations, MemberRepository members,
-            MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, Clock clock) {
+            MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, PushNotifier notifier,
+            Clock clock) {
         this.meetups = meetups;
         this.participations = participations;
         this.members = members;
         this.blocks = blocks;
         this.reports = reports;
         this.mapper = mapper;
+        this.notifier = notifier;
         this.clock = clock;
     }
 
@@ -71,6 +75,9 @@ public class MeetupService {
                 req.maxPeople(), blankToNull(req.openChatUrl()), now));
         meetup.applyOptions(Boolean.TRUE.equals(req.lateJoin()), req.fee(), Boolean.TRUE.equals(req.feePrepaid()));
         participations.save(new Participation(meetup, host, now));
+        if (meetup.isFederated()) {
+            notifier.federationOpened(meetup);
+        }
         return detail(viewer, meetup.getId());
     }
 
@@ -116,11 +123,16 @@ public class MeetupService {
 
     @Transactional(readOnly = true)
     public MeetupDetail detail(LoginMember viewer, Long id) {
+        return detail(viewer, id, true);
+    }
+
+    /** checkVisible=false: 방금까지 참여자였던 사람(나가기 응답) — 그사이 기수·학교가 바뀌었어도 나갈 수 있게 */
+    private MeetupDetail detail(LoginMember viewer, Long id, boolean checkVisible) {
         Meetup meetup = meetups.findWithHost(id).orElseThrow(MeetupService::notFound);
         List<Participation> people = participations.findWithMember(id);
         boolean joined = people.stream().anyMatch(p -> p.getMember().getId().equals(viewer.id()));
         // 다른 학교·다른 기수 전용: 단톡방 링크로 들어와도 내용은 보여주지 않고 안내만 한다
-        if (!joined && !canSee(meetup, viewer)) {
+        if (checkVisible && !joined && !canSee(meetup, viewer)) {
             throw closedTo(meetup);
         }
         boolean blocked = !meetup.isHostedBy(viewer.id()) && blocks.existsBetween(viewer.id(), meetup.getHost().getId());
@@ -138,6 +150,9 @@ public class MeetupService {
         List<String> purposes = purposes(req.purposes());
         ContentFilter.check(req.title(), req.description(), req.place(), String.join(" ", purposes));
         Instant now = clock.instant();
+        Instant meetAtBefore = meetup.getMeetAt();
+        String placeBefore = meetup.getPlace();
+        boolean reachedBefore = meetup.isReached();
         if (req.schedule() != null) {
             changeSchedule(meetup, req.schedule(), now);
         }
@@ -154,6 +169,11 @@ public class MeetupService {
         }
         meetup.update(req.title().strip(), clean(req.description()), req.place().strip(), req.categories(),
                 purposes, blankToNull(req.openChatUrl()), now);
+        notifier.changed(meetup, viewer.id(), !meetAtBefore.equals(meetup.getMeetAt()),
+                !placeBefore.equals(meetup.getPlace()));
+        if (!reachedBefore && meetup.isReached()) {
+            notifier.reached(meetup, viewer.id()); // 최소 인원을 낮춰서 바로 성사
+        }
         return detail(viewer, id);
     }
 
@@ -224,14 +244,23 @@ public class MeetupService {
         meetup.changePeople(min, max, now);
     }
 
+    /** 취소·삭제할 수 있는지: 개설자, 대학원장, 그 학교 교수 (대학원장이 연 3교시는 대학원장만) */
+    public static boolean canModerate(Meetup meetup, LoginMember viewer) {
+        if (meetup.isHostedBy(viewer.id()) || viewer.isOwner()) {
+            return true;
+        }
+        return !meetup.getHost().isOwner() && viewer.manages(meetup.getSchool().getId());
+    }
+
     /** 취소는 개설자, 그 학교 교수, 대학원장 */
     public MeetupDetail cancel(LoginMember viewer, Long id) {
         Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
-        if (!meetup.isHostedBy(viewer.id()) && !viewer.manages(meetup.getSchool().getId())) {
+        if (!canModerate(meetup, viewer)) {
             throw ApiException.forbidden("3교시를 연 사람만 취소할 수 있어요");
         }
         checkOpen(meetup);
         meetup.cancel(clock.instant());
+        notifier.canceled(meetup, participations.findMemberIds(id), viewer.id(), false);
         return detail(viewer, id);
     }
 
@@ -241,12 +270,17 @@ public class MeetupService {
      */
     public void delete(LoginMember viewer, Long id) {
         Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
-        if (!meetup.isHostedBy(viewer.id()) && !viewer.manages(meetup.getSchool().getId())) {
+        if (!canModerate(meetup, viewer)) {
             throw ApiException.forbidden("3교시를 연 사람만 지울 수 있어요");
         }
+        // 아직 열려 있던 3교시면 참여자에게 취소를 알린다 (지우면 참여 기록이 사라지니 먼저 읽어 둔다)
+        List<Long> people = meetup.isOpenAt(clock.instant()) ? participations.findMemberIds(id) : List.of();
         reports.detachMeetup(id);
         participations.deleteByMeetupId(id);
         meetups.delete(meetup);
+        if (!people.isEmpty()) {
+            notifier.canceled(meetup, people, viewer.id(), true);
+        }
     }
 
     public MeetupDetail join(LoginMember viewer, Long id) {
@@ -270,8 +304,10 @@ public class MeetupService {
         if (!meetup.isJoinableAt(now)) {
             throw ApiException.badRequest("FULL", "정원이 다 찼어요");
         }
+        boolean reachedBefore = meetup.isReached();
         participations.save(new Participation(meetup, members.getReferenceById(viewer.id()), now));
         meetup.addParticipant();
+        notifier.joined(meetup, viewer.id(), !reachedBefore && meetup.isReached());
         return detail(viewer, id);
     }
 
@@ -288,7 +324,8 @@ public class MeetupService {
         }
         participations.delete(participation);
         meetup.removeParticipant();
-        return detail(viewer, id);
+        notifier.left(meetup);
+        return detail(viewer, id, false);
     }
 
     /**

@@ -33,6 +33,7 @@ import { buttonClass, cardClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
 import { CATEGORY, headcount, isLive, seatsCaption, sortCategories } from '../lib/meetup'
+import { shareLink } from '../lib/native'
 import { affiliation } from '../lib/person'
 import { formatDateTime, formatRemaining } from '../lib/time'
 
@@ -108,29 +109,18 @@ function StateNote({ m }: { m: MeetupDetail }) {
   )
 }
 
+/** 단톡방에 공유: 앱·폰은 공유 창, PC 는 링크 복사. 링크를 누르면 앱이 있으면 앱으로 열린다 */
 async function share(m: MeetupDetail, onCopied: () => void) {
   const url = `${window.location.origin}/meetups/${m.id}`
   const text = `[안암3교시] ${m.title} · ${formatDateTime(m.meetAt)} · ${m.place} (${headcount(m)})`
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: m.title, text, url })
-      return
-    } catch {
-      // 공유 창을 닫은 경우 등 → 복사로 대체하지 않고 끝
-      return
-    }
-  }
-  try {
-    await navigator.clipboard.writeText(`${text}\n${url}`)
-    onCopied()
-  } catch {
-    window.prompt('아래 링크를 복사해 주세요', url)
-  }
+  const result = await shareLink(m.title, text, url)
+  if (result === 'copied') onCopied()
+  else if (result === 'failed') window.prompt('아래 링크를 복사해 주세요', url)
 }
 
 export function MeetupDetailPage() {
   const id = Number(useParams().id)
-  const { data: m, isPending, isError, error, refetch } = useMeetup(id)
+  const { data: m, isPending, error, refetch } = useMeetup(id)
   const action = useMeetupAction()
   const removeMeetup = useDeleteMeetup()
   const toast = useToast()
@@ -140,12 +130,13 @@ export function MeetupDetailPage() {
   const [reporting, setReporting] = useState<ReportTargetInfo | null>(null)
 
   if (isPending) return <Spinner />
-  if (isError) {
+  // 처음 불러오기가 실패했을 때만 (그 뒤 다시 불러오기가 실패해도 보던 내용·쓰던 신고는 그대로)
+  if (!m) {
     // 다른 학교·다른 기수 전용 3교시(403)는 다시 시도해도 같다
     const forbidden = error instanceof ApiError && error.status === 403
     return (
       <div>
-        <ErrorState message={error.message} onRetry={forbidden ? undefined : () => refetch()} />
+        <ErrorState message={error?.message ?? '불러오지 못했어요'} onRetry={forbidden ? undefined : () => refetch()} />
         {forbidden && (
           <div className="flex justify-center">
             <Link to="/" className={buttonClass('secondary')}>
@@ -233,7 +224,7 @@ export function MeetupDetailPage() {
     <div className="pb-24 lg:pb-0">
       <button
         type="button"
-        onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
+        onClick={() => ((window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate('/'))}
         className="mb-4 -ml-2 inline-flex h-10 items-center gap-1 rounded-lg px-2 text-[15px] font-semibold text-ink-2 hover:text-ink"
       >
         <ChevronLeft className="size-5" aria-hidden />

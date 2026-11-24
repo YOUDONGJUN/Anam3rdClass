@@ -37,6 +37,10 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
             """)
     List<Participation> findWithMember(@Param("meetupId") Long meetupId);
 
+    /** 이 3교시 참여자 번호 (연 사람 포함) — 알림 받을 사람 */
+    @Query("select p.member.id from Participation p where p.meetup.id = :meetupId")
+    List<Long> findMemberIds(@Param("meetupId") Long meetupId);
+
     @Query("select p.meetup.id from Participation p where p.member.id = :memberId and p.meetup.id in :meetupIds")
     Set<Long> findJoinedMeetupIds(@Param("memberId") Long memberId, @Param("meetupIds") Collection<Long> meetupIds);
 

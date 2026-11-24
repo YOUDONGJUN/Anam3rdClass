@@ -19,10 +19,21 @@ public final class AuthDtos {
     private AuthDtos() {
     }
 
+    /** 이메일 로그인 비밀번호 규칙: 영문과 숫자를 섞어 8~64자 */
+    public static final String PASSWORD_PATTERN = "^(?=.*[A-Za-z])(?=.*\\d).{8,64}$";
+    public static final String PASSWORD_MESSAGE = "비밀번호는 영문과 숫자를 섞어 8자 이상으로 정해 주세요";
+
     /**
      * 화면이 카카오 로그인 창을 열 때 필요한 값. supportEmail 은 약관·문의 화면에 보이는 연락처 (없으면 null)
      */
     public record AuthConfig(String kakaoClientId, boolean devLogin, String supportEmail) {
+    }
+
+    /** 앱(안드로이드)이 카카오톡으로 로그인해서 받은 카카오 액세스 토큰 */
+    public record KakaoAppLoginRequest(
+            @NotBlank(message = "카카오 로그인을 다시 시도해 주세요")
+            @Size(max = 1000, message = "카카오 로그인을 다시 시도해 주세요")
+            String accessToken) {
     }
 
     /** 카카오가 /auth/kakao/callback?code=… 로 돌려준 인가 코드 */
@@ -80,7 +91,34 @@ public final class AuthDtos {
 
             @NotNull(message = "이용약관에 동의해 주세요")
             @AssertTrue(message = "이용약관에 동의해 주세요")
-            Boolean agreeTerms) {
+            Boolean agreeTerms,
+
+            /** 이메일로 가입할 때만 (카카오 없이): 이메일 로그인 비밀번호 */
+            @Size(max = 64, message = PASSWORD_MESSAGE)
+            @Pattern(regexp = PASSWORD_PATTERN, message = PASSWORD_MESSAGE)
+            String password) {
+    }
+
+    /** 학교 이메일 + 비밀번호로 로그인 */
+    public record EmailLoginRequest(
+            @NotBlank(message = "학교 이메일을 입력해 주세요")
+            @Size(max = 120, message = "이메일이 너무 길어요")
+            String email,
+
+            @NotBlank(message = "비밀번호를 입력해 주세요")
+            @Size(max = 64, message = "비밀번호를 확인해 주세요")
+            String password) {
+    }
+
+    /** 이미 가입한 학교 이메일을 인증한 뒤 이메일 로그인 비밀번호를 새로 정한다 (비밀번호 찾기 · 카카오 가입자의 비밀번호 만들기) */
+    public record PasswordSetRequest(
+            @NotBlank(message = "학교 이메일 인증부터 다시 해 주세요")
+            String signupToken,
+
+            @NotBlank(message = PASSWORD_MESSAGE)
+            @Size(max = 64, message = PASSWORD_MESSAGE)
+            @Pattern(regexp = PASSWORD_PATTERN, message = PASSWORD_MESSAGE)
+            String password) {
     }
 
     /** 교수·대학원장이 원우의 이름·기수·학과를 고칠 때 */
@@ -130,13 +168,14 @@ public final class AuthDtos {
      *   <li>DONE: 로그인 끝 — token, member</li>
      *   <li>EMAIL_REQUIRED: 처음 온 카카오 계정 — 학교 이메일 인증이 필요하다 (signupToken)</li>
      *   <li>PROFILE_REQUIRED: 이메일 인증 끝 — 이름·기수·학과 입력이 필요하다 (signupToken, email, schoolId, schoolName)</li>
+     *   <li>PASSWORD_REQUIRED: 이메일로 시작했는데 이미 가입한 학교 이메일 — 새 비밀번호를 정하면 로그인된다</li>
      * </ul>
      */
     public record AuthStep(Step step, String token, MemberResponse member, String signupToken, String email,
             Long schoolId, String schoolName) {
 
         public enum Step {
-            DONE, EMAIL_REQUIRED, PROFILE_REQUIRED
+            DONE, EMAIL_REQUIRED, PROFILE_REQUIRED, PASSWORD_REQUIRED
         }
 
         static AuthStep done(String token, MemberResponse member) {
@@ -149,6 +188,10 @@ public final class AuthDtos {
 
         static AuthStep profileRequired(String signupToken, String email, Long schoolId, String schoolName) {
             return new AuthStep(Step.PROFILE_REQUIRED, null, null, signupToken, email, schoolId, schoolName);
+        }
+
+        static AuthStep passwordRequired(String signupToken, String email, Long schoolId, String schoolName) {
+            return new AuthStep(Step.PASSWORD_REQUIRED, null, null, signupToken, email, schoolId, schoolName);
         }
     }
 }

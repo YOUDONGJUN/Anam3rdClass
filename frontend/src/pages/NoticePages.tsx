@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ChevronLeft, Flag, Globe2, Pencil, Pin, PinOff, Plus, Trash2 } from 'lucide-react'
-import { useDeleteNotice, useNotice, useNotices, usePinNotice, useSaveNotice } from '../api/queries'
-import type { AuthorView } from '../api/types'
+import { useDeleteNotice, useNotice, useNotices, usePinNotice, useSaveNotice, useSignupOptions } from '../api/queries'
+import type { AuthorView, SchoolTag } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { RoleTag } from '../components/PersonName'
 import { ReportDialog } from '../components/ReportDialog'
@@ -11,7 +11,7 @@ import { Button, EmptyState, ErrorState, Field, FormError, Spinner } from '../co
 import { buttonClass, cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
-import { affiliation } from '../lib/person'
+import { affiliation, isStaff } from '../lib/person'
 import { formatRelative } from '../lib/time'
 
 function Author({ author, showSchool }: { author: AuthorView; showSchool: boolean }) {
@@ -43,6 +43,13 @@ function FederatedTag() {
   )
 }
 
+/** 내 학교가 아닌 학교 공지 (대학원장에게만 보인다) */
+function OtherSchoolTag({ school }: { school: SchoolTag | null }) {
+  const { member } = useAuth()
+  if (!school || !member || school.id === member.school.id) return null
+  return <SchoolBadge school={school} />
+}
+
 function BackLink({ to, label }: { to: string; label: string }) {
   return (
     <Link
@@ -57,19 +64,26 @@ function BackLink({ to, label }: { to: string; label: string }) {
 
 export function NoticesPage() {
   const { data, isPending, isError, error, refetch } = useNotices()
+  const { member } = useAuth()
   const now = useNow(60_000)
+  // 공지는 교수·대학원장만 쓴다
+  const canWrite = isStaff(member?.role)
 
   return (
     <div>
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
           <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">공지</h1>
-          <p className="mt-1 text-[15px] text-ink-2">우리 학교 소식과 연합 공지</p>
+          <p className="mt-1 text-[15px] text-ink-2">
+            {member?.role === 'OWNER' ? '다섯 학교 공지와 연합 공지' : '우리 학교 소식과 연합 공지'}
+          </p>
         </div>
-        <Link to="/notices/new" className={buttonClass('primary', 'md')}>
-          <Plus className="size-4" strokeWidth={2.6} aria-hidden />
-          글쓰기
-        </Link>
+        {canWrite && (
+          <Link to="/notices/new" className={buttonClass('primary', 'md')}>
+            <Plus className="size-4" strokeWidth={2.6} aria-hidden />
+            글쓰기
+          </Link>
+        )}
       </div>
 
       {isPending ? (
@@ -78,7 +92,10 @@ export function NoticesPage() {
         <ErrorState message={error.message} onRetry={() => refetch()} />
       ) : data.length === 0 ? (
         <div className={cardClass}>
-          <EmptyState title="아직 공지가 없어요" body="첫 글을 남겨 보세요." />
+          <EmptyState
+            title="아직 공지가 없어요"
+            body={canWrite ? '첫 공지를 올려 보세요.' : '교수·대학원장이 올린 공지가 여기 보여요.'}
+          />
         </div>
       ) : (
         <ul className={`${cardClass} divide-y divide-line overflow-hidden`}>
@@ -87,6 +104,7 @@ export function NoticesPage() {
               <div className="flex items-start gap-2">
                 {n.pinned && <Pin className="mt-1 size-4 shrink-0 fill-accent text-accent-ink" aria-label="상단 고정" />}
                 {n.federated && <FederatedTag />}
+                <OtherSchoolTag school={n.school} />
                 <h2 className="min-w-0 flex-1 text-base leading-snug font-bold text-ink">
                   <Link
                     to={`/notices/${n.id}`}
@@ -127,9 +145,10 @@ export function NoticeDetailPage() {
     <article className="max-w-2xl">
       <BackLink to="/notices" label="공지 목록" />
       <header className="border-b border-line pb-5">
-        {n.federated && (
-          <p className="mb-2">
-            <FederatedTag />
+        {(n.federated || n.school) && (
+          <p className="mb-2 flex gap-1.5 empty:hidden">
+            {n.federated && <FederatedTag />}
+            <OtherSchoolTag school={n.school} />
           </p>
         )}
         <h1 className="text-[26px] leading-tight font-extrabold tracking-[-0.03em] text-ink">
@@ -211,23 +230,46 @@ export function NoticeDetailPage() {
   )
 }
 
+/** 대학원장이 고르는 공지 대상: 연합(다섯 학교 모두) 또는 학교 하나 */
+type NoticeTarget = 'ALL' | number
+
+function TargetOption({ checked, onSelect, children }: { checked: boolean; onSelect: () => void; children: ReactNode }) {
+  return (
+    <label
+      className={`inline-flex min-h-11 cursor-pointer items-center rounded-full border px-4 text-[15px] font-semibold transition-colors has-focus-visible:ring-2 has-focus-visible:ring-accent ${
+        checked ? 'border-accent bg-accent text-on-accent' : 'border-line-strong text-ink-2 hover:bg-surface-2'
+      }`}
+    >
+      <input type="radio" name="notice-target" className="sr-only" checked={checked} onChange={onSelect} />
+      {children}
+    </label>
+  )
+}
+
 function NoticeForm({ id, initial }: { id?: number; initial: { title: string; content: string } }) {
   const save = useSaveNotice(id)
   const { member } = useAuth()
+  const options = useSignupOptions()
   const navigate = useNavigate()
   const toast = useToast()
   const [title, setTitle] = useState(initial.title)
   const [content, setContent] = useState(initial.content)
-  const [federated, setFederated] = useState(false)
+  const [target, setTarget] = useState<NoticeTarget>(member?.school.id ?? 'ALL')
   const [error, setError] = useState<string | null>(null)
-  // 연합 공지는 대학원장만, 새로 쓸 때만 고른다
-  const canFederate = !id && member?.role === 'OWNER'
+  // 보이는 곳은 새로 쓸 때만 정한다: 대학원장은 고르고, 교수는 우리 학교
+  const choosable = !id && member?.role === 'OWNER'
+  const schools = options.data?.schools ?? []
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     try {
-      const d = await save.mutateAsync({ title, content, federated: canFederate && federated })
+      const d = await save.mutateAsync({
+        title,
+        content,
+        federated: choosable && target === 'ALL',
+        schoolId: choosable && target !== 'ALL' ? target : null,
+      })
       toast.show(id ? '수정했어요' : '올렸어요', 'ok')
       navigate(`/notices/${d.id}`, { replace: true })
     } catch (err) {
@@ -255,19 +297,31 @@ function NoticeForm({ id, initial }: { id?: number; initial: { title: string; co
           />
         )}
       </Field>
-      {canFederate && (
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line-strong px-4 py-3 text-[15px] text-ink has-focus-visible:ring-2 has-focus-visible:ring-accent">
-          <input
-            type="checkbox"
-            checked={federated}
-            onChange={(e) => setFederated(e.target.checked)}
-            className="mt-0.5 size-5 shrink-0 accent-[var(--accent)]"
-          />
-          <span className="leading-relaxed">
-            <b>연합 공지로 올리기</b>
-            <span className="block text-sm text-ink-3">다섯 학교 모두에게 보여요</span>
-          </span>
-        </label>
+      {choosable ? (
+        <fieldset className="flex flex-col gap-2.5">
+          <legend className="mb-2.5 text-[15px] font-semibold text-ink">누구에게 보일까요</legend>
+          <div className="flex flex-wrap gap-2">
+            <TargetOption checked={target === 'ALL'} onSelect={() => setTarget('ALL')}>
+              <Globe2 className="mr-1.5 size-4" aria-hidden />
+              연합 · 다섯 학교 모두
+            </TargetOption>
+            {schools.map((s) => (
+              <TargetOption key={s.id} checked={target === s.id} onSelect={() => setTarget(s.id)}>
+                {s.shortName}만
+              </TargetOption>
+            ))}
+          </div>
+          <p className="text-sm text-ink-3">
+            {target === 'ALL' ? '다섯 학교 원우 모두에게 보이고 알림이 가요.' : '고른 학교 원우에게만 보이고 알림이 가요.'}
+          </p>
+        </fieldset>
+      ) : (
+        !id &&
+        member && (
+          <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2">
+            {member.school.shortName} 원우에게만 보이고, 앱 알림이 가요.
+          </p>
+        )
       )}
       <FormError message={error} />
       <div className="flex gap-2.5">
@@ -283,6 +337,8 @@ function NoticeForm({ id, initial }: { id?: number; initial: { title: string; co
 }
 
 export function NoticeCreatePage() {
+  const { member } = useAuth()
+  if (!isStaff(member?.role)) return <ErrorState message="공지는 교수·대학원장만 쓸 수 있어요" />
   return (
     <div className="max-w-2xl">
       <BackLink to="/notices" label="공지 목록" />
@@ -294,9 +350,10 @@ export function NoticeCreatePage() {
 
 export function NoticeEditPage() {
   const id = Number(useParams().id)
-  const { data, isPending, isError, error, refetch } = useNotice(id)
+  const { data, isPending, error, refetch } = useNotice(id)
   if (isPending) return <Spinner />
-  if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
+  // 처음 불러오기가 실패했을 때만 (쓰는 중 다시 불러오기가 실패해도 폼은 그대로 둔다)
+  if (!data) return <ErrorState message={error?.message ?? '불러오지 못했어요'} onRetry={() => refetch()} />
   if (!data.canEdit) return <ErrorState message="글쓴이만 수정할 수 있어요" />
   return (
     <div className="max-w-2xl">

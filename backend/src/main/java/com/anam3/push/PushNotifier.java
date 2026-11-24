@@ -1,0 +1,166 @@
+package com.anam3.push;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.anam3.meetup.Meetup;
+import com.anam3.meetup.MeetupRepository;
+import com.anam3.meetup.ParticipationRepository;
+import com.anam3.notice.Notice;
+import com.anam3.safety.MemberBlockRepository;
+
+/**
+ * 무슨 일이 생겼을 때 누구에게 어떤 알림을 보낼지. 서비스(3교시·공지·탈퇴)가 일을 마친 뒤 부른다.
+ * 일을 한 본인에게는 보내지 않는다. 실명은 알림에 넣지 않는다 (성사 전에는 이름이 가려지는 서비스라서).
+ */
+@Component
+public class PushNotifier {
+
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+    private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("M/d(E) HH:mm", Locale.KOREAN)
+            .withZone(SEOUL);
+    /** 모집 마감 몇 분 전에 알리나 */
+    static final Duration DEADLINE_NOTICE = Duration.ofMinutes(30);
+    /** 열고 금방 마감하는 3교시(마감까지 1시간 이하)는 마감 알림을 보내지 않는다 */
+    private static final Duration SHORT_RECRUIT = Duration.ofHours(1);
+
+    private final PushService push;
+    private final ParticipationRepository participations;
+    private final MeetupRepository meetups;
+    private final MemberBlockRepository blocks;
+    private final Clock clock;
+
+    public PushNotifier(PushService push, ParticipationRepository participations, MeetupRepository meetups,
+            MemberBlockRepository blocks, Clock clock) {
+        this.push = push;
+        this.participations = participations;
+        this.meetups = meetups;
+        this.blocks = blocks;
+        this.clock = clock;
+    }
+
+    /** 누가 참여: 연 사람에게. 그 참여로 성사됐으면 참여자 모두에게 성사 알림으로 대신한다 */
+    public void joined(Meetup meetup, Long joinerId, boolean reachedNow) {
+        if (reachedNow) {
+            reached(meetup, joinerId);
+            return;
+        }
+        push.send(List.of(meetup.getHost().getId()), new PushMessage(PushType.JOIN, meetup.getTitle(),
+                "한 명이 참여했어요 · " + headcount(meetup), path(meetup), tag(meetup, "people")));
+    }
+
+    /** 누가 나감: 연 사람에게 */
+    public void left(Meetup meetup) {
+        push.send(List.of(meetup.getHost().getId()), new PushMessage(PushType.JOIN, meetup.getTitle(),
+                "한 명이 나갔어요 · " + headcount(meetup), path(meetup), tag(meetup, "people")));
+    }
+
+    /** 성사: 참여자 모두에게 (성사시킨 사람 빼고) */
+    public void reached(Meetup meetup, Long actorId) {
+        push.send(others(meetup, actorId), new PushMessage(PushType.REACHED, meetup.getTitle(),
+                "성사됐어요! 참여자 실명과 단톡방이 공개됐어요", path(meetup), tag(meetup, "reached")));
+    }
+
+    /** 시간·장소가 바뀜: 참여자에게 (고친 사람 빼고) */
+    public void changed(Meetup meetup, Long actorId, boolean timeChanged, boolean placeChanged) {
+        if (!timeChanged && !placeChanged) {
+            return;
+        }
+        String what = timeChanged && placeChanged ? "시간·장소가 바뀌었어요 · " + WHEN.format(meetup.getMeetAt()) + " · "
+                + meetup.getPlace()
+                : timeChanged ? "시간이 바뀌었어요 · " + WHEN.format(meetup.getMeetAt())
+                : "장소가 바뀌었어요 · " + meetup.getPlace();
+        push.send(others(meetup, actorId), new PushMessage(PushType.CHANGED, meetup.getTitle(), what, path(meetup),
+                tag(meetup, "changed")));
+    }
+
+    /**
+     * 취소·삭제: 참여자에게 (취소한 사람 빼고). 지운 3교시는 참여 기록이 사라지므로 지우기 전에 읽어 둔 참여자를 넘긴다
+     */
+    public void canceled(Meetup meetup, List<Long> participantIds, Long actorId, boolean deleted) {
+        List<Long> to = participantIds.stream().filter(id -> !id.equals(actorId)).toList();
+        push.send(to, new PushMessage(PushType.CHANGED, meetup.getTitle(),
+                "취소됐어요 · " + WHEN.format(meetup.getMeetAt()) + " 3교시", deleted ? "/me" : path(meetup),
+                tag(meetup, "changed")));
+    }
+
+    /** 새 연합 3교시: 다섯 학교 원우 모두에게 (연 사람, 연 사람과 차단 관계인 사람 빼고) */
+    public void federationOpened(Meetup meetup) {
+        Long hostId = meetup.getHost().getId();
+        Set<Long> except = new HashSet<>(blocks.findBlockedIds(hostId));
+        except.addAll(blocks.findBlockerIds(hostId));
+        except.add(hostId);
+        push.broadcast(null, new PushMessage(PushType.FEDERATION, "새 연합 3교시",
+                meetup.getSchool().getShortName() + " · " + meetup.getTitle() + " · " + WHEN.format(meetup.getMeetAt()),
+                path(meetup), "meetup-" + meetup.getId()), except);
+    }
+
+    /**
+     * 새 공지: 그 학교 원우에게 (연합 공지는 다섯 학교 모두, 쓴 사람 빼고).
+     * 공지는 원우 누구나 쓸 수 있어서, 알림은 교수·대학원장이 쓴 공지만 보낸다 (학교 전체에 가는 알림이라 남용 방지)
+     */
+    public void noticePosted(Notice notice) {
+        if (!notice.getAuthor().isStaff()) {
+            return;
+        }
+        push.broadcast(notice.isFederated() ? null : notice.getSchool().getId(),
+                new PushMessage(PushType.NOTICE, notice.isFederated() ? "새 연합 공지" : "새 공지", notice.getTitle(),
+                        "/notices/" + notice.getId(), "notice-" + notice.getId()),
+                Set.of(notice.getAuthor().getId()));
+    }
+
+    /**
+     * 모집 마감 30분 전인데 아직 최소 인원이 안 모인 3교시: 참여자 모두에게 한 번 (DeadlineReminderJob 이 1분마다 부른다).
+     * 보낸 3교시 수를 돌려준다
+     */
+    @Transactional
+    public int remindDeadlines() {
+        Instant now = clock.instant();
+        int sent = 0;
+        for (Meetup m : meetups.findDueForDeadlineReminder(now, now.plus(DEADLINE_NOTICE))) {
+            if (Duration.between(m.getCreatedAt(), m.getDeadlineAt()).compareTo(SHORT_RECRUIT) <= 0) {
+                continue;
+            }
+            if (meetups.markDeadlineReminded(m.getId(), now) == 0) {
+                continue; // 다른 서버가 먼저 보냈다
+            }
+            long minutes = Math.max(1, (Duration.between(now, m.getDeadlineAt()).toSeconds() + 59) / 60);
+            int left = m.getMinPeople() - m.getParticipantCount();
+            push.send(participations.findMemberIds(m.getId()), new PushMessage(PushType.DEADLINE, m.getTitle(),
+                    "모집 마감 " + minutes + "분 전이에요 · " + left + "명 더 모이면 성사돼요", path(m), tag(m, "deadline")));
+            sent++;
+        }
+        return sent;
+    }
+
+    private List<Long> others(Meetup meetup, Long actorId) {
+        return participations.findMemberIds(meetup.getId()).stream().filter(id -> !id.equals(actorId)).toList();
+    }
+
+    /** "성사까지 2명" 또는 "지금 3/6명" */
+    private static String headcount(Meetup m) {
+        int n = m.getParticipantCount();
+        if (m.getMinPeople() != null && n < m.getMinPeople()) {
+            return "성사까지 " + (m.getMinPeople() - n) + "명";
+        }
+        return "지금 " + n + (m.getMaxPeople() == null ? "명" : "/" + m.getMaxPeople() + "명");
+    }
+
+    private static String path(Meetup meetup) {
+        return "/meetups/" + meetup.getId();
+    }
+
+    private static String tag(Meetup meetup, String kind) {
+        return "meetup-" + meetup.getId() + "-" + kind;
+    }
+}

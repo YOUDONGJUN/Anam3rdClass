@@ -46,10 +46,11 @@ refactor / test / chore / style
 - **실명은 서버에서 가린다.** 화면(JS)에서 가리면 개발자 도구로 다 보여요.
   공개 규칙은 [`MeetupMapper.java`](backend/src/main/java/com/anam3/meetup/MeetupMapper.java) 한 곳에만 있어요. 바꾸려면 이슈에서 먼저 이야기해요.
 - 새 API에서 다른 회원 정보를 내려줄 때는 `PersonView`/`AuthorView` 처럼 **가려진 이름**을 기본으로.
-- 비밀번호, 토큰, 입장 코드, DB 주소를 코드나 커밋에 넣지 마세요. 전부 환경변수예요.
+- 카카오 키·클라이언트 시크릿, SMTP 비밀번호, 토큰, DB 주소를 코드나 커밋에 넣지 마세요. 전부 환경변수예요.
+- 샘플·테스트 데이터에는 실제 있을 법한 이름 대신 `김고대`처럼 없을 만한 이름을 써요.
 
 ### DB 변경
-- 테이블/컬럼을 바꿀 땐 **다음 번호로 새 Flyway 파일**을 추가해요: `backend/src/main/resources/db/migration/V5__설명.sql`
+- 테이블/컬럼을 바꿀 땐 **다음 번호로 새 Flyway 파일**을 추가해요: `backend/src/main/resources/db/migration/V8__설명.sql`
 - 이미 배포된 `V1__init.sql` 같은 파일은 **절대 수정하지 않기** (운영 DB가 깨져요).
 - PostgreSQL과 H2(PostgreSQL 모드) 양쪽에서 돌아가는 SQL로 써 주세요.
 

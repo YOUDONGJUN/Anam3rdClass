@@ -1,5 +1,8 @@
 # 로컬 개발용: 설치 없이 바로 실행 (H2 인메모리, 재시작하면 데이터 초기화)
 # H2 콘솔: http://localhost:8080/h2-console  (JDBC URL 은 아래 url 그대로)
+# 로그인: 화면의 "개발용 로그인"에서 샘플 계정을 고른다 (카카오 키·SMTP 없이).
+#        카카오 로그인까지 시험하려면 KAKAO_REST_API_KEY / KAKAO_CLIENT_SECRET 환경변수를 넣고 실행한다.
+#        인증코드 메일은 SMTP 설정이 없으면 서버 로그에 찍힌다.
 spring:
   datasource:
     url: jdbc:h2:mem:anam3;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
@@ -12,10 +15,8 @@ spring:
 app:
   jwt:
     secret: local-dev-secret-do-not-use-in-prod-0123456789
-  admin:
-    login-id: admin
-    password: admin1234
-    name: 유동준
+  owner:
+    email: owner@korea.ac.kr
   cors:
     # Vite 개발 서버 (frontend: npm run dev)
     allowed-origins: http://localhost:5173,http://127.0.0.1:5173

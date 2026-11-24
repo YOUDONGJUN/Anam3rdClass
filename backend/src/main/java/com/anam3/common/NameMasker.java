@@ -3,9 +3,9 @@ package com.anam3.common;
 /**
  * 이름 가운데를 * 로 가린다.
  * <pre>
- * 김민수   -> 김*수
+ * 김고대   -> 김*대
  * 이수     -> 이*
- * 남궁민수 -> 남**수
+ * 남궁고대 -> 남**대
  * </pre>
  */
 public final class NameMasker {

@@ -1,4 +1,5 @@
 import { Fragment } from 'react'
+import { Ellipsis } from 'lucide-react'
 import type { MeetupStatus, PersonView } from '../api/types'
 import { PersonName } from './PersonName'
 
@@ -18,6 +19,9 @@ interface GaugeProps {
   max: number | null
   status: MeetupStatus
 }
+
+/** 역(점)으로 그리는 최대 자리 수. 넘으면 막대 게이지 */
+const MAX_STOPS = 8
 
 function lineColor(status: MeetupStatus, reached: boolean) {
   if (status === 'FAILED' || status === 'CANCELED' || status === 'DONE') return 'var(--ink-3)'
@@ -43,7 +47,8 @@ export function LineGauge({ count, min, max, status }: GaugeProps) {
   // 그릴 역 개수: 정원, 또는 제한 없음이면 (성사 지점과 현재 인원 중 큰 쪽 + 빈 역 1개)
   const stops = unlimited ? Math.max(target, count) + 1 : max
 
-  if (stops > 12) {
+  // 역은 줄어들지 않으므로 9개부터는 막대로 그린다. 360px 폰의 목록 한 줄(약 100px)에 역 8개까지 들어간다
+  if (stops > MAX_STOPS) {
     // 자리가 많으면 역 대신 막대로
     const pct = unlimited ? 88 : Math.min(100, (count / stops) * 100)
     const minPct = unlimited ? Math.min(80, (target / Math.max(count, target)) * 80) : (target / stops) * 100
@@ -70,7 +75,7 @@ export function LineGauge({ count, min, max, status }: GaugeProps) {
           <Fragment key={i}>
             {i > 0 && (
               <span
-                className="h-[3px] min-w-1.5 flex-1"
+                className="h-[3px] min-w-0.5 flex-1"
                 style={{ backgroundColor: i < count ? fill : 'var(--line-strong)' }}
               />
             )}
@@ -94,10 +99,23 @@ interface RouteProps extends GaugeProps {
   participants: PersonView[]
   /** 방금 참여해서 애니메이션할 자리 */
   highlightIndex?: number | null
+  /** 연합 3교시처럼 여러 학교가 섞이면 학교 배지를 붙인다 */
+  showSchool?: boolean
+  /** 다른 사람 옆의 ⋯ 버튼 (신고·차단) */
+  onPersonMenu?: (person: PersonView) => void
 }
 
 /** 상세용 세로 노선도: 참여자 이름이 역 이름처럼 나열된다 */
-export function ParticipantRoute({ count, min, max, status, participants, highlightIndex }: RouteProps) {
+export function ParticipantRoute({
+  count,
+  min,
+  max,
+  status,
+  participants,
+  highlightIndex,
+  showSchool = false,
+  onPersonMenu,
+}: RouteProps) {
   const target = min ?? 1
   const reached = count >= target
   const fill = lineColor(status, reached)
@@ -119,11 +137,11 @@ export function ParticipantRoute({ count, min, max, status, participants, highli
         const nextFilled = i + 1 < count
         return (
           <li key={i} className="relative flex min-h-14 items-center gap-4 pl-1">
-            {/* 노선 */}
+            {/* 노선 — 역 중심(왼쪽 여백 4px + 역 칸 32px의 절반 = 20px)에 맞춘다 */}
             {!isLast && (
               <span
                 aria-hidden
-                className="absolute top-1/2 left-[17px] h-full w-1 -translate-x-1/2"
+                className="absolute top-1/2 left-5 h-full w-1 -translate-x-1/2"
                 style={{ backgroundColor: nextFilled ? fill : 'var(--line-strong)' }}
               />
             )}
@@ -143,12 +161,25 @@ export function ParticipantRoute({ count, min, max, status, participants, highli
             {/* 역 이름 */}
             <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
               {person ? (
-                <span className="flex min-w-0 items-center gap-2 text-[15px] text-ink">
-                  <PersonName person={person} />
-                  {person.host && (
-                    <span className="shrink-0 rounded border border-line-strong px-1.5 py-0.5 text-[11px] font-bold text-ink-2">
-                      개설
-                    </span>
+                <span className="flex min-w-0 flex-1 items-center gap-2 text-[15px] text-ink">
+                  {/* 좁은 화면: 이름·기수·배지·개설은 다음 줄로 넘기고, ⋯ 버튼은 늘 오른쪽 끝 */}
+                  <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <PersonName person={person} showSchool={showSchool} wrap />
+                    {person.host && (
+                      <span className="shrink-0 rounded border border-line-strong px-1.5 py-0.5 text-[11px] font-bold text-ink-2">
+                        개설
+                      </span>
+                    )}
+                  </span>
+                  {onPersonMenu && !person.me && person.ref !== null && (
+                    <button
+                      type="button"
+                      aria-label={`${person.name} 신고·차단`}
+                      onClick={() => onPersonMenu(person)}
+                      className="-my-2 ml-auto flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink"
+                    >
+                      <Ellipsis className="size-4" aria-hidden />
+                    </button>
                   )}
                 </span>
               ) : (

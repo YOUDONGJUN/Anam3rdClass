@@ -1,119 +1,126 @@
-import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
-import { ChevronRight, KeyRound, LogOut, ShieldCheck, UserPen } from 'lucide-react'
-import { api, ApiError } from '../api/client'
-import { useMyMeetups, useUpdateProfile } from '../api/queries'
-import type { Department, Member } from '../api/types'
+import { Link, useNavigate } from 'react-router'
+import { ChevronRight, FileText, LogOut, Mail, ShieldCheck, UserX } from 'lucide-react'
+import { useAuthConfig, useBlocks, useMyMeetups, useUnblock, useWithdraw } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
-import { AffiliationFields } from '../components/AffiliationFields'
 import { MeetupRow, MeetupRowSkeleton } from '../components/MeetupRow'
-import { AdminTag } from '../components/PersonName'
-import { Button, EmptyState, ErrorState, Field, FormError } from '../components/ui'
-import { buttonClass, cardClass, inputClass } from '../components/styles'
+import { RoleTag } from '../components/PersonName'
+import { SchoolBadge } from '../components/SchoolBadge'
+import { Button, EmptyState, ErrorState, Segmented } from '../components/ui'
+import { buttonClass, cardClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
-import { affiliation } from '../lib/person'
+import { affiliation, isStaff } from '../lib/person'
+import { isThemedSchool, type ThemeColor, type ThemeMode } from '../lib/theme'
+import { useTheme } from '../theme/ThemeContext'
 
-function PasswordForm({ onDone }: { onDone: () => void }) {
-  const toast = useToast()
-  const [current, setCurrent] = useState('')
-  const [next, setNext] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [pending, setPending] = useState(false)
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    setPending(true)
-    setError(null)
-    try {
-      await api<void>('/api/me/password', { method: 'PUT', body: { currentPassword: current, newPassword: next } })
-      toast.show('비밀번호를 바꿨어요', 'ok')
-      onDone()
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : '바꾸지 못했어요')
-      setPending(false)
-    }
-  }
-
+/** 화면 색·밝기 (이 기기에만 저장) */
+function ThemeSettings({ schoolName }: { schoolName: string }) {
+  const theme = useTheme()
+  const themed = isThemedSchool(theme.schoolCode)
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4 border-t border-line px-5 py-5" noValidate>
-      <Field label="현재 비밀번호">
-        {({ id }) => (
-          <input id={id} type="password" autoComplete="current-password" className={inputClass} value={current} onChange={(e) => setCurrent(e.target.value)} />
-        )}
-      </Field>
-      <Field label="새 비밀번호" hint="8자 이상">
-        {({ id, describedBy }) => (
-          <input
-            id={id}
-            type="password"
-            autoComplete="new-password"
-            aria-describedby={describedBy}
-            className={inputClass}
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-          />
-        )}
-      </Field>
-      <FormError message={error} />
-      <Button type="submit" loading={pending} disabled={!current || next.length < 8} className="self-start">
-        비밀번호 바꾸기
-      </Button>
-    </form>
-  )
-}
-
-/** 이름·기수·학과 수정 */
-function ProfileForm({ member, onDone }: { member: Member; onDone: () => void }) {
-  const { updateMember } = useAuth()
-  const update = useUpdateProfile()
-  const toast = useToast()
-  const [name, setName] = useState(member.name)
-  const [cohort, setCohort] = useState(String(member.cohort))
-  const [department, setDepartment] = useState<Department | ''>(member.department ?? '')
-  const [error, setError] = useState<string | null>(null)
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!department) return setError('학과를 선택해 주세요')
-    setError(null)
-    try {
-      const updated = await update.mutateAsync({ name: name.trim(), cohort: Number(cohort), department })
-      updateMember(updated)
-      toast.show('내 정보를 고쳤어요', 'ok')
-      onDone()
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : '고치지 못했어요')
-    }
-  }
-
-  return (
-    <form onSubmit={submit} className="flex flex-col gap-4 border-t border-line px-5 py-5" noValidate>
-      <Field label="이름">
-        {({ id }) => <input id={id} className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />}
-      </Field>
-      <AffiliationFields cohort={cohort} department={department} onCohortChange={setCohort} onDepartmentChange={setDepartment} />
-      <FormError message={error} />
-      <div className="flex gap-2">
-        <Button type="submit" loading={update.isPending} disabled={!name.trim() || !cohort || !department}>
-          저장
-        </Button>
-        <Button variant="ghost" onClick={onDone}>
-          취소
-        </Button>
+    <section className={`${cardClass} flex flex-col gap-4 px-5 py-5`}>
+      <div>
+        <h2 className="text-[17px] font-extrabold text-ink">화면</h2>
+        <p className="mt-0.5 text-sm text-ink-3">이 기기에만 저장돼요.</p>
       </div>
-    </form>
+      {themed && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-[15px] font-semibold text-ink">색</span>
+          <Segmented<ThemeColor>
+            label="화면 색"
+            value={theme.color}
+            onChange={theme.setColor}
+            options={[
+              { value: 'school', label: `${schoolName} 색` },
+              { value: 'basic', label: '기본' },
+            ]}
+          />
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-[15px] font-semibold text-ink">밝기</span>
+        <Segmented<ThemeMode>
+          label="화면 밝기"
+          value={theme.mode}
+          onChange={theme.setMode}
+          options={[
+            { value: 'system', label: '자동' },
+            { value: 'light', label: '밝게' },
+            { value: 'dark', label: '어둡게' },
+          ]}
+        />
+      </div>
+    </section>
   )
 }
+
+/** 내가 차단한 사람 (상대에게는 알리지 않는다) */
+function BlockedPeople() {
+  const { data } = useBlocks()
+  const unblock = useUnblock()
+  const toast = useToast()
+  if (!data || data.length === 0) return null
+  return (
+    <section>
+      <h2 className="mb-3 px-1 text-[17px] font-extrabold text-ink">차단한 사람</h2>
+      <ul className={`${cardClass} divide-y divide-line overflow-hidden`}>
+        {data.map((b) => (
+          <li key={b.id} className="flex items-center justify-between gap-3 px-5 py-3">
+            <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[15px] text-ink">
+              <span className="font-semibold">{b.name}</span>
+              <span className="text-ink-3">· {affiliation(b.cohortLabel, b.departmentLabel)}</span>
+              <SchoolBadge school={b.school} />
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={unblock.isPending && unblock.variables === b.id}
+              onClick={() =>
+                unblock.mutate(b.id, {
+                  onSuccess: () => toast.show('차단을 풀었어요', 'ok'),
+                  onError: (e) => toast.show(e.message, 'error'),
+                })
+              }
+            >
+              풀기
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+const rowClass = 'flex h-14 w-full items-center gap-3 px-5 text-left text-[15px] font-semibold text-ink hover:bg-surface-2'
 
 export function MyPage() {
   const { member, signOut } = useAuth()
   const { data, isPending, isError, error, refetch } = useMyMeetups()
-  const [editingPassword, setEditingPassword] = useState(false)
-  const [editingProfile, setEditingProfile] = useState(false)
+  const config = useAuthConfig()
+  const withdraw = useWithdraw()
+  const toast = useToast()
+  const navigate = useNavigate()
   const now = useNow()
 
   if (!member) return null
+  const supportEmail = config.data?.supportEmail
+
+  function confirmWithdraw() {
+    if (
+      !window.confirm(
+        '정말 탈퇴할까요?\n\n• 이름·이메일·카카오 연결이 바로 지워지고 되돌릴 수 없어요\n• 내가 연, 아직 모이기 전인 3교시는 취소돼요\n• 모집 중인 3교시에서는 빠져요\n\n같은 학교 이메일로 다시 가입할 수 있어요.',
+      )
+    )
+      return
+    withdraw.mutate(undefined, {
+      onSuccess: () => {
+        signOut()
+        toast.show('탈퇴했어요. 그동안 함께해 줘서 고마워요')
+        navigate('/welcome', { replace: true })
+      },
+      onError: (e) => toast.show(e.message, 'error'),
+    })
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -123,31 +130,31 @@ export function MyPage() {
             {member.name.slice(0, 1)}
           </span>
           <div className="min-w-0">
-            <p className="flex items-center gap-2 text-xl font-extrabold">
+            <p className="flex flex-wrap items-center gap-2 text-xl font-extrabold">
               {member.name}
-              {member.role === 'ADMIN' && (
-                <AdminTag />
-              )}
+              <SchoolBadge school={member.school} />
+              {member.role !== 'USER' && <RoleTag role={member.role} />}
             </p>
             <p className="mt-1 text-sm text-on-board-2">
-              {affiliation(member.cohortLabel, member.departmentLabel)} · @{member.loginId}
+              {affiliation(member.cohortLabel, member.departmentLabel)}
             </p>
+            <p className="mt-0.5 text-sm text-on-board-2">
+              {[member.school.name, member.graduateSchool].filter(Boolean).join(' ')}
+            </p>
+            {member.email && <p className="mt-0.5 truncate text-sm text-on-board-2">{member.email}</p>}
           </div>
         </div>
-        <p className="border-t border-board-line px-6 py-3 text-sm text-on-board-2">
-          다른 사람에게는 이름이 가운데가 가려진 채로 보여요. 성사된 3교시의 참여자에게만 실명이 보여요.
+        <p className="border-t border-board-line px-6 py-3 text-sm leading-relaxed text-on-board-2">
+          다른 사람에게는 이름이 가운데가 가려진 채로 보여요. 성사된 3교시의 참여자와 교수·대학원장(관리 화면)에게만 실명이 보여요.
+          <br />
+          이름·기수·학과를 바꿔야 하면 교수나 대학원장에게 요청해 주세요.
         </p>
       </section>
 
-      {!member.department && !editingProfile && (
-        <button
-          type="button"
-          onClick={() => setEditingProfile(true)}
-          className="flex items-center justify-between gap-3 rounded-2xl bg-exit/25 px-5 py-4 text-left text-[15px] font-semibold text-ink"
-        >
-          학과를 아직 고르지 않았어요. 지금 고르기
-          <ChevronRight className="size-5 shrink-0" aria-hidden />
-        </button>
+      {!member.departmentId && (
+        <p className="rounded-2xl bg-exit/25 px-5 py-4 text-[15px] font-semibold text-ink">
+          학과가 비어 있어요. 교수나 대학원장에게 학과를 넣어 달라고 요청해 주세요.
+        </p>
       )}
 
       <section>
@@ -180,49 +187,65 @@ export function MyPage() {
         )}
       </section>
 
-      <section className={cardClass}>
+      <ThemeSettings schoolName={member.school.shortName} />
+
+      <BlockedPeople />
+
+      <section className={`${cardClass} divide-y divide-line overflow-hidden`}>
         <h2 className="sr-only">계정</h2>
-        {member.role === 'ADMIN' && (
-          <Link to="/admin" className="flex h-14 items-center gap-3 border-b border-line px-5 text-[15px] font-semibold text-ink hover:bg-surface-2">
+        {isStaff(member.role) && (
+          <Link to="/admin" className={rowClass}>
             <ShieldCheck className="size-5 text-ink-3" aria-hidden />
             관리 페이지
+            <ChevronRight className="ml-auto size-4 text-ink-3" aria-hidden />
           </Link>
         )}
-        <button
-          type="button"
-          onClick={() => setEditingProfile((v) => !v)}
-          aria-expanded={editingProfile}
-          className="flex h-14 w-full items-center gap-3 border-b border-line px-5 text-left text-[15px] font-semibold text-ink hover:bg-surface-2"
-        >
-          <UserPen className="size-5 text-ink-3" aria-hidden />
-          이름·기수·학과 고치기
-        </button>
-        {editingProfile && (
-          <div className="border-b border-line">
-            <ProfileForm member={member} onDone={() => setEditingProfile(false)} />
-          </div>
+        <Link to="/terms" className={rowClass}>
+          <FileText className="size-5 text-ink-3" aria-hidden />
+          이용약관
+          <ChevronRight className="ml-auto size-4 text-ink-3" aria-hidden />
+        </Link>
+        <Link to="/privacy" className={rowClass}>
+          <FileText className="size-5 text-ink-3" aria-hidden />
+          개인정보 처리방침
+          <ChevronRight className="ml-auto size-4 text-ink-3" aria-hidden />
+        </Link>
+        {supportEmail && (
+          <a href={`mailto:${supportEmail}`} className={rowClass}>
+            <Mail className="size-5 text-ink-3" aria-hidden />
+            문의하기
+            <span className="ml-auto truncate text-sm font-medium text-ink-3">{supportEmail}</span>
+          </a>
         )}
-        <button
-          type="button"
-          onClick={() => setEditingPassword((v) => !v)}
-          aria-expanded={editingPassword}
-          className="flex h-14 w-full items-center gap-3 px-5 text-left text-[15px] font-semibold text-ink hover:bg-surface-2"
-        >
-          <KeyRound className="size-5 text-ink-3" aria-hidden />
-          비밀번호 바꾸기
-        </button>
-        {editingPassword && <PasswordForm onDone={() => setEditingPassword(false)} />}
         <button
           type="button"
           onClick={() => {
-            if (window.confirm('로그아웃할까요?')) signOut()
+            if (window.confirm('로그아웃할까요? 다음에는 카카오로 바로 들어올 수 있어요.')) signOut()
           }}
-          className="flex h-14 w-full items-center gap-3 border-t border-line px-5 text-left text-[15px] font-semibold text-danger-ink hover:bg-danger-soft"
+          className={`${rowClass} text-danger-ink hover:bg-danger-soft`}
         >
           <LogOut className="size-5" aria-hidden />
           로그아웃
         </button>
       </section>
+
+      {member.role === 'OWNER' ? (
+        <p className="text-center text-[13px] text-ink-3">
+          대학원장은 탈퇴할 수 없어요. 서버 설정(OWNER_EMAIL)에서 대학원장을 먼저 바꿔 주세요.
+        </p>
+      ) : (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={confirmWithdraw}
+            disabled={withdraw.isPending}
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-ink-3 underline-offset-4 hover:text-danger-ink hover:underline disabled:opacity-50"
+          >
+            <UserX className="size-4" aria-hidden />
+            탈퇴하기
+          </button>
+        </div>
+      )}
     </div>
   )
 }

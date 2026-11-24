@@ -6,7 +6,12 @@ import { ApiError } from './api/client'
 import { AuthProvider } from './auth/AuthProvider'
 import { ToastProvider } from './components/ToastProvider'
 import { App } from './App'
+import { applyTheme, loadPrefs, loadSchoolCode } from './lib/theme'
+import { ThemeProvider } from './theme/ThemeProvider'
 import './index.css'
+
+// 첫 화면부터 마지막 학교 색·밝기로 (index.html 스크립트가 이미 했으면 같은 값을 한 번 더 붙인다)
+applyTheme(loadPrefs(), loadSchoolCode())
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,9 +29,11 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
+          <ThemeProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </ThemeProvider>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

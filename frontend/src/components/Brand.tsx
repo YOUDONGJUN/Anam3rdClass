@@ -9,7 +9,7 @@ export function Brand({ subtitle = true }: { subtitle?: boolean }) {
       </span>
       <span className="flex flex-col leading-none">
         <span className="text-[17px] font-extrabold tracking-[-0.02em] text-on-board">안암3교시</span>
-        {subtitle && <span className="mt-1 text-[11px] font-medium text-on-board-2">SW·AI융합대학원 번개</span>}
+        {subtitle && <span className="mt-1 text-[11px] font-medium text-on-board-2">IT연합회 대학원 번개</span>}
       </span>
     </Link>
   )

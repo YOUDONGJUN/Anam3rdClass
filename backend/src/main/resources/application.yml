@@ -1,5 +1,5 @@
 # 공통 설정. 프로필별 설정은 application-{local,prod}.yml
-# 아무 프로필도 지정하지 않으면 local (H2 인메모리 DB + 샘플 데이터) 로 뜬다.
+# 아무 프로필도 지정하지 않으면 local (H2 인메모리 DB + 샘플 데이터 + 개발용 로그인) 로 뜬다.
 spring:
   application:
     name: anam3
@@ -13,8 +13,20 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+        # 학교·학과처럼 작은 표를 여러 줄에서 가리킬 때 한 번에 불러온다 (N+1 방지)
+        default_batch_fetch_size: 50
   flyway:
     enabled: true
+  # 인증코드 메일 (SMTP). SPRING_MAIL_HOST 를 넣었을 때만 메일을 보내고, 없으면 서버 로그에 코드를 남긴다.
+  # 예: Gmail → SPRING_MAIL_HOST=smtp.gmail.com, SPRING_MAIL_PORT=587,
+  #           SPRING_MAIL_USERNAME=보내는주소@gmail.com, SPRING_MAIL_PASSWORD=앱 비밀번호(16자리)
+  mail:
+    properties:
+      "[mail.smtp.auth]": true
+      "[mail.smtp.starttls.enable]": true
+      "[mail.smtp.connectiontimeout]": 5000
+      "[mail.smtp.timeout]": 10000
+      "[mail.smtp.writetimeout]": 10000
 
 server:
   port: ${PORT:8080}
@@ -27,15 +39,19 @@ app:
   jwt:
     secret: ${JWT_SECRET:}
     ttl: 30d
-  # 가입할 때 필요한 입장 코드 (운영자 페이지에서 바꿀 수 있음)
-  invite-code: ${INVITE_CODE:anam3}
-  # 가입 때 고를 수 있는 최신 기수 (운영 페이지에서 바꿀 수 있음)
-  latest-cohort: ${LATEST_COHORT:62}
-  admin:
-    login-id: ${ADMIN_LOGIN_ID:}
-    password: ${ADMIN_PASSWORD:}
-    name: ${ADMIN_NAME:관리자}
-    cohort: ${ADMIN_COHORT:61}
+  # 대학원장(최고 관리자)의 학교 이메일. 이 이메일로 인증한 계정이 대학원장이 된다 (늘 1명)
+  owner:
+    email: ${OWNER_EMAIL:}
+  # 카카오 디벨로퍼스 > 앱 > 플랫폼 키 > REST API 키 / 클라이언트 시크릿
+  kakao:
+    rest-api-key: ${KAKAO_REST_API_KEY:}
+    client-secret: ${KAKAO_CLIENT_SECRET:}
+  mail:
+    # 보내는 사람 주소 (비우면 SPRING_MAIL_USERNAME)
+    from: ${MAIL_FROM:}
+  # 약관·문의 화면에 보이는 연락처 (앱스토어 심사에 필요). 비우면 "교수·대학원장에게 문의"로 안내한다
+  support:
+    email: ${SUPPORT_EMAIL:}
   cors:
     # 프론트를 다른 도메인에 따로 배포할 때만. 쉼표로 여러 개 (예: https://anam3.vercel.app)
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}

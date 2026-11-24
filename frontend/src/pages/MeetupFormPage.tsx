@@ -1,8 +1,9 @@
 import { useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { useNavigate, useParams } from 'react-router'
-import { Check, ChevronLeft, Minus, Plus, X } from 'lucide-react'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { Check, ChevronLeft, Globe2, Lock, Minus, Plus, School, X, type LucideIcon } from 'lucide-react'
 import { useCreateMeetup, useMeetup, useUpdateMeetup } from '../api/queries'
-import type { MeetupCategory, MeetupDetail } from '../api/types'
+import type { MeetupAudience, MeetupCategory, MeetupDetail } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import { LineGauge } from '../components/LineGauge'
 import { Button, ErrorState, Field, FormError, Spinner } from '../components/ui'
 import { cardClass, inputClass } from '../components/styles'
@@ -11,15 +12,17 @@ import {
   addPurposes,
   CATEGORY,
   CATEGORY_ORDER,
+  fitPeople,
   MAX_PURPOSES,
   PURPOSE_MAX_LENGTH,
   PURPOSE_PRESETS,
+  peopleError,
   peopleRule,
   toggleCategory,
+  type PeopleValues,
 } from '../lib/meetup'
+import { placePresets } from '../lib/schools'
 import { ceilTo10Minutes, formatDateTime, fromKstInputValue, kstAt, toKstInputValue } from '../lib/time'
-
-const PLACES = ['안암역 2번 출구', '참살이길', '고대 정문 앞', '개운사길', '제기동역']
 
 const DEADLINES = [
   { value: '30', label: '30분 전', minutes: 30 },
@@ -45,6 +48,8 @@ interface FormValues {
   unlimited: boolean
   description: string
   openChatUrl: string
+  /** 누구에게 여는지: 우리 학교 · 우리 기수 · 연합 (열 때만 정한다) */
+  audience: MeetupAudience
 }
 
 /** 제출 직전 시간 검사 (서버도 한 번 더 검사한다) */
@@ -279,6 +284,8 @@ function PurposePicker({ value, onChange }: { value: string[]; onChange: (v: str
 function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number }; editing: boolean }) {
   const navigate = useNavigate()
   const toast = useToast()
+  const { member } = useAuth()
+  const places = placePresets(member?.school.code)
   const create = useCreateMeetup()
   const update = useUpdateMeetup(initial.id ?? 0)
   const [v, setV] = useState<FormValues>(initial)
@@ -287,6 +294,8 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
   const presets = useMemo(() => timePresets(now), [now])
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => setV((prev) => ({ ...prev, [key]: value }))
+  /** 인원 입력은 바꿀 때마다 최소 ≤ 최대가 되게 맞춘다 */
+  const setPeople = (patch: Partial<PeopleValues>) => setV((prev) => fitPeople({ ...prev, ...patch }))
 
   const meetAt = fromKstInputValue(v.meetAt)
   const deadlineMinutes = DEADLINES.find((d) => d.value === v.deadline)!.minutes
@@ -318,6 +327,8 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
       }
       const timeError = validateTimes(meetAt, deadlineAt)
       if (timeError || !meetAt || !deadlineAt) return setError(timeError ?? '모임 시간을 정해 주세요')
+      const peopleProblem = peopleError(minPeople, maxPeople)
+      if (peopleProblem) return setError(peopleProblem)
       const d = await create.mutateAsync({
         title: v.title,
         description: v.description,
@@ -329,8 +340,16 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
         minPeople,
         maxPeople,
         openChatUrl: v.openChatUrl,
+        audience: v.audience,
       })
-      toast.show('3교시를 열었어요! 단톡방에 공유해 보세요', 'ok')
+      toast.show(
+        v.audience === 'COHORT'
+          ? '3교시를 열었어요! 우리 기수 단톡방에 공유해 보세요'
+          : v.audience === 'ALL'
+            ? '연합 3교시를 열었어요! 연합 단톡방에 공유해 보세요'
+            : '3교시를 열었어요! 단톡방에 공유해 보세요',
+        'ok',
+      )
       navigate(`/meetups/${d.id}`, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : '저장하지 못했어요')
@@ -407,12 +426,12 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
               aria-describedby={describedBy}
               className={inputClass}
               maxLength={60}
-              placeholder="예: 참살이길 ○○호프, 안암역 2번 출구 앞 치킨집"
+              placeholder={`예: ${places[0] ?? '역'} 앞 치킨집`}
               value={v.place}
               onChange={(e) => set('place', e.target.value)}
             />
             <div className="flex flex-wrap gap-2">
-              {PLACES.map((p) => (
+              {places.map((p) => (
                 <Chip key={p} active={v.place === p} onClick={() => set('place', p)}>
                   {p}
                 </Chip>
@@ -433,11 +452,11 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
                 min={2}
                 max={20}
                 disabled={v.noMinimum}
-                onChange={(n) => setV((p) => ({ ...p, minPeople: n, maxPeople: Math.max(p.maxPeople, n) }))}
+                onChange={(n) => setPeople({ minPeople: n })}
               />
               <NoLimitToggle
                 checked={v.noMinimum}
-                onChange={(on) => set('noMinimum', on)}
+                onChange={(on) => setPeople({ noMinimum: on })}
                 label="최소 인원 없음"
                 sub="몇 명이 오든 진행해요"
               />
@@ -449,11 +468,11 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
                 min={v.noMinimum ? 2 : Math.max(2, v.minPeople)}
                 max={30}
                 disabled={v.unlimited}
-                onChange={(n) => set('maxPeople', n)}
+                onChange={(n) => setPeople({ maxPeople: n })}
               />
               <NoLimitToggle
                 checked={v.unlimited}
-                onChange={(on) => set('unlimited', on)}
+                onChange={(on) => setPeople({ unlimited: on })}
                 label="최대 인원 없음"
                 sub="오는 사람 다 받아요"
               />
@@ -470,6 +489,51 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
               </p>
             )}
           </div>
+        </fieldset>
+      )}
+
+      {!editing && member && (
+        <fieldset>
+          <legend className="mb-2 text-[15px] font-semibold text-ink">누구와 함께할까요</legend>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(
+              [
+                { value: 'SCHOOL', Icon: School, label: '우리 학교', sub: `${member.school.shortName} 원우 누구나` },
+                {
+                  value: 'COHORT',
+                  Icon: Lock,
+                  label: '우리 기수만',
+                  sub: `${member.school.shortName} ${member.cohortLabel}만 보여요`,
+                },
+                { value: 'ALL', Icon: Globe2, label: '연합', sub: '다섯 학교 누구나 · 연합 게시판에' },
+              ] satisfies { value: MeetupAudience; Icon: LucideIcon; label: string; sub: string }[]
+            ).map(({ value, Icon, label, sub }) => {
+              const active = v.audience === value
+              return (
+                <label
+                  key={value}
+                  className={`flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 transition-colors has-focus-visible:ring-2 has-focus-visible:ring-accent sm:flex-col sm:items-start sm:gap-1.5 ${
+                    active ? 'border-board bg-board text-on-board' : 'border-line-strong bg-surface text-ink hover:border-ink-3'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="audience"
+                    value={value}
+                    checked={active}
+                    onChange={() => set('audience', value)}
+                    className="sr-only"
+                  />
+                  <Icon className={`size-5 shrink-0 ${active ? 'text-accent' : 'text-ink-3'}`} aria-hidden />
+                  <span className="flex flex-col leading-snug">
+                    <span className="text-[15px] font-bold">{label}</span>
+                    <span className={`text-[13px] ${active ? 'text-on-board-2' : 'text-ink-3'}`}>{sub}</span>
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+          <p className="mt-2 px-1 text-[13px] text-ink-3">열고 나면 바꿀 수 없어요.</p>
         </fieldset>
       )}
 
@@ -520,7 +584,7 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
   )
 }
 
-function defaults(): FormValues {
+function defaults(audience: MeetupAudience): FormValues {
   const now = new Date()
   const first = timePresets(now)[0]?.date ?? ceilTo10Minutes(new Date(now.getTime() + 2 * 60 * 60_000))
   return {
@@ -536,6 +600,7 @@ function defaults(): FormValues {
     unlimited: false,
     description: '',
     openChatUrl: '',
+    audience,
   }
 }
 
@@ -554,6 +619,7 @@ function fromDetail(d: MeetupDetail): FormValues & { id: number } {
     unlimited: d.maxPeople === null,
     description: d.description,
     openChatUrl: d.openChatUrl ?? '',
+    audience: d.audience,
   }
 }
 
@@ -576,7 +642,8 @@ function Header({ title, sub }: { title: string; sub: string }) {
 }
 
 export function MeetupCreatePage() {
-  const [initial] = useState(defaults)
+  const [params] = useSearchParams()
+  const [initial] = useState(() => defaults(params.get('audience') === 'ALL' ? 'ALL' : 'SCHOOL'))
   return (
     <div className="max-w-2xl">
       <Header title="3교시 열기" sub="이름은 가려진 채로 열려요. 인원이 안 모이면 조용히 사라지니 부담 갖지 마세요." />

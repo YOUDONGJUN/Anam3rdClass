@@ -3,7 +3,7 @@
 #
 #   docker compose up -d
 #   cd backend && SPRING_PROFILES_ACTIVE=prod DATABASE_URL=postgresql://anam3:anam3@localhost:5433/anam3?sslmode=disable \
-#     JWT_SECRET=local-postgres-secret-0123456789abcdef ADMIN_LOGIN_ID=admin ADMIN_PASSWORD=admin1234 ./mvnw spring-boot:run
+#     JWT_SECRET=local-postgres-secret-0123456789abcdef OWNER_EMAIL=owner@korea.ac.kr ./mvnw spring-boot:run
 services:
   postgres:
     image: postgres:17-alpine

@@ -1,5 +1,43 @@
 import { describe, expect, it } from 'vitest'
-import { addPurposes, categoryLabel, headcount, peopleRule, seatsCaption, statusView, toggleCategory } from './meetup'
+import {
+  addPurposes,
+  categoryLabel,
+  fitPeople,
+  headcount,
+  peopleError,
+  peopleRule,
+  seatsCaption,
+  statusView,
+  toggleCategory,
+} from './meetup'
+
+describe('fitPeople / peopleError', () => {
+  const people = { minPeople: 3, noMinimum: false, maxPeople: 6, unlimited: false }
+
+  it('"최소 인원 없음"을 켰다 끄면 최대 인원을 최소 인원에 맞춰 올린다', () => {
+    // 최소 인원 없음을 켠 채 최대를 2명으로 줄임 → 최소(3)는 무시되니 그대로 둔다
+    const lowered = fitPeople({ ...people, noMinimum: true, maxPeople: 2 })
+    expect(lowered.maxPeople).toBe(2)
+    // 다시 끄면 최소 3명 > 최대 2명이 되므로 최대를 3명으로
+    expect(fitPeople({ ...lowered, noMinimum: false })).toMatchObject({ minPeople: 3, maxPeople: 3 })
+  })
+
+  it('최소 인원을 올리면 최대도 따라 오른다', () => {
+    expect(fitPeople({ ...people, minPeople: 8 }).maxPeople).toBe(8)
+    expect(fitPeople({ ...people, minPeople: 4 }).maxPeople).toBe(6)
+  })
+
+  it('인원 제한 없음이면 최대 인원은 보지 않는다', () => {
+    expect(fitPeople({ ...people, unlimited: true, maxPeople: 2 }).maxPeople).toBe(2)
+  })
+
+  it('제출 직전 검사', () => {
+    expect(peopleError(3, 2)).toBe('최대 인원은 최소 인원보다 같거나 많아야 해요')
+    expect(peopleError(3, 3)).toBeNull()
+    expect(peopleError(null, 2)).toBeNull()
+    expect(peopleError(3, null)).toBeNull()
+  })
+})
 
 const base = { participantCount: 2, minPeople: 3, maxPeople: 6 }
 

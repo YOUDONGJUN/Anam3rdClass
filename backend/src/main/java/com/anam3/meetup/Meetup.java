@@ -15,6 +15,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import com.anam3.member.Member;
+import com.anam3.school.School;
 
 /** 3교시(번개 모임) */
 @Entity
@@ -28,6 +29,15 @@ public class Meetup {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "host_id", nullable = false)
     private Member host;
+
+    /** 연 사람의 학교. 연합이 아니면 이 학교 원우만 보고 참여한다 */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "school_id", nullable = false)
+    private School school;
+
+    /** 연합 3교시: 다섯 학교 누구나 보고 참여한다 (열 때만 정하고 바꿀 수 없다) */
+    @Column(nullable = false)
+    private boolean federated;
 
     @Column(nullable = false, length = 40)
     private String title;
@@ -70,6 +80,10 @@ public class Meetup {
     @Column(name = "open_chat_url", length = 300)
     private String openChatUrl;
 
+    /** 우리 기수만: 열 때의 개설자 기수. null 이면 누구나. 다른 기수에게는 목록에 안 보이고 참여도 막힌다 */
+    @Column(name = "only_cohort")
+    private Integer onlyCohort;
+
     @Column(nullable = false)
     private boolean canceled;
 
@@ -82,10 +96,13 @@ public class Meetup {
     protected Meetup() {
     }
 
-    public Meetup(Member host, String title, String description, String place,
+    public Meetup(Member host, MeetupAudience audience, String title, String description, String place,
             Collection<MeetupCategory> categories, List<String> purposes, Instant meetAt, Instant deadlineAt,
             Integer minPeople, Integer maxPeople, String openChatUrl, Instant now) {
         this.host = host;
+        this.school = host.getSchool();
+        this.federated = audience == MeetupAudience.ALL;
+        this.onlyCohort = audience == MeetupAudience.COHORT ? host.getCohort() : null;
         this.title = title;
         this.description = description;
         this.place = place;
@@ -150,6 +167,29 @@ public class Meetup {
         return host.getId().equals(memberId);
     }
 
+    /** 이 기수가 참여할 수 있는 3교시인지 (기수 제한이 없으면 누구나) */
+    public boolean isOpenToCohort(int cohort) {
+        return onlyCohort == null || onlyCohort == cohort;
+    }
+
+    public boolean isOfSchool(Long schoolId) {
+        return school.getId().equals(schoolId);
+    }
+
+    /**
+     * 이 사람이 보고 참여할 수 있는 3교시인지: 연합이면 누구나, 아니면 같은 학교(+ 우리 기수 전용이면 같은 기수)
+     */
+    public boolean isOpenTo(Long schoolId, int cohort) {
+        return federated || (isOfSchool(schoolId) && isOpenToCohort(cohort));
+    }
+
+    public MeetupAudience audience() {
+        if (federated) {
+            return MeetupAudience.ALL;
+        }
+        return onlyCohort == null ? MeetupAudience.SCHOOL : MeetupAudience.COHORT;
+    }
+
     public void addParticipant() {
         this.participantCount++;
     }
@@ -180,6 +220,14 @@ public class Meetup {
 
     public Member getHost() {
         return host;
+    }
+
+    public School getSchool() {
+        return school;
+    }
+
+    public boolean isFederated() {
+        return federated;
     }
 
     public String getTitle() {
@@ -226,6 +274,11 @@ public class Meetup {
 
     public String getOpenChatUrl() {
         return openChatUrl;
+    }
+
+    /** null 이면 누구나 */
+    public Integer getOnlyCohort() {
+        return onlyCohort;
     }
 
     public boolean isCanceled() {

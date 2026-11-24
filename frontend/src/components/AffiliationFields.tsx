@@ -1,24 +1,34 @@
-import type { Department } from '../api/types'
 import { useSignupOptions } from '../api/queries'
 import { Field } from './ui'
 import { inputClass } from './styles'
 
 interface Props {
+  /** 기수·학과는 학교마다 다르다 */
+  schoolId: number | null
   /** 선택 안 했으면 '' */
   cohort: string
-  department: Department | ''
+  departmentId: number | null
   onCohortChange: (value: string) => void
-  onDepartmentChange: (value: Department) => void
+  onDepartmentChange: (value: number) => void
 }
 
-/** 기수(최신 → 1기)와 학과 선택. 가입 화면과 내 정보 수정에서 같이 쓴다 */
-export function AffiliationFields({ cohort, department, onCohortChange, onDepartmentChange }: Props) {
+/** 기수(최신 → 1기)와 학과 선택. 가입 화면과 관리 화면(원우 프로필 고치기)에서 같이 쓴다 */
+export function AffiliationFields({ schoolId, cohort, departmentId, onCohortChange, onDepartmentChange }: Props) {
   const { data, isPending, isError } = useSignupOptions()
-  const cohorts = data ? Array.from({ length: data.latestCohort }, (_, i) => data.latestCohort - i) : []
+  const school = data?.schools.find((s) => s.id === schoolId)
+  const latest = school?.latestCohort ?? 0
+  const cohorts = Array.from({ length: latest }, (_, i) => latest - i)
+  // 학과마다 대학원이 다르면(연세대: 인공지능융합대학원 · 공학대학원) 학과 옆에 대학원을 적는다
+  const gradOf = (d: { graduateSchool: string | null }) => d.graduateSchool ?? school?.graduateSchool ?? null
+  const mixed = new Set((school?.departments ?? []).map(gradOf)).size > 1
 
   return (
     <>
-      <Field label="기수" error={isError ? '기수 목록을 불러오지 못했어요. 새로고침해 주세요' : null}>
+      <Field
+        label="기수"
+        error={isError ? '기수 목록을 불러오지 못했어요. 새로고침해 주세요' : null}
+        hint={school ? `${school.shortName}는 1기부터 ${latest}기까지 있어요` : undefined}
+      >
         {({ id }) => (
           <select
             id={id}
@@ -40,13 +50,18 @@ export function AffiliationFields({ cohort, department, onCohortChange, onDepart
       </Field>
 
       <fieldset>
-        <legend className="mb-2 text-[15px] font-semibold text-ink">학과</legend>
+        <legend className="mb-2 text-[15px] font-semibold text-ink">
+          학과
+          {!mixed && school?.graduateSchool && (
+            <span className="ml-1.5 text-sm font-medium text-ink-3">{school.graduateSchool}</span>
+          )}
+        </legend>
         <div className="grid gap-2">
-          {(data?.departments ?? []).map((d) => {
-            const active = department === d.code
+          {(school?.departments ?? []).map((d) => {
+            const active = departmentId === d.id
             return (
               <label
-                key={d.code}
+                key={d.id}
                 className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-4 text-[15px] font-semibold transition-colors has-focus-visible:ring-2 has-focus-visible:ring-accent ${
                   active ? 'border-board bg-board text-on-board' : 'border-line-strong bg-surface text-ink hover:border-ink-3'
                 }`}
@@ -54,9 +69,9 @@ export function AffiliationFields({ cohort, department, onCohortChange, onDepart
                 <input
                   type="radio"
                   name="department"
-                  value={d.code}
+                  value={d.id}
                   checked={active}
-                  onChange={() => onDepartmentChange(d.code)}
+                  onChange={() => onDepartmentChange(d.id)}
                   className="sr-only"
                 />
                 <span
@@ -67,10 +82,20 @@ export function AffiliationFields({ cohort, department, onCohortChange, onDepart
                 >
                   {active && <span className="size-2.5 rounded-full bg-accent" />}
                 </span>
-                {d.label}
+                <span className="min-w-0 py-2">
+                  {d.name}
+                  {mixed && gradOf(d) && (
+                    <span className={`ml-1.5 text-sm font-medium ${active ? 'opacity-80' : 'text-ink-3'}`}>{gradOf(d)}</span>
+                  )}
+                </span>
               </label>
             )
           })}
+          {school && school.departments.length === 0 && (
+            <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2">
+              아직 등록된 학과가 없어요. 대학원장에게 학과를 넣어 달라고 알려 주세요.
+            </p>
+          )}
         </div>
       </fieldset>
     </>

@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { ChevronLeft, Pencil, Pin, PinOff, Plus, Trash2 } from 'lucide-react'
+import { ChevronLeft, Flag, Globe2, Pencil, Pin, PinOff, Plus, Trash2 } from 'lucide-react'
 import { useDeleteNotice, useNotice, useNotices, usePinNotice, useSaveNotice } from '../api/queries'
 import type { AuthorView } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { AdminTag } from '../components/PersonName'
+import { RoleTag } from '../components/PersonName'
+import { ReportDialog } from '../components/ReportDialog'
+import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, EmptyState, ErrorState, Field, FormError, Spinner } from '../components/ui'
 import { buttonClass, cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
@@ -12,20 +14,31 @@ import { useNow } from '../lib/hooks'
 import { affiliation } from '../lib/person'
 import { formatRelative } from '../lib/time'
 
-function Author({ author }: { author: AuthorView }) {
+function Author({ author, showSchool }: { author: AuthorView; showSchool: boolean }) {
   if (author.official) {
     return (
       <span className="inline-flex items-center gap-1.5 text-ink-2">
         <span className="font-semibold text-ink">{author.name}</span>
-        <AdminTag />
+        <RoleTag />
         {author.me && ' (나)'}
       </span>
     )
   }
   return (
-    <span className="text-ink-2">
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5 text-ink-2">
       {author.name} · {affiliation(author.cohortLabel, author.departmentLabel)}
+      {showSchool && <SchoolBadge school={author.school} />}
       {author.me && ' (나)'}
+    </span>
+  )
+}
+
+/** 다섯 학교 모두에게 보이는 연합 공지 표시 */
+function FederatedTag() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-board px-1.5 py-0.5 text-xs font-bold text-on-board">
+      <Globe2 className="size-3" strokeWidth={2.6} aria-hidden />
+      연합
     </span>
   )
 }
@@ -51,7 +64,7 @@ export function NoticesPage() {
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
           <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">공지</h1>
-          <p className="mt-1 text-[15px] text-ink-2">누구나 쓸 수 있어요. 모임 소식, 수요조사, 분실물 무엇이든.</p>
+          <p className="mt-1 text-[15px] text-ink-2">우리 학교 원우끼리 보는 글과 대학원장의 연합 공지예요. 모임 소식, 수요조사, 분실물 무엇이든.</p>
         </div>
         <Link to="/notices/new" className={buttonClass('primary', 'md')}>
           <Plus className="size-4" strokeWidth={2.6} aria-hidden />
@@ -73,6 +86,7 @@ export function NoticesPage() {
             <li key={n.id} className="relative px-5 py-4 transition-colors focus-within:bg-surface-2 hover:bg-surface-2/70">
               <div className="flex items-start gap-2">
                 {n.pinned && <Pin className="mt-1 size-4 shrink-0 fill-accent text-accent-ink" aria-label="상단 고정" />}
+                {n.federated && <FederatedTag />}
                 <h2 className="min-w-0 flex-1 text-base leading-snug font-bold text-ink">
                   <Link
                     to={`/notices/${n.id}`}
@@ -83,8 +97,8 @@ export function NoticesPage() {
                 </h2>
               </div>
               <p className="mt-1 line-clamp-1 text-sm text-ink-2">{n.preview}</p>
-              <p className="mt-2 flex items-center gap-2 text-[13px] text-ink-3">
-                <Author author={n.author} />
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
+                <Author author={n.author} showSchool={n.federated} />
                 <span>·</span>
                 <time dateTime={n.createdAt}>{formatRelative(n.createdAt, now)}</time>
               </p>
@@ -98,29 +112,32 @@ export function NoticesPage() {
 
 export function NoticeDetailPage() {
   const id = Number(useParams().id)
-  const { member } = useAuth()
   const { data: n, isPending, isError, error, refetch } = useNotice(id)
   const del = useDeleteNotice()
   const pin = usePinNotice()
   const toast = useToast()
   const navigate = useNavigate()
   const now = useNow(60_000)
+  const [reporting, setReporting] = useState(false)
 
   if (isPending) return <Spinner />
   if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
-
-  const isAdmin = member?.role === 'ADMIN'
 
   return (
     <article className="max-w-2xl">
       <BackLink to="/notices" label="공지 목록" />
       <header className="border-b border-line pb-5">
+        {n.federated && (
+          <p className="mb-2">
+            <FederatedTag />
+          </p>
+        )}
         <h1 className="text-[26px] leading-tight font-extrabold tracking-[-0.03em] text-ink">
           {n.pinned && <Pin className="mr-2 inline size-5 fill-accent align-[-2px] text-accent-ink" aria-label="상단 고정" />}
           {n.title}
         </h1>
-        <p className="mt-3 flex items-center gap-2 text-sm text-ink-3">
-          <Author author={n.author} />
+        <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-3">
+          <Author author={n.author} showSchool={n.federated} />
           <span>·</span>
           <time dateTime={n.createdAt}>{formatRelative(n.createdAt, now)}</time>
           {n.updatedAt !== n.createdAt && <span>· 수정됨</span>}
@@ -128,9 +145,9 @@ export function NoticeDetailPage() {
       </header>
       <div className="py-6 text-base leading-[1.75] whitespace-pre-wrap text-ink">{n.content}</div>
 
-      {(n.canEdit || isAdmin) && (
+      {(n.canEdit || n.canPin) && (
         <div className="flex flex-wrap gap-2 border-t border-line pt-5">
-          {isAdmin && (
+          {n.canPin && (
             <Button
               variant="secondary"
               size="sm"
@@ -177,23 +194,40 @@ export function NoticeDetailPage() {
           )}
         </div>
       )}
+
+      {!n.author.me && (
+        <button
+          type="button"
+          onClick={() => setReporting(true)}
+          className="mt-6 inline-flex h-10 items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink"
+        >
+          <Flag className="size-4" aria-hidden />이 글 신고하기
+        </button>
+      )}
+      {reporting && (
+        <ReportDialog target={{ type: 'NOTICE', id, label: `공지 ‘${n.title}’` }} onClose={() => setReporting(false)} />
+      )}
     </article>
   )
 }
 
 function NoticeForm({ id, initial }: { id?: number; initial: { title: string; content: string } }) {
   const save = useSaveNotice(id)
+  const { member } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
   const [title, setTitle] = useState(initial.title)
   const [content, setContent] = useState(initial.content)
+  const [federated, setFederated] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 연합 공지는 대학원장만, 새로 쓸 때만 고른다
+  const canFederate = !id && member?.role === 'OWNER'
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     try {
-      const d = await save.mutateAsync({ title, content })
+      const d = await save.mutateAsync({ title, content, federated: canFederate && federated })
       toast.show(id ? '수정했어요' : '올렸어요', 'ok')
       navigate(`/notices/${d.id}`, { replace: true })
     } catch (err) {
@@ -221,6 +255,20 @@ function NoticeForm({ id, initial }: { id?: number; initial: { title: string; co
           />
         )}
       </Field>
+      {canFederate && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line-strong px-4 py-3 text-[15px] text-ink has-focus-visible:ring-2 has-focus-visible:ring-accent">
+          <input
+            type="checkbox"
+            checked={federated}
+            onChange={(e) => setFederated(e.target.checked)}
+            className="mt-0.5 size-5 shrink-0 accent-[var(--accent)]"
+          />
+          <span className="leading-relaxed">
+            <b>연합 공지로 올리기</b>
+            <span className="block text-sm text-ink-3">IT연합회 다섯 학교 모두에게 보여요. 끄면 우리 학교에만 보여요.</span>
+          </span>
+        </label>
+      )}
       <FormError message={error} />
       <div className="flex gap-2.5">
         <Button variant="secondary" size="lg" onClick={() => navigate(-1)}>

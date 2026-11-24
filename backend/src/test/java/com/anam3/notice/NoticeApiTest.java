@@ -10,13 +10,13 @@ import com.anam3.support.ApiTestSupport;
 
 class NoticeApiTest extends ApiTestSupport {
 
-    private String minsu;
-    private String jiyoung;
+    private String godae;
+    private String anam;
 
     @BeforeEach
     void users() throws Exception {
-        minsu = signup("minsu", "김민수", 61);
-        jiyoung = signup("jiyoung", "이지영", 60);
+        godae = signup("godae", "김고대", 61);
+        anam = signup("anam", "이안암", 60);
     }
 
     private long createNotice(String token, String title) throws Exception {
@@ -29,25 +29,25 @@ class NoticeApiTest extends ApiTestSupport {
 
     @Test
     void 누구나_공지를_쓸_수_있고_글쓴이는_가려진다() throws Exception {
-        long id = createNotice(minsu, "종강 파티");
+        long id = createNotice(godae, "종강 파티");
 
-        get("/api/notices/" + id, jiyoung)
+        get("/api/notices/" + id, anam)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.author.name").value("김*수"))
+                .andExpect(jsonPath("$.author.name").value("김*대"))
                 .andExpect(jsonPath("$.author.cohortLabel").value("61기"))
                 .andExpect(jsonPath("$.author.official").value(false))
                 .andExpect(jsonPath("$.canEdit").value(false));
 
-        get("/api/notices/" + id, minsu)
-                .andExpect(jsonPath("$.author.name").value("김민수"))
+        get("/api/notices/" + id, godae)
+                .andExpect(jsonPath("$.author.name").value("김고대"))
                 .andExpect(jsonPath("$.canEdit").value(true));
     }
 
     @Test
-    void 관리자_글은_실명과_관리자_표시() throws Exception {
-        long id = createNotice(adminToken(), "공지");
+    void 대학원장_글은_실명과_대학원장_표시() throws Exception {
+        long id = createNotice(ownerToken(), "공지");
 
-        get("/api/notices/" + id, minsu)
+        get("/api/notices/" + id, godae)
                 .andExpect(jsonPath("$.author.name").value("박관리"))
                 .andExpect(jsonPath("$.author.cohortLabel").value("61기"))
                 .andExpect(jsonPath("$.author.official").value(true))
@@ -55,34 +55,48 @@ class NoticeApiTest extends ApiTestSupport {
     }
 
     @Test
-    void 수정과_삭제는_글쓴이와_운영자만() throws Exception {
-        long id = createNotice(minsu, "종강 파티");
+    void 교수_글은_일반_원우처럼_가려지고_교수도_다른_글쓴이_이름을_못_본다() throws Exception {
+        String manager = managerToken("horang", "박호랑", 61);
+        long byManager = createNotice(manager, "교수 공지");
+        long byGodae = createNotice(godae, "원우 공지");
+
+        get("/api/notices/" + byManager, anam)
+                .andExpect(jsonPath("$.author.name").value("박*랑"))
+                .andExpect(jsonPath("$.author.official").value(false));
+        get("/api/notices/" + byGodae, manager)
+                .andExpect(jsonPath("$.author.name").value("김*대"))
+                .andExpect(jsonPath("$.canEdit").value(true)); // 관리는 할 수 있다
+    }
+
+    @Test
+    void 수정과_삭제는_글쓴이와_교수_대학원장만() throws Exception {
+        long id = createNotice(godae, "종강 파티");
         String edit = """
                 {"title":"종강 파티 (장소 변경)","content":"참살이길로 바뀌었어요"}
                 """;
 
-        put("/api/notices/" + id, jiyoung, edit).andExpect(status().isForbidden());
-        delete("/api/notices/" + id, jiyoung).andExpect(status().isForbidden());
+        put("/api/notices/" + id, anam, edit).andExpect(status().isForbidden());
+        delete("/api/notices/" + id, anam).andExpect(status().isForbidden());
 
-        put("/api/notices/" + id, minsu, edit)
+        put("/api/notices/" + id, godae, edit)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("종강 파티 (장소 변경)"));
 
-        delete("/api/notices/" + id, adminToken()).andExpect(status().isNoContent());
-        get("/api/notices/" + id, minsu).andExpect(status().isNotFound());
+        delete("/api/notices/" + id, managerToken("horang", "박호랑", 61)).andExpect(status().isNoContent());
+        get("/api/notices/" + id, godae).andExpect(status().isNotFound());
     }
 
     @Test
-    void 상단_고정은_운영자만_하고_고정글이_맨_위() throws Exception {
-        long first = createNotice(minsu, "먼저 쓴 글");
-        createNotice(jiyoung, "나중에 쓴 글");
+    void 상단_고정은_교수_대학원장만_하고_고정글이_맨_위() throws Exception {
+        long first = createNotice(godae, "먼저 쓴 글");
+        createNotice(anam, "나중에 쓴 글");
 
-        put("/api/admin/notices/" + first + "/pin", minsu, "{\"pinned\":true}").andExpect(status().isForbidden());
-        put("/api/admin/notices/" + first + "/pin", adminToken(), "{\"pinned\":true}")
+        put("/api/admin/notices/" + first + "/pin", godae, "{\"pinned\":true}").andExpect(status().isForbidden());
+        put("/api/admin/notices/" + first + "/pin", managerToken("horang", "박호랑", 61), "{\"pinned\":true}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.pinned").value(true));
 
-        get("/api/notices", jiyoung)
+        get("/api/notices", anam)
                 .andExpect(jsonPath("$[0].title").value("먼저 쓴 글"))
                 .andExpect(jsonPath("$[0].pinned").value(true))
                 .andExpect(jsonPath("$[1].title").value("나중에 쓴 글"));
@@ -90,7 +104,7 @@ class NoticeApiTest extends ApiTestSupport {
 
     @Test
     void 빈_공지는_쓸_수_없다() throws Exception {
-        post("/api/notices", minsu, "{\"title\":\"\",\"content\":\"\"}")
+        post("/api/notices", godae, "{\"title\":\"\",\"content\":\"\"}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }

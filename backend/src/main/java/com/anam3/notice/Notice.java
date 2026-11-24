@@ -13,8 +13,12 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import com.anam3.member.Member;
+import com.anam3.school.School;
 
-/** 공지 — 누구나 쓸 수 있고, 운영자 글은 "운영자" 배지가 붙는다. 상단 고정은 운영자만 */
+/**
+ * 공지 — 누구나 쓸 수 있고, 대학원장 글은 "대학원장" 배지가 붙는다. 상단 고정은 교수·대학원장만.
+ * 학교별로 보인다. school 이 null 이면 연합 공지 (대학원장만 쓴다, 다섯 학교 모두에게 보인다).
+ */
 @Entity
 @Table(name = "notices")
 public class Notice {
@@ -26,6 +30,11 @@ public class Notice {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "author_id", nullable = false)
     private Member author;
+
+    /** null 이면 연합 공지 */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "school_id")
+    private School school;
 
     @Column(nullable = false, length = 60)
     private String title;
@@ -45,8 +54,9 @@ public class Notice {
     protected Notice() {
     }
 
-    public Notice(Member author, String title, String content, Instant now) {
+    public Notice(Member author, School school, String title, String content, Instant now) {
         this.author = author;
+        this.school = school;
         this.title = title;
         this.content = content;
         this.pinned = false;
@@ -74,6 +84,15 @@ public class Notice {
 
     public Member getAuthor() {
         return author;
+    }
+
+    /** null 이면 연합 공지 */
+    public School getSchool() {
+        return school;
+    }
+
+    public boolean isFederated() {
+        return school == null;
     }
 
     public String getTitle() {

@@ -1,18 +1,36 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { ChevronLeft, Clock, EyeOff, Hash, MapPin, MessageCircle, PartyPopper, Pencil, Share2, Users } from 'lucide-react'
+import {
+  ChevronLeft,
+  Clock,
+  EyeOff,
+  Flag,
+  Globe2,
+  Hash,
+  Lock,
+  MapPin,
+  MessageCircle,
+  PartyPopper,
+  Pencil,
+  Share2,
+  Users,
+} from 'lucide-react'
+import { ApiError } from '../api/client'
 import { useMeetup, useMeetupAction } from '../api/queries'
 import type { MeetupDetail } from '../api/types'
 import { CategoryBadges } from '../components/CategoryBadge'
+import { AudienceBadge } from '../components/CohortBadge'
 import { ParticipantRoute } from '../components/LineGauge'
 import { PersonName } from '../components/PersonName'
 import { PurposeTags } from '../components/PurposeTags'
+import { ReportDialog, type ReportTargetInfo } from '../components/ReportDialog'
 import { StatusPill } from '../components/StatusPill'
 import { Button, ErrorState, Spinner } from '../components/ui'
 import { buttonClass, cardClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
 import { CATEGORY, headcount, isLive, seatsCaption, sortCategories } from '../lib/meetup'
+import { affiliation } from '../lib/person'
 import { formatDateTime, formatRemaining } from '../lib/time'
 
 function Countdown({ m, now }: { m: MeetupDetail; now: Date }) {
@@ -115,9 +133,25 @@ export function MeetupDetailPage() {
   const navigate = useNavigate()
   const now = useNow()
   const [arrived, setArrived] = useState<number | null>(null)
+  const [reporting, setReporting] = useState<ReportTargetInfo | null>(null)
 
   if (isPending) return <Spinner />
-  if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
+  if (isError) {
+    // 다른 학교·다른 기수 전용 3교시(403)는 다시 시도해도 같다
+    const forbidden = error instanceof ApiError && error.status === 403
+    return (
+      <div>
+        <ErrorState message={error.message} onRetry={forbidden ? undefined : () => refetch()} />
+        {forbidden && (
+          <div className="flex justify-center">
+            <Link to="/" className={buttonClass('secondary')}>
+              열린 3교시 보기
+            </Link>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   const live = isLive(m.status)
   const hasActions = m.canJoin || Boolean(m.joined && m.revealed && m.openChatUrl) || live || m.canLeave
@@ -221,11 +255,29 @@ export function MeetupDetailPage() {
                 </dd>
               </div>
             )}
+            {m.audience !== 'SCHOOL' && (
+              <div className="flex items-center gap-2.5">
+                <dt className="sr-only">모집 대상</dt>
+                {m.audience === 'ALL' ? (
+                  <Globe2 className="size-4 shrink-0 text-on-board-2" aria-hidden />
+                ) : (
+                  <Lock className="size-4 shrink-0 text-on-board-2" aria-hidden />
+                )}
+                <dd className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <AudienceBadge meetup={m} tone="board" />
+                  <span className="text-sm text-on-board-2">
+                    {m.audience === 'ALL'
+                      ? 'IT연합회 다섯 학교 누구나 참여해요'
+                      : `${m.school.shortName} 다른 기수에게는 보이지 않아요`}
+                  </span>
+                </dd>
+              </div>
+            )}
             <div className="flex items-center gap-2.5">
               <dt className="sr-only">연 사람</dt>
               <Users className="size-4 shrink-0 text-on-board-2" aria-hidden />
-              <dd className="text-on-board-2">
-                <PersonName person={m.host} showMe={false} /> 님이 열었어요
+              <dd className="flex min-w-0 flex-wrap items-center gap-x-1 text-on-board-2">
+                <PersonName person={m.host} showMe={false} showSchool={m.audience === 'ALL'} /> 님이 열었어요
               </dd>
             </div>
           </dl>
@@ -275,6 +327,15 @@ export function MeetupDetailPage() {
               status={m.status}
               participants={m.participants}
               highlightIndex={arrived}
+              showSchool={m.audience === 'ALL'}
+              onPersonMenu={(p) =>
+                p.ref !== null &&
+                setReporting({
+                  type: 'MEMBER',
+                  id: p.ref,
+                  label: `${p.name} · ${affiliation(p.cohortLabel, p.departmentLabel)} · ${p.school.shortName}`,
+                })
+              }
             />
           </section>
 
@@ -290,12 +351,25 @@ export function MeetupDetailPage() {
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-10">
           <div className="hidden lg:block">{actions}</div>
-          {m.canEdit && (
+          {!m.hosting && (
+            <button
+              type="button"
+              onClick={() => setReporting({ type: 'MEETUP', id: m.id, label: `3교시 ‘${m.title}’` })}
+              className="inline-flex h-10 items-center justify-center gap-1.5 self-center rounded-lg px-3 text-sm font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink lg:self-start"
+            >
+              <Flag className="size-4" aria-hidden />
+              이 3교시 신고하기
+            </button>
+          )}
+          {/* 수정: 연 사람·대학원장 / 취소: 연 사람·그 학교 교수·대학원장 */}
+          {(m.canEdit || m.canCancel) && (
             <div className="flex gap-2.5">
-              <Link to={`/meetups/${m.id}/edit`} className={buttonClass('ghost', 'md', 'flex-1')}>
-                <Pencil className="size-4" aria-hidden />
-                수정
-              </Link>
+              {m.canEdit && (
+                <Link to={`/meetups/${m.id}/edit`} className={buttonClass('ghost', 'md', 'flex-1')}>
+                  <Pencil className="size-4" aria-hidden />
+                  수정
+                </Link>
+              )}
               {m.canCancel && (
                 <Button variant="danger" className="flex-1" loading={action.isPending} onClick={() => run('cancel')}>
                   3교시 취소
@@ -305,6 +379,8 @@ export function MeetupDetailPage() {
           )}
         </aside>
       </div>
+
+      {reporting && <ReportDialog key={`${reporting.type}-${reporting.id}`} target={reporting} onClose={() => setReporting(null)} />}
 
       {/* 모바일: 하단 고정 행동 바 (탭 바 바로 위) */}
       {hasActions && (

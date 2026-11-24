@@ -19,9 +19,9 @@ class MeetupStatusTest {
     private static final Instant MEET_AT = NOW.plus(Duration.ofHours(2));
 
     private Meetup meetup(Integer min, Integer max) {
-        Member host = new Member("host", "x", "김민수", 61, MemberRole.USER, NOW);
-        return new Meetup(host, "치맥", "", "안암", List.of(MeetupCategory.BEER), List.of(), MEET_AT, DEADLINE, min,
-                max, null, NOW);
+        Member host = new Member(null, "host@korea.ac.kr", null, "김고대", 61, null, MemberRole.USER, NOW);
+        return new Meetup(host, MeetupAudience.SCHOOL, "치맥", "", "안암", List.of(MeetupCategory.BEER), List.of(),
+                MEET_AT, DEADLINE, min, max, null, NOW);
     }
 
     @Test
@@ -36,8 +36,8 @@ class MeetupStatusTest {
 
     @Test
     void 종류와_목적은_한_칸에_저장했다가_목록으로_돌려준다() {
-        Member host = new Member("host", "x", "김민수", 61, MemberRole.USER, NOW);
-        Meetup m = new Meetup(host, "소맥", "", "안암",
+        Member host = new Member(null, "host@korea.ac.kr", null, "김고대", 61, null, MemberRole.USER, NOW);
+        Meetup m = new Meetup(host, MeetupAudience.SCHOOL, "소맥", "", "안암",
                 List.of(MeetupCategory.BEER, MeetupCategory.SOJU, MeetupCategory.BEER), List.of("친목", "학업"),
                 MEET_AT, DEADLINE, 2, 4, null, NOW);
         assertThat(m.getCategories()).containsExactly(MeetupCategory.SOJU, MeetupCategory.BEER);

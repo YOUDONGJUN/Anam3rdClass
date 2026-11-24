@@ -9,11 +9,11 @@ class NameMaskerTest {
 
     @ParameterizedTest
     @CsvSource({
-            "김민수, 김*수",
+            "김고대, 김*대",
             "이수, 이*",
-            "남궁민수, 남**수",
+            "남궁고대, 남**대",
             "김, *",
-            "' 박현우 ', 박*우",
+            "' 박호랑 ', 박*랑",
             "John Smith, J*** ****h",
     })
     void 가운데를_가린다(String name, String expected) {

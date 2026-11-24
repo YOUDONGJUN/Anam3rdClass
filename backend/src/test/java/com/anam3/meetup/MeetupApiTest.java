@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -213,7 +214,13 @@ class MeetupApiTest extends ApiTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.place").value("참살이길"))
                 .andExpect(jsonPath("$.categories", contains("SOJU", "HIGHBALL")))
-                .andExpect(jsonPath("$.purposes", contains("학업")));
+                .andExpect(jsonPath("$.purposes", contains("학업")))
+                // 인원·시간·대상·참여 방식을 안 보내면(예전 화면) 모두 그대로
+                .andExpect(jsonPath("$.minPeople").value(3))
+                .andExpect(jsonPath("$.maxPeople").value(6))
+                .andExpect(jsonPath("$.meetAt").value(T0.plus(IN_2H).toString()))
+                .andExpect(jsonPath("$.audience").value("SCHOOL"))
+                .andExpect(jsonPath("$.lateJoin").value(false));
 
         post("/api/meetups/" + id + "/cancel", ownerToken(), null)
                 .andExpect(status().isOk())
@@ -221,6 +228,103 @@ class MeetupApiTest extends ApiTestSupport {
 
         get("/api/meetups", anam).andExpect(jsonPath("$", hasSize(0)));
         post("/api/meetups/" + id + "/join", anam, null).andExpect(jsonPath("$.code").value("CANCELED"));
+    }
+
+    @Test
+    void 수정에서_인원을_바꿀_수_있다() throws Exception {
+        long id = createMeetup(host, 3, 6, IN_2H, IN_1H, CHAT);
+        post("/api/meetups/" + id + "/join", anam, null); // 2명 · 모집 중
+
+        put("/api/meetups/" + id, anam, people(2, 6)).andExpect(status().isForbidden());
+        put("/api/meetups/" + id, host, people(4, 3)).andExpect(jsonPath("$.code").value("INVALID_PEOPLE"));
+        put("/api/meetups/" + id, host, people(1, 6)).andExpect(status().isBadRequest());
+
+        // 최소 인원을 낮추면 바로 성사 → 참여자끼리 실명 공개
+        put("/api/meetups/" + id, host, people(2, 6))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minPeople").value(2))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+        get("/api/meetups/" + id, anam).andExpect(jsonPath("$.revealed").value(true));
+
+        // 성사된 뒤에는 최소 인원을 지금 인원(2명)보다 올릴 수 없다
+        put("/api/meetups/" + id, host, people(3, 6)).andExpect(jsonPath("$.code").value("ALREADY_REACHED"));
+
+        // 최대를 지금 인원으로 줄이면 마감, 제한 없음으로 바꾸면 다시 받는다
+        put("/api/meetups/" + id, host, people(2, 2)).andExpect(jsonPath("$.maxPeople").value(2));
+        post("/api/meetups/" + id + "/join", horang, null).andExpect(jsonPath("$.code").value("FULL"));
+        put("/api/meetups/" + id, host, people(2, null)).andExpect(jsonPath("$.maxPeople").isEmpty());
+        post("/api/meetups/" + id + "/join", horang, null).andExpect(status().isOk());
+
+        // 이미 참여한 3명보다 적게는 못 줄인다
+        put("/api/meetups/" + id, host, people(2, 2)).andExpect(jsonPath("$.code").value("PEOPLE_BELOW_JOINED"));
+
+        // 대학원장도 고칠 수 있고, 최소 인원 없음으로 바꿀 수 있다
+        put("/api/meetups/" + id, ownerToken(), people(null, 3))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minPeople").isEmpty())
+                .andExpect(jsonPath("$.maxPeople").value(3))
+                .andExpect(jsonPath("$.participantCount").value(3));
+    }
+
+    @Test
+    void 수정에서_시간_대상_참여방식도_바꿀_수_있다() throws Exception {
+        String sinchon = signup("sinchon@yonsei.ac.kr", "이신촌", 3, departmentId("YONSEI", "인컴"));
+        long id = createMeetup(host, 2, 6, IN_2H, IN_1H, CHAT); // 고려대 61기 김고대 · 우리 학교
+        post("/api/meetups/" + id + "/join", anam, null).andExpect(jsonPath("$.status").value("CONFIRMED")); // 60기
+
+        // 시간: 열 때와 같은 규칙
+        Instant meet = T0.plus(Duration.ofHours(3));
+        Instant deadline = meet.minus(Duration.ofMinutes(10));
+        put("/api/meetups/" + id, host, edit(meet, deadline, "SCHOOL", null))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meetAt").value(meet.toString()))
+                .andExpect(jsonPath("$.deadlineAt").value(deadline.toString()));
+        put("/api/meetups/" + id, host, edit(T0.minusSeconds(60), T0.minusSeconds(120), "SCHOOL", null))
+                .andExpect(jsonPath("$.code").value("INVALID_TIME"));
+        put("/api/meetups/" + id, host, edit(meet, meet.plusSeconds(60), "SCHOOL", null))
+                .andExpect(jsonPath("$.code").value("INVALID_DEADLINE"));
+
+        // 대상: 다른 기수(이안암 60기)가 있어 '우리 기수만'으로는 못 좁힌다
+        put("/api/meetups/" + id, host, edit(meet, deadline, "COHORT", null))
+                .andExpect(jsonPath("$.code").value("AUDIENCE_NARROWER"))
+                .andExpect(jsonPath("$.message").value("다른 기수 원우가 이미 참여해서 '우리 기수만'으로 바꿀 수 없어요"));
+        // 연합으로 넓히면 연세대 원우도 참여하고, 그 뒤에는 '우리 학교'로 못 좁힌다
+        put("/api/meetups/" + id, host, edit(meet, deadline, "ALL", null)).andExpect(jsonPath("$.audience").value("ALL"));
+        post("/api/meetups/" + id + "/join", sinchon, null).andExpect(status().isOk());
+        put("/api/meetups/" + id, host, edit(meet, deadline, "SCHOOL", null))
+                .andExpect(jsonPath("$.message").value("다른 학교 원우가 이미 참여해서 '우리 학교'로 바꿀 수 없어요"));
+
+        // 참여 방식
+        put("/api/meetups/" + id, host, edit(meet, deadline, "ALL", "{\"lateJoin\":true,\"fee\":5000,\"feePrepaid\":true}"))
+                .andExpect(jsonPath("$.lateJoin").value(true))
+                .andExpect(jsonPath("$.fee").value(5000))
+                .andExpect(jsonPath("$.feePrepaid").value(true));
+        put("/api/meetups/" + id, host, edit(meet, deadline, "ALL", "{\"fee\":null,\"feePrepaid\":true}"))
+                .andExpect(jsonPath("$.code").value("INVALID_FEE"));
+        put("/api/meetups/" + id, host, edit(meet, deadline, "ALL", "{\"fee\":500}")).andExpect(status().isBadRequest());
+        put("/api/meetups/" + id, host, edit(meet, deadline, "ALL", "{\"lateJoin\":false,\"fee\":null,\"feePrepaid\":false}"))
+                .andExpect(jsonPath("$.lateJoin").value(false))
+                .andExpect(jsonPath("$.fee").isEmpty());
+
+        // 시간이 그대로면 마감이 지난 성사 3교시도 다른 칸은 고칠 수 있다
+        clock.advance(Duration.ofMinutes(175)); // 마감(2시간 50분) 지남, 모임 전
+        put("/api/meetups/" + id, host, edit(meet, deadline, "ALL", null))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+    }
+
+    private static String edit(Instant meetAt, Instant deadlineAt, String audience, String options) {
+        return """
+                {"title":"치맥 한잔","description":"","place":"참살이길","categories":["BEER"],"purposes":[],"openChatUrl":"",
+                 "schedule":{"meetAt":"%s","deadlineAt":"%s"},"audience":"%s"%s}
+                """.formatted(meetAt, deadlineAt, audience, options == null ? "" : ",\"options\":" + options);
+    }
+
+    private static String people(Integer min, Integer max) {
+        return """
+                {"title":"치맥 한잔","description":"","place":"참살이길","categories":["BEER"],"purposes":[],
+                 "openChatUrl":"","people":{"minPeople":%s,"maxPeople":%s}}
+                """.formatted(min, max);
     }
 
     @Test

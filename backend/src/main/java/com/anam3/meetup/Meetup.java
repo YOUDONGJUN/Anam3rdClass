@@ -35,7 +35,7 @@ public class Meetup {
     @JoinColumn(name = "school_id", nullable = false)
     private School school;
 
-    /** 연합 3교시: 다섯 학교 누구나 보고 참여한다 (열 때만 정하고 바꿀 수 없다) */
+    /** 연합 3교시: 다섯 학교 누구나 보고 참여한다 */
     @Column(nullable = false)
     private boolean federated;
 
@@ -173,7 +173,7 @@ public class Meetup {
         return isTakingJoinsAt(now) && !isFull();
     }
 
-    /** 열 때만 정한다 (중간 합류 · 참여비는 고칠 수 없다) */
+    /** 중간 합류 · 참여비 (열 때 정하고, 수정에서 바꿀 수 있다) */
     public void applyOptions(boolean lateJoin, Integer fee, boolean feePrepaid) {
         this.lateJoin = lateJoin;
         this.fee = fee;
@@ -249,6 +249,35 @@ public class Meetup {
         this.purposes = MeetupTags.joinPurposes(purposes);
         this.openChatUrl = openChatUrl;
         this.updatedAt = now;
+    }
+
+    /** 인원 바꾸기 (이미 참여한 사람과 어긋나지 않는지는 MeetupService 가 먼저 본다) */
+    public void changePeople(Integer minPeople, Integer maxPeople, Instant now) {
+        this.minPeople = minPeople;
+        this.maxPeople = maxPeople;
+        this.updatedAt = now;
+    }
+
+    /** 시간 바꾸기 (시간 규칙은 MeetupService 가 먼저 본다) */
+    public void reschedule(Instant meetAt, Instant deadlineAt, Instant now) {
+        this.meetAt = meetAt;
+        this.deadlineAt = deadlineAt;
+        this.updatedAt = now;
+    }
+
+    /** 대상 바꾸기. 우리 기수만이면 개설자의 기수로 (대학원장이 고쳐도 개설자 기준) */
+    public void changeAudience(MeetupAudience audience, Instant now) {
+        this.federated = audience == MeetupAudience.ALL;
+        this.onlyCohort = audience == MeetupAudience.COHORT ? host.getCohort() : null;
+        this.updatedAt = now;
+    }
+
+    /** 대상을 바꾼다면 이 사람이 그 대상에 들어가는지 (이미 참여한 원우가 빠지게 좁히지 않으려고 본다) */
+    public boolean wouldBeOpenTo(MeetupAudience audience, Long schoolId, int cohort) {
+        if (audience == MeetupAudience.ALL) {
+            return true;
+        }
+        return isOfSchool(schoolId) && (audience == MeetupAudience.SCHOOL || host.getCohort() == cohort);
     }
 
     public void cancel(Instant now) {

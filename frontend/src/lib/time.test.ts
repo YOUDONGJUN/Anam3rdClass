@@ -3,6 +3,7 @@ import {
   ceilTo10Minutes,
   formatDateTime,
   formatDayLabel,
+  formatLeadTime,
   formatRelative,
   formatRemaining,
   formatTime,
@@ -58,5 +59,15 @@ describe('입력값 변환', () => {
 
   it('10분 단위 올림', () => {
     expect(ceilTo10Minutes(new Date('2026-11-23T11:03:00Z')).toISOString()).toBe('2026-11-23T11:10:00.000Z')
+  })
+})
+
+describe('formatLeadTime', () => {
+  it('마감이 모임 몇 분 전인지', () => {
+    expect(formatLeadTime(0)).toBe('모일 때까지')
+    expect(formatLeadTime(10)).toBe('10분 전')
+    expect(formatLeadTime(60)).toBe('1시간 전')
+    expect(formatLeadTime(180)).toBe('3시간 전')
+    expect(formatLeadTime(90)).toBe('1시간 30분 전')
   })
 })

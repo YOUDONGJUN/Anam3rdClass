@@ -4,6 +4,7 @@ import {
   categoryLabel,
   fitPeople,
   headcount,
+  isReachedWith,
   peopleError,
   peopleRule,
   seatsCaption,
@@ -36,6 +37,24 @@ describe('fitPeople / peopleError', () => {
     expect(peopleError(3, 3)).toBeNull()
     expect(peopleError(null, 2)).toBeNull()
     expect(peopleError(3, null)).toBeNull()
+  })
+
+  it('수정: 참여한 사람보다 최대를 줄일 수 없고, 성사된 뒤에는 최소를 지금 인원보다 올릴 수 없다', () => {
+    const recruiting = { joined: 2, reached: false }
+    const reached = { joined: 3, reached: true }
+    expect(peopleError(2, 6, recruiting)).toBeNull() // 낮추면 바로 성사 — 괜찮다
+    expect(peopleError(5, 6, recruiting)).toBeNull() // 성사 전에는 올려도 된다
+    expect(peopleError(3, 2, reached)).toBe('최대 인원은 최소 인원보다 같거나 많아야 해요')
+    expect(peopleError(2, 2, reached)).toBe('이미 3명이 참여했어요. 최대 인원을 3명보다 적게 줄일 수 없어요')
+    expect(peopleError(4, 6, reached)).toBe('이미 성사된 3교시예요. 최소 인원을 지금 인원(3명)보다 늘릴 수 없어요')
+    expect(peopleError(3, 3, reached)).toBeNull()
+    expect(peopleError(null, null, reached)).toBeNull()
+  })
+
+  it('성사 여부는 서버와 같은 규칙', () => {
+    expect(isReachedWith(null, 1)).toBe(true)
+    expect(isReachedWith(3, 2)).toBe(false)
+    expect(isReachedWith(3, 3)).toBe(true)
   })
 })
 

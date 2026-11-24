@@ -13,6 +13,8 @@ import {
   CATEGORY,
   CATEGORY_ORDER,
   fitPeople,
+  isReachedWith,
+  type JoinedState,
   MAX_PURPOSES,
   PURPOSE_MAX_LENGTH,
   PURPOSE_PRESETS,
@@ -22,23 +24,33 @@ import {
   type PeopleValues,
 } from '../lib/meetup'
 import { placePresets } from '../lib/schools'
-import { ceilTo10Minutes, formatDateTime, fromKstInputValue, kstAt, toKstInputValue } from '../lib/time'
+import { ceilTo10Minutes, formatDateTime, formatLeadTime, fromKstInputValue, kstAt, toKstInputValue } from '../lib/time'
 
-const DEADLINES = [
+interface DeadlineChoice {
+  value: string
+  label: string
+  minutes: number
+}
+
+const DEADLINES: DeadlineChoice[] = [
   { value: '10', label: '10분 전', minutes: 10 },
   { value: '30', label: '30분 전', minutes: 30 },
   { value: '60', label: '1시간 전', minutes: 60 },
   { value: '0', label: '모일 때까지', minutes: 0 },
-] as const
+]
 
-type DeadlineValue = (typeof DEADLINES)[number]['value']
+/** 수정할 때: 지금 마감이 위 선택지에 없으면(예전 "3시간 전" 등) 그 마감도 고를 수 있게 둔다 */
+function deadlineChoices(leadMinutes?: number): DeadlineChoice[] {
+  if (leadMinutes === undefined || DEADLINES.some((d) => d.minutes === leadMinutes)) return DEADLINES
+  return [...DEADLINES, { value: 'keep', label: formatLeadTime(leadMinutes), minutes: leadMinutes }]
+}
 
 interface FormValues {
   title: string
   categories: MeetupCategory[]
   purposes: string[]
   meetAt: string
-  deadline: DeadlineValue
+  deadline: string
   place: string
   minPeople: number
   /** 최소 인원 없음 — 몇 명이 오든 진행 (최소 인원 무시) */
@@ -48,7 +60,7 @@ interface FormValues {
   unlimited: boolean
   description: string
   openChatUrl: string
-  /** 누구에게 여는지: 우리 학교 · 우리 기수 · 연합 (열 때만 정한다) */
+  /** 누구에게 여는지: 우리 학교 · 우리 기수 · 연합 */
   audience: MeetupAudience
   /** 중간 합류 OK */
   lateJoin: boolean
@@ -288,11 +300,32 @@ function PurposePicker({ value, onChange }: { value: string[]; onChange: (v: str
   )
 }
 
-function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number }; editing: boolean }) {
+/** 대상 선택지에 쓰는 개설자 학교·기수 */
+interface HostTag {
+  schoolName: string
+  cohortLabel: string
+}
+
+function MeetupForm({
+  initial,
+  editing,
+  current,
+  host,
+}: {
+  initial: FormValues & { id?: number; leadMinutes?: number; meetAtIso?: string }
+  editing: boolean
+  /** 수정할 때: 지금 참여 인원 · 성사 여부 */
+  current?: JoinedState
+  /** 수정할 때: 개설자 (대학원장이 고쳐도 대상은 개설자 학교·기수 기준) */
+  host?: HostTag
+}) {
   const navigate = useNavigate()
   const toast = useToast()
   const { member } = useAuth()
   const places = placePresets(member?.school.code)
+  const audienceOf: HostTag | null =
+    host ?? (member ? { schoolName: member.school.shortName, cohortLabel: member.cohortLabel } : null)
+  const choices = useMemo(() => deadlineChoices(initial.leadMinutes), [initial.leadMinutes])
   const create = useCreateMeetup()
   const update = useUpdateMeetup(initial.id ?? 0)
   const [v, setV] = useState<FormValues>(initial)
@@ -304,12 +337,16 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
   /** 인원 입력은 바꿀 때마다 최소 ≤ 최대가 되게 맞춘다 */
   const setPeople = (patch: Partial<PeopleValues>) => setV((prev) => fitPeople({ ...prev, ...patch }))
 
-  const meetAt = fromKstInputValue(v.meetAt)
-  const deadlineMinutes = DEADLINES.find((d) => d.value === v.deadline)!.minutes
+  // 수정에서 모임 시간을 건드리지 않았으면 원래 시각 그대로 (입력 칸은 분 단위라 초가 잘린다)
+  const meetAt =
+    initial.meetAtIso && v.meetAt === initial.meetAt ? new Date(initial.meetAtIso) : fromKstInputValue(v.meetAt)
+  const deadlineMinutes = (choices.find((d) => d.value === v.deadline) ?? DEADLINES[0]).minutes
   const deadlineAt = meetAt ? new Date(meetAt.getTime() - deadlineMinutes * 60_000) : null
   const pending = create.isPending || update.isPending
   const minPeople = v.noMinimum ? null : v.minPeople
   const maxPeople = v.unlimited ? null : v.maxPeople
+  const joined = current?.joined ?? 1
+  const reachedNow = isReachedWith(minPeople, joined)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -317,6 +354,18 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
     if (!v.title.trim()) return setError('제목을 입력해 주세요')
     if (v.categories.length === 0) return setError('무엇을 마실지 하나 이상 골라 주세요')
     if (!v.place.trim()) return setError('장소를 입력해 주세요')
+
+    // 수정에서는 시간을 바꿨을 때만 검사한다 (마감이 지난 성사 3교시도 다른 칸은 고칠 수 있게)
+    const scheduleChanged = !editing || v.meetAt !== initial.meetAt || v.deadline !== initial.deadline
+    if (scheduleChanged) {
+      const timeError = validateTimes(meetAt, deadlineAt)
+      if (timeError) return setError(timeError)
+    }
+    const peopleProblem = peopleError(minPeople, maxPeople, current)
+    if (peopleProblem) return setError(peopleProblem)
+    const fee = v.hasFee ? Number(v.fee) : null
+    if (fee !== null && !(fee >= 1000 && fee <= 1_000_000)) return setError('참여비는 1,000원 ~ 100만 원으로 적어 주세요')
+    if (!meetAt || !deadlineAt) return setError('모임 시간을 정해 주세요')
 
     try {
       if (editing && initial.id) {
@@ -327,17 +376,15 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
           categories: v.categories,
           purposes: v.purposes,
           openChatUrl: v.openChatUrl,
+          people: { minPeople, maxPeople },
+          schedule: scheduleChanged ? { meetAt: meetAt.toISOString(), deadlineAt: deadlineAt.toISOString() } : null,
+          audience: v.audience,
+          options: { lateJoin: v.lateJoin, fee, feePrepaid: fee !== null && v.feePrepaid },
         })
         toast.show('수정했어요', 'ok')
         navigate(`/meetups/${d.id}`, { replace: true })
         return
       }
-      const timeError = validateTimes(meetAt, deadlineAt)
-      if (timeError || !meetAt || !deadlineAt) return setError(timeError ?? '모임 시간을 정해 주세요')
-      const peopleProblem = peopleError(minPeople, maxPeople)
-      if (peopleProblem) return setError(peopleProblem)
-      const fee = v.hasFee ? Number(v.fee) : null
-      if (fee !== null && !(fee >= 1000 && fee <= 1_000_000)) return setError('참여비는 1,000원 ~ 100만 원으로 적어 주세요')
       const d = await create.mutateAsync({
         title: v.title,
         description: v.description,
@@ -385,48 +432,46 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
 
       <CategoryPicker value={v.categories} onChange={(c) => set('categories', c)} />
 
-      {!editing && (
-        <fieldset className="flex flex-col gap-3">
-          <legend className="mb-3 text-[15px] font-semibold text-ink">언제 모일까요</legend>
-          <div className="flex flex-wrap gap-2">
-            {presets.map((p) => {
-              const value = toKstInputValue(p.date)
-              return (
-                <Chip key={p.label} active={v.meetAt === value} onClick={() => set('meetAt', value)}>
-                  {p.label}
-                  <span className="tabular opacity-70">{value.slice(11)}</span>
-                </Chip>
-              )
-            })}
-          </div>
-          <input
-            type="datetime-local"
-            aria-label="모임 날짜와 시간 직접 고르기"
-            className={inputClass}
-            value={v.meetAt}
-            min={toKstInputValue(now)}
-            onChange={(e) => set('meetAt', e.target.value)}
-          />
+      <fieldset className="flex flex-col gap-3">
+        <legend className="mb-3 text-[15px] font-semibold text-ink">언제 모일까요</legend>
+        <div className="flex flex-wrap gap-2">
+          {presets.map((p) => {
+            const value = toKstInputValue(p.date)
+            return (
+              <Chip key={p.label} active={v.meetAt === value} onClick={() => set('meetAt', value)}>
+                {p.label}
+                <span className="tabular opacity-70">{value.slice(11)}</span>
+              </Chip>
+            )
+          })}
+        </div>
+        <input
+          type="datetime-local"
+          aria-label="모임 날짜와 시간 직접 고르기"
+          className={inputClass}
+          value={v.meetAt}
+          min={toKstInputValue(now)}
+          onChange={(e) => set('meetAt', e.target.value)}
+        />
 
-          <p className="mt-3 text-[15px] font-semibold text-ink">모집은 언제 마감할까요</p>
-          <div className="flex flex-wrap gap-2">
-            {DEADLINES.map((d) => {
-              const disabled = meetAt ? meetAt.getTime() - d.minutes * 60_000 <= now.getTime() : false
-              return (
-                <Chip key={d.value} active={v.deadline === d.value} disabled={disabled} onClick={() => set('deadline', d.value)}>
-                  {d.label}
-                </Chip>
-              )
-            })}
-          </div>
-          {meetAt && deadlineAt && (
-            <p className="text-sm text-ink-3">
-              {formatDateTime(meetAt)} 모임 · <b className="font-semibold text-ink-2">{formatDateTime(deadlineAt)}</b>
-              {v.noMinimum ? '에 모집 마감' : '까지 안 모이면 조용히 사라져요'}
-            </p>
-          )}
-        </fieldset>
-      )}
+        <p className="mt-3 text-[15px] font-semibold text-ink">모집은 언제 마감할까요</p>
+        <div className="flex flex-wrap gap-2">
+          {choices.map((d) => {
+            const disabled = meetAt ? meetAt.getTime() - d.minutes * 60_000 <= now.getTime() : false
+            return (
+              <Chip key={d.value} active={v.deadline === d.value} disabled={disabled} onClick={() => set('deadline', d.value)}>
+                {d.label}
+              </Chip>
+            )
+          })}
+        </div>
+        {meetAt && deadlineAt && (
+          <p className="text-sm text-ink-3">
+            {formatDateTime(meetAt)} 모임 · <b className="font-semibold text-ink-2">{formatDateTime(deadlineAt)}</b>
+            {reachedNow ? '에 모집 마감' : '까지 안 모이면 조용히 사라져요'}
+          </p>
+        )}
+      </fieldset>
 
       <Field label="어디서" hint="가게 이름을 그대로 적어도 돼요">
         {({ id, describedBy }) => (
@@ -451,69 +496,76 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
         )}
       </Field>
 
-      {!editing && (
-        <fieldset className="flex flex-col gap-3">
-          <legend className="mb-3 text-[15px] font-semibold text-ink">몇 명이 모이면 좋을까요 (나 포함)</legend>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <Stepper
-                label="최소"
-                value={v.minPeople}
-                min={2}
-                max={20}
-                disabled={v.noMinimum}
-                onChange={(n) => setPeople({ minPeople: n })}
-              />
-              <NoLimitToggle
-                checked={v.noMinimum}
-                onChange={(on) => setPeople({ noMinimum: on })}
-                label="최소 인원 없음"
-                sub="몇 명이 오든 진행해요"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Stepper
-                label="최대"
-                value={v.maxPeople}
-                min={v.noMinimum ? 2 : Math.max(2, v.minPeople)}
-                max={30}
-                disabled={v.unlimited}
-                onChange={(n) => setPeople({ maxPeople: n })}
-              />
-              <NoLimitToggle
-                checked={v.unlimited}
-                onChange={(on) => setPeople({ unlimited: on })}
-                label="최대 인원 없음"
-                sub="오는 사람 다 받아요"
-              />
-            </div>
+      <fieldset className="flex flex-col gap-3">
+        <legend className="mb-3 text-[15px] font-semibold text-ink">몇 명이 모이면 좋을까요 (나 포함)</legend>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <Stepper
+              label="최소"
+              value={v.minPeople}
+              min={2}
+              max={current?.reached ? Math.max(2, Math.min(20, joined)) : 20}
+              disabled={v.noMinimum}
+              onChange={(n) => setPeople({ minPeople: n })}
+            />
+            <NoLimitToggle
+              checked={v.noMinimum}
+              onChange={(on) => setPeople({ noMinimum: on })}
+              label="최소 인원 없음"
+              sub="몇 명이 오든 진행해요"
+            />
           </div>
-          <div className={`${cardClass} flex flex-col gap-2.5 px-4 py-4`}>
-            <LineGauge count={1} min={minPeople} max={maxPeople} status={minPeople === null ? 'CONFIRMED' : 'RECRUITING'} />
-            <p className="text-sm text-ink-2">
-              <b className="text-ink">{peopleRule(minPeople, maxPeople)}</b>
-            </p>
-            {v.noMinimum && (
-              <p className="text-sm leading-relaxed text-ink-3">
-                열자마자 확정 · 참여자끼리 바로 실명·단톡방 공개
-              </p>
-            )}
+          <div className="flex flex-col gap-1">
+            <Stepper
+              label="최대"
+              value={v.maxPeople}
+              min={Math.max(2, v.noMinimum ? 2 : v.minPeople, current ? joined : 0)}
+              max={30}
+              disabled={v.unlimited}
+              onChange={(n) => setPeople({ maxPeople: n })}
+            />
+            <NoLimitToggle
+              checked={v.unlimited}
+              onChange={(on) => setPeople({ unlimited: on })}
+              label="최대 인원 없음"
+              sub="오는 사람 다 받아요"
+            />
           </div>
-        </fieldset>
-      )}
+        </div>
+        <div className={`${cardClass} flex flex-col gap-2.5 px-4 py-4`}>
+          <LineGauge count={joined} min={minPeople} max={maxPeople} status={reachedNow ? 'CONFIRMED' : 'RECRUITING'} />
+          <p className="text-sm text-ink-2">
+            <b className="text-ink">{peopleRule(minPeople, maxPeople)}</b>
+            {current && <span className="tabular"> · 지금 {joined}명</span>}
+          </p>
+          {current ? (
+            current.reached ? (
+              <p className="text-sm leading-relaxed text-ink-3">이미 성사돼서 최소 인원은 {joined}명까지만 올릴 수 있어요</p>
+            ) : (
+              reachedNow && (
+                <p className="text-sm leading-relaxed text-ink-3">저장하면 바로 성사 · 참여자끼리 실명·단톡방 공개</p>
+              )
+            )
+          ) : (
+            v.noMinimum && (
+              <p className="text-sm leading-relaxed text-ink-3">열자마자 확정 · 참여자끼리 바로 실명·단톡방 공개</p>
+            )
+          )}
+        </div>
+      </fieldset>
 
-      {!editing && member && (
+      {audienceOf && (
         <fieldset>
           <legend className="mb-2 text-[15px] font-semibold text-ink">누구와 함께할까요</legend>
           <div className="grid gap-2 sm:grid-cols-3">
             {(
               [
-                { value: 'SCHOOL', Icon: School, label: '우리 학교', sub: `${member.school.shortName} 원우 누구나` },
+                { value: 'SCHOOL', Icon: School, label: '우리 학교', sub: `${audienceOf.schoolName} 원우 누구나` },
                 {
                   value: 'COHORT',
                   Icon: Lock,
                   label: '우리 기수만',
-                  sub: `${member.school.shortName} ${member.cohortLabel}만 보여요`,
+                  sub: `${audienceOf.schoolName} ${audienceOf.cohortLabel}만 보여요`,
                 },
                 { value: 'ALL', Icon: Globe2, label: '연합', sub: '다섯 학교 누구나 · 연합 게시판에' },
               ] satisfies { value: MeetupAudience; Icon: LucideIcon; label: string; sub: string }[]
@@ -543,59 +595,57 @@ function MeetupForm({ initial, editing }: { initial: FormValues & { id?: number 
               )
             })}
           </div>
-          <p className="mt-2 px-1 text-[13px] text-ink-3">열고 나면 바꿀 수 없어요.</p>
+          {editing && <p className="mt-2 px-1 text-[13px] text-ink-3">이미 참여한 원우가 빠지게 좁힐 수는 없어요</p>}
         </fieldset>
       )}
 
-      {!editing && (
-        <fieldset className="flex flex-col gap-3">
-          <legend className="mb-2 text-[15px] font-semibold text-ink">참여 방식</legend>
-          <NoLimitToggle
-            checked={v.lateJoin}
-            onChange={(on) => set('lateJoin', on)}
-            label="중간 합류 OK"
-            sub="늦게 와도 돼요 · 성사 뒤에도 시작 전까지 참여"
-          />
-          <div className={`${cardClass} flex flex-col gap-3 px-4 py-4`}>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[15px] font-semibold text-ink">참여비</span>
-              <div className="flex gap-1.5" role="radiogroup" aria-label="참여비">
-                <Chip active={!v.hasFee} onClick={() => set('hasFee', false)}>
-                  없음
-                </Chip>
-                <Chip active={v.hasFee} onClick={() => set('hasFee', true)}>
-                  있음
-                </Chip>
-              </div>
+      <fieldset className="flex flex-col gap-3">
+        <legend className="mb-2 text-[15px] font-semibold text-ink">참여 방식</legend>
+        <NoLimitToggle
+          checked={v.lateJoin}
+          onChange={(on) => set('lateJoin', on)}
+          label="중간 합류 OK"
+          sub="늦게 와도 돼요 · 성사 뒤에도 시작 전까지 참여"
+        />
+        <div className={`${cardClass} flex flex-col gap-3 px-4 py-4`}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[15px] font-semibold text-ink">참여비</span>
+            <div className="flex gap-1.5" role="radiogroup" aria-label="참여비">
+              <Chip active={!v.hasFee} onClick={() => set('hasFee', false)}>
+                없음
+              </Chip>
+              <Chip active={v.hasFee} onClick={() => set('hasFee', true)}>
+                있음
+              </Chip>
             </div>
-            {v.hasFee && (
-              <>
-                <div className="relative">
-                  <input
-                    aria-label="참여비 금액"
-                    type="number"
-                    inputMode="numeric"
-                    min={1000}
-                    max={1000000}
-                    step={1000}
-                    className={`${inputClass} tabular pr-10 font-semibold`}
-                    placeholder="예: 10000"
-                    value={v.fee}
-                    onChange={(e) => set('fee', e.target.value)}
-                  />
-                  <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-ink-3">원</span>
-                </div>
-                <NoLimitToggle
-                  checked={v.feePrepaid}
-                  onChange={(on) => set('feePrepaid', on)}
-                  label="선입금"
-                  sub="참여할 때 미리 보내요 · 계좌는 단톡방에서"
-                />
-              </>
-            )}
           </div>
-        </fieldset>
-      )}
+          {v.hasFee && (
+            <>
+              <div className="relative">
+                <input
+                  aria-label="참여비 금액"
+                  type="number"
+                  inputMode="numeric"
+                  min={1000}
+                  max={1000000}
+                  step={1000}
+                  className={`${inputClass} tabular pr-10 font-semibold`}
+                  placeholder="예: 10000"
+                  value={v.fee}
+                  onChange={(e) => set('fee', e.target.value)}
+                />
+                <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-ink-3">원</span>
+              </div>
+              <NoLimitToggle
+                checked={v.feePrepaid}
+                onChange={(on) => set('feePrepaid', on)}
+                label="선입금"
+                sub="참여할 때 미리 보내요 · 계좌는 단톡방에서"
+              />
+            </>
+          )}
+        </div>
+      </fieldset>
 
       {/* 선택 항목은 아래에 모은다 */}
       <div className="flex flex-col gap-8 border-t border-line pt-8">
@@ -674,18 +724,22 @@ function defaults(audience: MeetupAudience): FormValues {
   }
 }
 
-function fromDetail(d: MeetupDetail): FormValues & { id: number } {
+function fromDetail(d: MeetupDetail): FormValues & { id: number; leadMinutes: number; meetAtIso: string } {
+  const leadMinutes = Math.round((new Date(d.meetAt).getTime() - new Date(d.deadlineAt).getTime()) / 60_000)
+  // 최대 인원 없음이던 3교시는 최대를 켤 때 지금 인원보다 적지 않게 시작한다
   return {
     id: d.id,
+    leadMinutes,
+    meetAtIso: d.meetAt,
     title: d.title,
     categories: d.categories,
     purposes: d.purposes,
     meetAt: toKstInputValue(new Date(d.meetAt)),
-    deadline: '0',
+    deadline: DEADLINES.find((c) => c.minutes === leadMinutes)?.value ?? 'keep',
     place: d.place,
     minPeople: d.minPeople ?? 2,
     noMinimum: d.minPeople === null,
-    maxPeople: d.maxPeople ?? Math.max(6, d.minPeople ?? 2),
+    maxPeople: d.maxPeople ?? Math.max(6, d.minPeople ?? 2, d.participantCount),
     unlimited: d.maxPeople === null,
     description: d.description,
     openChatUrl: d.openChatUrl ?? '',
@@ -734,8 +788,13 @@ export function MeetupEditPage() {
   if (!data.canEdit) return <ErrorState message="이 3교시는 수정할 수 없어요" />
   return (
     <div className="max-w-2xl">
-      <Header title="3교시 수정" sub="시간·인원은 못 바꿔요. 취소하고 새로 열어 주세요" />
-      <MeetupForm initial={fromDetail(data)} editing />
+      <Header title="3교시 수정" sub="바꾸면 참여한 원우에게 바로 보여요" />
+      <MeetupForm
+        initial={fromDetail(data)}
+        editing
+        current={{ joined: data.participantCount, reached: isReachedWith(data.minPeople, data.participantCount) }}
+        host={{ schoolName: data.school.shortName, cohortLabel: data.host.cohortLabel }}
+      />
     </div>
   )
 }

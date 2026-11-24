@@ -20,6 +20,9 @@ import com.anam3.meetup.MeetupDtos.MeetupCreateRequest;
 import com.anam3.meetup.MeetupDtos.MeetupDetail;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
 import com.anam3.meetup.MeetupDtos.MeetupUpdateRequest;
+import com.anam3.meetup.MeetupDtos.OptionsChange;
+import com.anam3.meetup.MeetupDtos.PeopleChange;
+import com.anam3.meetup.MeetupDtos.ScheduleChange;
 import com.anam3.member.Member;
 import com.anam3.member.MemberRepository;
 import com.anam3.safety.MemberBlockRepository;
@@ -53,24 +56,11 @@ public class MeetupService {
 
     public MeetupDetail create(LoginMember viewer, MeetupCreateRequest req) {
         Instant now = clock.instant();
-        if (!req.meetAt().isAfter(now)) {
-            throw ApiException.badRequest("INVALID_TIME", "모임 시간은 지금 이후로 정해 주세요");
-        }
-        if (req.meetAt().isAfter(now.plus(MAX_AHEAD))) {
-            throw ApiException.badRequest("INVALID_TIME", "3교시는 한 달 이내 일정만 열 수 있어요");
-        }
-        if (!req.deadlineAt().isAfter(now)) {
-            throw ApiException.badRequest("INVALID_DEADLINE", "모집 마감은 지금 이후로 정해 주세요");
-        }
-        if (req.deadlineAt().isAfter(req.meetAt())) {
-            throw ApiException.badRequest("INVALID_DEADLINE", "모집 마감은 모임 시간보다 늦을 수 없어요");
-        }
+        checkTimes(req.meetAt(), req.deadlineAt(), now);
         if (req.minPeople() != null && req.maxPeople() != null && req.maxPeople() < req.minPeople()) {
             throw ApiException.badRequest("INVALID_PEOPLE", "최대 인원은 최소 인원보다 같거나 많아야 해요");
         }
-        if (req.fee() == null && Boolean.TRUE.equals(req.feePrepaid())) {
-            throw ApiException.badRequest("INVALID_FEE", "선입금은 참여비가 있을 때만 고를 수 있어요");
-        }
+        checkFee(req.fee(), req.feePrepaid());
         List<String> purposes = purposes(req.purposes());
         ContentFilter.check(req.title(), req.description(), req.place(), String.join(" ", purposes));
 
@@ -139,16 +129,99 @@ public class MeetupService {
 
     /** 수정은 개설자와 대학원장만 */
     public MeetupDetail update(LoginMember viewer, Long id, MeetupUpdateRequest req) {
-        Meetup meetup = meetups.findWithHost(id).orElseThrow(MeetupService::notFound);
+        // 인원을 바꿀 수 있으니 참여·나가기와 겹치지 않게 잠그고 읽는다
+        Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
         if (!viewer.isOwner() && !meetup.isHostedBy(viewer.id())) {
             throw ApiException.forbidden("3교시를 연 사람만 고칠 수 있어요");
         }
         checkOpen(meetup);
         List<String> purposes = purposes(req.purposes());
         ContentFilter.check(req.title(), req.description(), req.place(), String.join(" ", purposes));
+        Instant now = clock.instant();
+        if (req.schedule() != null) {
+            changeSchedule(meetup, req.schedule(), now);
+        }
+        if (req.audience() != null && req.audience() != meetup.audience()) {
+            changeAudience(meetup, req.audience(), now);
+        }
+        if (req.options() != null) {
+            OptionsChange o = req.options();
+            checkFee(o.fee(), o.feePrepaid());
+            meetup.applyOptions(Boolean.TRUE.equals(o.lateJoin()), o.fee(), Boolean.TRUE.equals(o.feePrepaid()));
+        }
+        if (req.people() != null) {
+            changePeople(meetup, req.people(), now);
+        }
         meetup.update(req.title().strip(), clean(req.description()), req.place().strip(), req.categories(),
-                purposes, blankToNull(req.openChatUrl()), clock.instant());
+                purposes, blankToNull(req.openChatUrl()), now);
         return detail(viewer, id);
+    }
+
+    /** 열 때와 같은 시간 규칙: 모임은 지금 이후 한 달 이내, 마감은 지금 이후이고 모임 시간보다 늦지 않게 */
+    private static void checkTimes(Instant meetAt, Instant deadlineAt, Instant now) {
+        if (!meetAt.isAfter(now)) {
+            throw ApiException.badRequest("INVALID_TIME", "모임 시간은 지금 이후로 정해 주세요");
+        }
+        if (meetAt.isAfter(now.plus(MAX_AHEAD))) {
+            throw ApiException.badRequest("INVALID_TIME", "3교시는 한 달 이내 일정만 열 수 있어요");
+        }
+        if (!deadlineAt.isAfter(now)) {
+            throw ApiException.badRequest("INVALID_DEADLINE", "모집 마감은 지금 이후로 정해 주세요");
+        }
+        if (deadlineAt.isAfter(meetAt)) {
+            throw ApiException.badRequest("INVALID_DEADLINE", "모집 마감은 모임 시간보다 늦을 수 없어요");
+        }
+    }
+
+    private static void checkFee(Integer fee, Boolean feePrepaid) {
+        if (fee == null && Boolean.TRUE.equals(feePrepaid)) {
+            throw ApiException.badRequest("INVALID_FEE", "선입금은 참여비가 있을 때만 고를 수 있어요");
+        }
+    }
+
+    /** 시간 바꾸기. 그대로면 검사하지 않는다 (마감이 지난 성사 3교시도 제목·장소는 고칠 수 있게) */
+    private static void changeSchedule(Meetup meetup, ScheduleChange schedule, Instant now) {
+        if (schedule.meetAt().equals(meetup.getMeetAt()) && schedule.deadlineAt().equals(meetup.getDeadlineAt())) {
+            return;
+        }
+        checkTimes(schedule.meetAt(), schedule.deadlineAt(), now);
+        meetup.reschedule(schedule.meetAt(), schedule.deadlineAt(), now);
+    }
+
+    /** 대상 바꾸기: 넓히기는 언제나, 좁히기는 이미 참여한 원우가 모두 새 대상에 들 때만 */
+    private void changeAudience(Meetup meetup, MeetupAudience audience, Instant now) {
+        for (Participation p : participations.findWithMember(meetup.getId())) {
+            Member m = p.getMember();
+            if (!meetup.wouldBeOpenTo(audience, m.getSchool().getId(), m.getCohort())) {
+                String who = meetup.isOfSchool(m.getSchool().getId()) ? "다른 기수" : "다른 학교";
+                String to = audience == MeetupAudience.COHORT ? "'우리 기수만'으로" : "'우리 학교'로";
+                throw ApiException.badRequest("AUDIENCE_NARROWER", who + " 원우가 이미 참여해서 " + to + " 바꿀 수 없어요");
+            }
+        }
+        meetup.changeAudience(audience, now);
+    }
+
+    /**
+     * 인원 바꾸기: 이미 참여한 사람보다 최대 인원을 적게 줄일 수 없고(내보내지 않는다),
+     * 성사된 3교시는 최소 인원을 지금 인원보다 올릴 수 없다(공개된 실명이 다시 가려지지 않게).
+     * 최소 인원을 낮추면 바로 성사될 수 있다.
+     */
+    private void changePeople(Meetup meetup, PeopleChange people, Instant now) {
+        Integer min = people.minPeople();
+        Integer max = people.maxPeople();
+        if (min != null && max != null && max < min) {
+            throw ApiException.badRequest("INVALID_PEOPLE", "최대 인원은 최소 인원보다 같거나 많아야 해요");
+        }
+        int joined = meetup.getParticipantCount();
+        if (max != null && max < joined) {
+            throw ApiException.badRequest("PEOPLE_BELOW_JOINED",
+                    "이미 " + joined + "명이 참여했어요. 최대 인원을 " + joined + "명보다 적게 줄일 수 없어요");
+        }
+        if (meetup.isReached() && min != null && min > joined) {
+            throw ApiException.badRequest("ALREADY_REACHED",
+                    "이미 성사된 3교시예요. 최소 인원을 지금 인원(" + joined + "명)보다 늘릴 수 없어요");
+        }
+        meetup.changePeople(min, max, now);
     }
 
     /** 취소는 개설자, 그 학교 교수, 대학원장 */

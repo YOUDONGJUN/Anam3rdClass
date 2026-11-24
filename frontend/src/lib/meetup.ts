@@ -132,9 +132,30 @@ export function fitPeople<T extends PeopleValues>(v: T): T {
   return { ...v, maxPeople: v.minPeople }
 }
 
-/** 제출 직전 인원 검사 (서버도 한 번 더 검사한다). 문제가 없으면 null */
-export function peopleError(min: number | null, max: number | null): string | null {
+/** 수정할 때 이미 모인 상태 */
+export interface JoinedState {
+  /** 지금 참여 인원 (개설자 포함) */
+  joined: number
+  /** 이미 성사됐는지 */
+  reached: boolean
+}
+
+/** 성사 여부: 최소 인원이 없거나 최소 인원만큼 모였다 (서버 Meetup.isReached 와 같다) */
+export function isReachedWith(min: number | null, joined: number) {
+  return min === null || joined >= min
+}
+
+/**
+ * 제출 직전 인원 검사 (서버도 한 번 더 검사한다). 문제가 없으면 null.
+ * 수정할 때(current)는 이미 참여한 사람보다 최대를 줄일 수 없고, 성사된 뒤에는 최소를 지금 인원보다 올릴 수 없다.
+ */
+export function peopleError(min: number | null, max: number | null, current?: JoinedState): string | null {
   if (min !== null && max !== null && max < min) return '최대 인원은 최소 인원보다 같거나 많아야 해요'
+  if (current) {
+    const { joined, reached } = current
+    if (max !== null && max < joined) return `이미 ${joined}명이 참여했어요. 최대 인원을 ${joined}명보다 적게 줄일 수 없어요`
+    if (reached && min !== null && min > joined) return `이미 성사된 3교시예요. 최소 인원을 지금 인원(${joined}명)보다 늘릴 수 없어요`
+  }
   return null
 }
 

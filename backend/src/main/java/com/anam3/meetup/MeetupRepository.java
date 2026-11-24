@@ -9,6 +9,7 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -76,6 +77,19 @@ public interface MeetupRepository extends JpaRepository<Meetup, Long> {
     List<Meetup> findOpenHostedBy(@Param("hostId") Long hostId, @Param("now") Instant now);
 
     long countBySchoolId(Long schoolId);
+
+    /** 모집 마감이 곧(until 전)인데 아직 최소 인원이 안 모였고, 마감 알림을 안 보낸 3교시 */
+    @Query("""
+            select m from Meetup m
+            where m.canceled = false and m.deadlineRemindedAt is null and m.minPeople is not null
+              and m.participantCount < m.minPeople and m.deadlineAt > :now and m.deadlineAt <= :until
+            """)
+    List<Meetup> findDueForDeadlineReminder(@Param("now") Instant now, @Param("until") Instant until);
+
+    /** 마감 알림을 보냈다고 적는다. 이미 적혀 있으면 0 (서버가 둘이어도 한 번만 보낸다) */
+    @Modifying
+    @Query("update Meetup m set m.deadlineRemindedAt = :now where m.id = :id and m.deadlineRemindedAt is null")
+    int markDeadlineReminded(@Param("id") Long id, @Param("now") Instant now);
 
     /** 성사된(최소 인원이 모인) 3교시 수. 최소 인원이 없으면 2명 이상 모였을 때만 친다 */
     @Query("select count(m) from Meetup m where m.canceled = false and m.participantCount >= coalesce(m.minPeople, 2)")

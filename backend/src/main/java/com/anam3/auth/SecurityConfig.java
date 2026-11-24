@@ -41,6 +41,8 @@ public class SecurityConfig {
                 .headers(h -> h.frameOptions(f -> f.sameOrigin())) // 로컬 H2 콘솔용
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/health").permitAll()
+                        // 로그아웃한 앱이 이 기기로 알림을 그만 보내 달라고 할 때 (로그인이 풀린 뒤일 수 있다)
+                        .requestMatchers(HttpMethod.POST, "/api/push/unregister").permitAll()
                         // 대학원장 전용: 학교·도메인·학과 바꾸기, 교수 임명·해임, 예전 회원 이메일 지정
                         .requestMatchers(HttpMethod.GET, "/api/admin/schools").hasAnyRole("MANAGER", "OWNER")
                         .requestMatchers("/api/admin/schools/**", "/api/admin/departments/**").hasRole("OWNER")

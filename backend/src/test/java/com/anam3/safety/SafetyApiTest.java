@@ -96,7 +96,8 @@ class SafetyApiTest extends ApiTestSupport {
         long ref = participantRef(godae, kuOnly, 0);
         post("/api/reports", sinchon, report("MEMBER", ref, "SPAM")).andExpect(status().isNotFound());
 
-        long notice = ((Number) read(post("/api/notices", godae, "{\"title\":\"고려대 공지\",\"content\":\"내용\"}"),
+        String kuManager = managerToken("prof", "최교수", 61);
+        long notice = ((Number) read(post("/api/notices", kuManager, "{\"title\":\"고려대 공지\",\"content\":\"내용\"}"),
                 "$.id")).longValue();
         post("/api/reports", sinchon, report("NOTICE", notice, "SPAM")).andExpect(status().isNotFound());
         post("/api/reports", horang, report("NOTICE", notice, "OTHER")).andExpect(status().isNoContent());
@@ -151,7 +152,7 @@ class SafetyApiTest extends ApiTestSupport {
         post("/api/meetups", godae, bad)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INAPPROPRIATE"));
-        post("/api/notices", godae, "{\"title\":\"공지\",\"content\":\"이 병신들아\"}")
+        post("/api/notices", managerToken("prof", "최교수", 61), "{\"title\":\"공지\",\"content\":\"이 병신들아\"}")
                 .andExpect(jsonPath("$.code").value("INAPPROPRIATE"));
         // 평범한 말은 걸리지 않는다
         post("/api/meetups", godae, meetupJson("맥주병 신나게 시발점에서", 2, 4, T0.plus(IN_2H), T0.plus(IN_1H), null))

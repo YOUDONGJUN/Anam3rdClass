@@ -96,6 +96,9 @@ public class LocalSeedData implements ApplicationRunner {
         Member myeongnyun = member(skku, "myeongnyun@g.skku.edu", "박명륜", 12, "정보", MemberRole.USER, now);
         member(school("SOGANG"), "nogo@sogang.ac.kr", "최노고", 8, "데사", MemberRole.USER, now);
         member(school("HANYANG"), "wangsip@hanyang.ac.kr", "정왕십", 5, "인시", MemberRole.USER, now);
+        // 카카오 없이 이메일로만 가입한 원우: 첫 화면 "이메일로 로그인"에서 imeil@korea.ac.kr / anam1234
+        member(korea, "imeil@korea.ac.kr", "이메일", 62, "소보", MemberRole.USER, now)
+                .setEmailPassword(new BCryptPasswordEncoder().encode("anam1234"));
         for (Member m : members.findAll()) {
             m.agreeTerms(now);
         }
@@ -156,7 +159,8 @@ public class LocalSeedData implements ApplicationRunner {
         welcome.pin(true);
         notices.save(new Notice(anam, korea, "다음 주 종강 파티 수요조사",
                 "금요일 저녁 종강 파티 하실 분 3교시로 열어 볼게요. 장소 추천 받아요!", now));
-        notices.save(new Notice(sinchon, yonsei, "연세대 원우 모임 안내", "이번 학기 연세대 원우 모임은 다음 주 목요일이에요.", now));
+        // 공지는 교수·대학원장만 쓴다: 대학원장이 연세대에만 보이게 올린 공지
+        notices.save(new Notice(owner, yonsei, "연세대 원우 모임 안내", "이번 학기 연세대 원우 모임은 다음 주 목요일이에요.", now));
 
         log.info("로컬 샘플 데이터를 넣었습니다. 로그인 화면의 '개발용 로그인'으로 들어가세요");
     }

@@ -12,7 +12,7 @@ import { MeetupCreatePage, MeetupEditPage } from './pages/MeetupFormPage'
 import { MyPage } from './pages/MyPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { NoticeCreatePage, NoticeDetailPage, NoticeEditPage, NoticesPage } from './pages/NoticePages'
-import { KakaoCallbackPage, SignupPage } from './pages/SignupPages'
+import { EmailLoginPage, KakaoCallbackPage, PasswordPage, SignupPage } from './pages/SignupPages'
 import { PrivacyPage, TermsGate, TermsPage } from './pages/TermsPages'
 import { WelcomePage } from './pages/WelcomePage'
 
@@ -75,6 +75,16 @@ export function App() {
           </GuestOnly>
         }
       />
+      <Route
+        path="/login/email"
+        element={
+          <GuestOnly>
+            <EmailLoginPage />
+          </GuestOnly>
+        }
+      />
+      {/* 비밀번호 찾기(로그아웃 상태) · 비밀번호 만들기(내 정보에서, 로그인한 채로) 둘 다 여기 */}
+      <Route path="/password" element={<PasswordPage />} />
       <Route
         element={
           <RequireAuth>

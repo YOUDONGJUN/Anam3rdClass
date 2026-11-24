@@ -18,6 +18,13 @@ public interface NoticeRepository extends JpaRepository<Notice, Long> {
             """)
     List<Notice> findForList(@Param("schoolId") Long schoolId, Pageable pageable);
 
+    /** 대학원장: 다섯 학교 공지와 연합 공지 모두. 고정한 것부터 */
+    @Query("""
+            select n from Notice n join fetch n.author left join fetch n.school
+            order by n.pinned desc, n.createdAt desc
+            """)
+    List<Notice> findAllForList(Pageable pageable);
+
     long countBySchoolId(Long schoolId);
 
     @Query("select n from Notice n join fetch n.author where n.id = :id")

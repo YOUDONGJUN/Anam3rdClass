@@ -11,3 +11,10 @@ app:
     email: owner@korea.ac.kr
   support:
     email: help@example.com
+  kakao:
+    app-id: "4242"
+  push:
+    # 마감 알림은 테스트가 직접 부른다 (1분마다 돌면 다른 테스트에 끼어든다)
+    reminders: false
+  android:
+    cert-sha256: "14:6d:e9:83:c5:73:06:50:d8:ee:b9:95:2f:34:fc:64:16:a0:83:42:e6:1d:be:a8:8a:04:96:b2:3f:cf:44:e5"

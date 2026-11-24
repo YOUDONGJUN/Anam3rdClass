@@ -17,11 +17,20 @@ import com.anam3.notice.NoticeDtos.AuthorView;
 import com.anam3.notice.NoticeDtos.NoticeDetail;
 import com.anam3.notice.NoticeDtos.NoticeRequest;
 import com.anam3.notice.NoticeDtos.NoticeSummary;
+import com.anam3.push.PushNotifier;
+import com.anam3.school.School;
 import com.anam3.school.SchoolDtos.SchoolTag;
+import com.anam3.school.SchoolService;
 
 /**
- * 공지. 우리 학교 공지와 연합 공지(대학원장)가 보인다.
- * 고치기·지우기는 글쓴이, 그 학교 교수, 대학원장. 상단 고정은 그 학교 교수·대학원장 (연합 공지는 대학원장만).
+ * 공지. 교수·대학원장만 쓴다.
+ * <ul>
+ *   <li>교수: 자기 학교 원우에게만 보이는 공지</li>
+ *   <li>대학원장: 연합 공지(다섯 학교 모두) 또는 고른 학교 하나의 공지</li>
+ * </ul>
+ * 원우에게는 우리 학교 공지와 연합 공지가 보이고, 대학원장에게는 모두 보인다.
+ * 고치기·지우기는 글쓴이, 대학원장, 그 학교 교수 (대학원장이 쓴 공지는 대학원장만).
+ * 상단 고정은 그 학교 교수·대학원장 (연합 공지는 대학원장만).
  */
 @Service
 @Transactional
@@ -31,20 +40,28 @@ public class NoticeService {
 
     private final NoticeRepository notices;
     private final MemberRepository members;
+    private final SchoolService schools;
+    private final PushNotifier notifier;
     private final Clock clock;
 
-    public NoticeService(NoticeRepository notices, MemberRepository members, Clock clock) {
+    public NoticeService(NoticeRepository notices, MemberRepository members, SchoolService schools,
+            PushNotifier notifier, Clock clock) {
         this.notices = notices;
         this.members = members;
+        this.schools = schools;
+        this.notifier = notifier;
         this.clock = clock;
     }
 
     @Transactional(readOnly = true)
     public List<NoticeSummary> list(LoginMember viewer) {
-        return notices.findForList(viewer.schoolId(), PageRequest.of(0, 100)).stream()
+        List<Notice> found = viewer.isOwner()
+                ? notices.findAllForList(PageRequest.of(0, 100))
+                : notices.findForList(viewer.schoolId(), PageRequest.of(0, 100));
+        return found.stream()
                 .map(n -> new NoticeSummary(n.getId(), n.getTitle(), preview(n.getContent()),
-                        author(n.getAuthor(), viewer), n.isPinned(), n.isFederated(), n.getCreatedAt(),
-                        n.getUpdatedAt()))
+                        author(n.getAuthor(), viewer), n.isPinned(), n.isFederated(), SchoolTag.from(n.getSchool()),
+                        n.getCreatedAt(), n.getUpdatedAt()))
                 .toList();
     }
 
@@ -58,6 +75,9 @@ public class NoticeService {
     }
 
     public NoticeDetail create(LoginMember viewer, NoticeRequest req) {
+        if (!viewer.isStaff()) {
+            throw ApiException.forbidden("공지는 교수·대학원장만 쓸 수 있어요");
+        }
         boolean federated = Boolean.TRUE.equals(req.federated());
         if (federated && !viewer.isOwner()) {
             throw ApiException.forbidden("연합 공지는 대학원장만 쓸 수 있어요");
@@ -65,8 +85,19 @@ public class NoticeService {
         ContentFilter.check(req.title(), req.content());
         Member author = members.findWithSchool(viewer.id())
                 .orElseThrow(() -> ApiException.notFound("회원 정보를 찾을 수 없어요"));
-        Notice notice = notices.save(new Notice(author, federated ? null : author.getSchool(), req.title().strip(),
-                req.content().strip(), clock.instant()));
+        School target = null;
+        if (!federated) {
+            target = author.getSchool();
+            if (req.schoolId() != null && !req.schoolId().equals(target.getId())) {
+                if (!viewer.isOwner()) {
+                    throw ApiException.forbidden("교수는 우리 학교 공지만 쓸 수 있어요");
+                }
+                target = schools.require(req.schoolId());
+            }
+        }
+        Notice notice = notices.save(new Notice(author, target, req.title().strip(), req.content().strip(),
+                clock.instant()));
+        notifier.noticePosted(notice);
         return toDetail(notice, viewer);
     }
 
@@ -108,16 +139,23 @@ public class NoticeService {
         return notice.isFederated() ? viewer.isOwner() : viewer.manages(notice.getSchool().getId());
     }
 
-    /** 글쓴이, 그 학교 교수, 대학원장이 고치거나 지울 수 있다 */
+    /** 글쓴이, 대학원장, 그 학교 교수가 고치거나 지울 수 있다. 대학원장이 쓴 공지는 대학원장만 */
+    private static boolean canEdit(LoginMember viewer, Notice notice) {
+        if (notice.isWrittenBy(viewer.id()) || viewer.isOwner()) {
+            return true;
+        }
+        return !notice.getAuthor().isOwner() && canManage(viewer, notice);
+    }
+
     private static void checkEditable(LoginMember viewer, Notice notice) {
-        if (!notice.isWrittenBy(viewer.id()) && !canManage(viewer, notice)) {
+        if (!canEdit(viewer, notice)) {
             throw ApiException.forbidden("글쓴이만 고치거나 지울 수 있어요");
         }
     }
 
     private NoticeDetail toDetail(Notice n, LoginMember viewer) {
         return new NoticeDetail(n.getId(), n.getTitle(), n.getContent(), author(n.getAuthor(), viewer), n.isPinned(),
-                n.isFederated(), n.isWrittenBy(viewer.id()) || canManage(viewer, n), canManage(viewer, n),
+                n.isFederated(), SchoolTag.from(n.getSchool()), canEdit(viewer, n), canManage(viewer, n),
                 n.getCreatedAt(), n.getUpdatedAt());
     }
 

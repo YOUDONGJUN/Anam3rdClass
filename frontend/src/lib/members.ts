@@ -116,3 +116,24 @@ export function countByDepartment(list: readonly AdminMember[]): Bucket[] {
     return [String(m.departmentId), multi ? `${m.school.shortName} ${label}` : label]
   }).sort(byCountThenLabel)
 }
+
+/** 아직 한 번도 안 들어온 예전 회원: 카카오도 이메일 비밀번호도 없다 (탈퇴한 원우는 빼고) */
+export function isLegacy(m: AdminMember): boolean {
+  return !m.kakaoLinked && !m.hasPassword && m.status !== 'WITHDRAWN'
+}
+
+/**
+ * 중복 가입 의심: 같은 학교에 이름·기수·학과가 똑같은 계정이 둘 이상 (학교 메일이 두 개인 사람 등).
+ * 동명이인일 수도 있어서 막지 않고 관리 홈에 보여 준다. 탈퇴한 원우는 빼고, 이름은 공백을 무시한다
+ */
+export function findDuplicates(list: readonly AdminMember[]): AdminMember[][] {
+  const groups = new Map<string, AdminMember[]>()
+  for (const m of list) {
+    if (m.status === 'WITHDRAWN') continue
+    const key = [m.school.id, m.name.replace(/\s+/g, ''), m.cohort, m.departmentId ?? 'none'].join('|')
+    const group = groups.get(key)
+    if (group) group.push(m)
+    else groups.set(key, [m])
+  }
+  return [...groups.values()].filter((g) => g.length > 1)
+}

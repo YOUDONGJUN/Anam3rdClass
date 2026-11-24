@@ -382,7 +382,9 @@ function MeetupForm({
           options: { lateJoin: v.lateJoin, fee, feePrepaid: fee !== null && v.feePrepaid },
         })
         toast.show('수정했어요', 'ok')
-        navigate(`/meetups/${d.id}`, { replace: true })
+        // 상세에서 왔으면 그 상세로 돌아간다 (새로 쌓으면 뒤로가기에 같은 상세가 두 번 남는다)
+        if ((window.history.state?.idx ?? 0) > 0) navigate(-1)
+        else navigate(`/meetups/${d.id}`, { replace: true })
         return
       }
       const d = await create.mutateAsync({
@@ -782,9 +784,10 @@ export function MeetupCreatePage() {
 
 export function MeetupEditPage() {
   const id = Number(useParams().id)
-  const { data, isPending, isError, error, refetch } = useMeetup(id)
+  const { data, isPending, error, refetch } = useMeetup(id)
   if (isPending) return <Spinner />
-  if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
+  // 처음 불러오기가 실패했을 때만 (고치는 중 다시 불러오기가 한 번 실패해도 쓰던 내용은 그대로 둔다)
+  if (!data) return <ErrorState message={error?.message ?? '불러오지 못했어요'} onRetry={() => refetch()} />
   if (!data.canEdit) return <ErrorState message="이 3교시는 수정할 수 없어요" />
   return (
     <div className="max-w-2xl">

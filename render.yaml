@@ -32,3 +32,14 @@ services:
         sync: false
       - key: SUPPORT_EMAIL # (선택) 약관·내 정보 화면의 문의 이메일
         sync: false
+      # ---- 안드로이드 앱 (docs/android-release.md) ----
+      - key: KAKAO_APP_ID # 카카오 앱 ID (숫자) — 앱의 카카오톡 로그인
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT # Firebase 서비스 계정 키 JSON — 앱 푸시
+        sync: false
+      - key: REVIEW_EMAIL # 스토어 심사용 계정 이메일
+        sync: false
+      - key: REVIEW_PASSWORD # 스토어 심사용 계정 비밀번호 (8자 이상)
+        sync: false
+      - key: ANDROID_CERT_SHA256 # 앱 서명 인증서 SHA-256 (쉼표로 여러 개) — 공유 링크를 앱으로
+        sync: false

@@ -11,7 +11,7 @@ describe('mainScriptOf', () => {
 
 describe('isEditingPath', () => {
   it('글 쓰는 화면에서는 바로 새로고침하지 않는다', () => {
-    for (const p of ['/meetups/new', '/meetups/3/edit', '/notices/new', '/notices/2/edit', '/signup/email', '/me', '/admin']) {
+    for (const p of ['/meetups/new', '/meetups/3/edit', '/notices/new', '/notices/2/edit', '/signup/email', '/password', '/login/email', '/me', '/admin']) {
       expect(isEditingPath(p)).toBe(true)
     }
     for (const p of ['/', '/meetups/3', '/notices', '/welcome']) {

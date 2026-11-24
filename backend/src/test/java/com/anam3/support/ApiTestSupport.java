@@ -50,6 +50,9 @@ public abstract class ApiTestSupport {
     protected CapturingMailer mailer;
 
     @Autowired
+    protected CapturingPushSender pushes;
+
+    @Autowired
     protected JdbcTemplate jdbc;
 
     /** 마이그레이션이 넣은 학교·도메인·학과 (처음 한 번 기억해 두고, 테스트가 더한 것만 지운다) */
@@ -61,11 +64,14 @@ public abstract class ApiTestSupport {
     void resetState() {
         clock.set(T0);
         mailer.clear();
+        pushes.clear();
         if (seededSchools == null) {
             seededSchools = ids("select id from schools");
             seededDomains = ids("select id from school_email_domains");
             seededDepartments = ids("select id from departments");
         }
+        jdbc.update("delete from push_devices");
+        jdbc.update("update members set push_off = null");
         jdbc.update("delete from reports");
         jdbc.update("delete from member_blocks");
         jdbc.update("delete from email_verifications");
@@ -198,6 +204,13 @@ public abstract class ApiTestSupport {
             throw new IllegalStateException(key + " 회원이 없어요");
         }
         return id;
+    }
+
+    /** 앱을 연 것처럼 이 기기 토큰을 알린다 */
+    protected void registerDevice(String token, String deviceToken) throws Exception {
+        post("/api/me/push/devices", token, """
+                {"token":"%s","platform":"android"}
+                """.formatted(deviceToken)).andExpect(status().isNoContent());
     }
 
     // ---------- 3교시 ----------

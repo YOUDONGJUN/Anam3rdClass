@@ -11,6 +11,8 @@ import com.anam3.common.ApiException;
 import com.anam3.meetup.Meetup;
 import com.anam3.meetup.MeetupRepository;
 import com.anam3.meetup.ParticipationRepository;
+import com.anam3.push.PushNotifier;
+import com.anam3.push.PushService;
 import com.anam3.safety.MemberBlockRepository;
 
 /** 내 계정: 약관 동의, 탈퇴 */
@@ -22,14 +24,18 @@ public class AccountService {
     private final MeetupRepository meetups;
     private final ParticipationRepository participations;
     private final MemberBlockRepository blocks;
+    private final PushService push;
+    private final PushNotifier notifier;
     private final Clock clock;
 
     public AccountService(MemberRepository members, MeetupRepository meetups, ParticipationRepository participations,
-            MemberBlockRepository blocks, Clock clock) {
+            MemberBlockRepository blocks, PushService push, PushNotifier notifier, Clock clock) {
         this.members = members;
         this.meetups = meetups;
         this.participations = participations;
         this.blocks = blocks;
+        this.push = push;
+        this.notifier = notifier;
         this.clock = clock;
     }
 
@@ -66,6 +72,7 @@ public class AccountService {
         Instant now = clock.instant();
         releaseOpenMeetups(member, now);
         blocks.deleteAllOf(member.getId());
+        push.forget(member.getId()); // 이 사람 폰으로 더는 알림을 보내지 않는다
         member.withdraw(now);
     }
 
@@ -75,7 +82,13 @@ public class AccountService {
      */
     public void releaseOpenMeetups(Member member, Instant now) {
         for (Meetup hosted : meetups.findOpenHostedBy(member.getId(), now)) {
-            hosted.cancel(now);
+            // 참여·수정과 겹치지 않게 잠그고 새로 읽은 뒤 취소한다
+            Meetup locked = meetups.findByIdForUpdate(hosted.getId()).orElseThrow();
+            if (locked.isCanceled()) {
+                continue;
+            }
+            locked.cancel(now);
+            notifier.canceled(locked, participations.findMemberIds(locked.getId()), member.getId(), false);
         }
         for (Long meetupId : participations.findOpenJoinedMeetupIds(member.getId(), now)) {
             Meetup locked = meetups.findByIdForUpdate(meetupId).orElseThrow();

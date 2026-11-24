@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
-import { EyeOff, MailCheck, ShieldCheck } from 'lucide-react'
+import { EyeOff, Mail, MailCheck, ShieldCheck } from 'lucide-react'
 import { api, ApiError } from '../api/client'
 import { useAuthConfig, useDevMembers, useSignupOptions } from '../api/queries'
 import type { AuthStep, DevMember } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { useKakaoStep } from '../auth/loginSteps'
 import { RoleTag } from '../components/PersonName'
+import { MadeBy } from '../components/MadeBy'
 import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, FormError, Spinner } from '../components/ui'
-import { startKakaoLogin } from '../lib/kakao'
+import { saveReturnPath, startKakaoLogin } from '../lib/kakao'
+import { isApp, kakaoAppToken } from '../lib/native'
 import { affiliation } from '../lib/person'
 
 /** 카카오 심볼 (말풍선) */
@@ -26,15 +29,39 @@ function KakaoSymbol() {
 function KakaoLoginButton({ from }: { from: string }) {
   const config = useAuthConfig()
   const clientId = config.data?.kakaoClientId ?? null
+  const kakaoStep = useKakaoStep()
   const [leaving, setLeaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  /** 앱: 카카오톡 앱으로 로그인하고 받은 토큰을 서버에 넘긴다 (웹은 카카오 로그인 창으로 이동) */
+  async function appLogin() {
+    setError(null)
+    setLeaving(true)
+    saveReturnPath(from)
+    try {
+      const token = await kakaoAppToken()
+      if (!token) {
+        setLeaving(false) // 취소
+        return
+      }
+      kakaoStep(await api<AuthStep>('/api/auth/kakao/app', { method: 'POST', body: { accessToken: token } }))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '카카오 로그인에 실패했어요. 다시 시도해 주세요')
+      setLeaving(false)
+    }
+  }
 
   if (config.isPending) return <Spinner label="불러오는 중" />
   return (
     <div className="flex flex-col gap-3">
       <button
         type="button"
-        disabled={!clientId || leaving}
+        disabled={(!isApp && !clientId) || leaving}
         onClick={() => {
+          if (isApp) {
+            void appLogin()
+            return
+          }
           if (!clientId) return
           setLeaving(true)
           startKakaoLogin(clientId, from)
@@ -42,10 +69,19 @@ function KakaoLoginButton({ from }: { from: string }) {
         className="inline-flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-kakao text-base font-semibold text-on-kakao transition-[filter,transform] select-none hover:brightness-95 active:scale-[0.98] disabled:opacity-50"
       >
         <KakaoSymbol />
-        {leaving ? '카카오로 이동하는 중…' : '카카오로 시작하기'}
+        {leaving ? (isApp ? '카카오 로그인 중…' : '카카오로 이동하는 중…') : '카카오로 시작하기'}
       </button>
+      <Link
+        to="/login/email"
+        onClick={() => saveReturnPath(from)}
+        className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-xl text-[15px] font-semibold text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
+      >
+        <Mail className="size-4" aria-hidden />
+        이메일로 로그인 · 가입
+      </Link>
+      <FormError message={error} />
       {config.isError && <FormError message="서버에 연결하지 못했어요. 새로고침해 주세요" />}
-      {config.data && !clientId &&
+      {config.data && !clientId && !isApp &&
         (config.data.devLogin ? (
           // 로컬 개발 서버: 키 없이도 아래 개발용 로그인으로 들어갈 수 있다
           <p className="text-center text-[13px] text-ink-3">카카오 키가 없어서 아래 개발용 로그인을 써요</p>
@@ -110,7 +146,7 @@ function DevLogin({ from }: { from: string }) {
 /** 카드 안 짧은 안내: 아이콘 + 한 줄 */
 const PROMISES = [
   { Icon: MailCheck, text: '학교 메일로 한 번만 인증' },
-  { Icon: EyeOff, text: <>이름은 <b className="font-semibold text-ink">김*대</b>처럼 가려져요</> },
+  { Icon: EyeOff, text: <>이름은 <b className="font-semibold text-ink">유*준</b>처럼 가려져요</> },
   { Icon: ShieldCheck, text: 'IT연합회 원우만 들어와요' },
 ]
 
@@ -186,17 +222,19 @@ export function WelcomePage() {
             <Steps />
           </div>
 
-          <p className="mt-10 px-2 text-center text-xs leading-relaxed text-ink-3">
-            학생들이 만든 비공식 커뮤니티예요
-            <br />
-            <Link to="/terms" className="underline underline-offset-4 hover:text-ink">
-              이용약관
-            </Link>
-            {' · '}
-            <Link to="/privacy" className="underline underline-offset-4 hover:text-ink">
-              개인정보 처리방침
-            </Link>
-          </p>
+          <div className="mt-10 flex flex-col items-center gap-1 px-2 text-center text-xs leading-relaxed text-ink-3">
+            <MadeBy />
+            <p>학생들이 만든 비공식 커뮤니티예요</p>
+            <p>
+              <Link to="/terms" className="underline underline-offset-4 hover:text-ink">
+                이용약관
+              </Link>
+              {' · '}
+              <Link to="/privacy" className="underline underline-offset-4 hover:text-ink">
+                개인정보 처리방침
+              </Link>
+            </p>
+          </div>
         </div>
       </section>
     </div>

@@ -20,6 +20,7 @@ import com.anam3.meetup.Participation;
 import com.anam3.meetup.ParticipationRepository;
 import com.anam3.member.Member;
 import com.anam3.member.MemberRepository;
+import com.anam3.member.MemberRole;
 import com.anam3.member.MemberStatus;
 import com.anam3.notice.Notice;
 import com.anam3.notice.NoticeRepository;
@@ -107,7 +108,7 @@ public class ReportService {
     public List<ReportView> list(LoginMember viewer) {
         List<Report> found = viewer.isOwner()
                 ? reports.findForOwner(PageRequest.of(0, 200))
-                : reports.findForSchool(viewer.schoolId(), PageRequest.of(0, 200));
+                : reports.findForSchool(viewer.schoolId(), MemberRole.USER, PageRequest.of(0, 200));
         return found.stream().map(ReportService::view).toList();
     }
 
@@ -130,7 +131,7 @@ public class ReportService {
     public long openCount(LoginMember viewer) {
         return viewer.isOwner()
                 ? reports.countByStatus(Report.Status.OPEN)
-                : reports.countBySchoolIdAndStatus(viewer.schoolId(), Report.Status.OPEN);
+                : reports.countForSchool(viewer.schoolId(), Report.Status.OPEN, MemberRole.USER);
     }
 
     private boolean canSee(Meetup meetup, LoginMember viewer) {
@@ -138,8 +139,13 @@ public class ReportService {
                 || participations.existsByMeetupIdAndMemberId(meetup.getId(), viewer.id());
     }
 
+    /** 대학원장은 모두, 교수는 자기 학교의 일반 원우가 대상인 신고만 (교수·대학원장이 대상이면 대학원장만) */
     private static boolean canManage(LoginMember viewer, Report report) {
-        return viewer.isOwner() || (report.getSchool() != null && viewer.manages(report.getSchool().getId()));
+        if (viewer.isOwner()) {
+            return true;
+        }
+        boolean targetIsStaff = report.getMember() != null && report.getMember().isStaff();
+        return !targetIsStaff && report.getSchool() != null && viewer.manages(report.getSchool().getId());
     }
 
     private static boolean sameTarget(Report a, Report b) {

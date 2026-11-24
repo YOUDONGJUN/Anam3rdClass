@@ -1,6 +1,8 @@
 package com.anam3.member;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Set;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,6 +19,7 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import com.anam3.push.PushType;
 import com.anam3.school.Department;
 import com.anam3.school.School;
 
@@ -90,6 +93,24 @@ public class Member {
 
     @Column(name = "password_hash", length = 100)
     private String passwordHash;
+
+    /**
+     * 이메일 로그인 비밀번호 (BCrypt). 학교 이메일 + 이 비밀번호로 로그인한다.
+     * 카카오 없이 가입했거나, 카카오 가입자가 학교 이메일 인증 뒤 비밀번호를 만들었을 때만 있다. 위의 예전 비밀번호와는 다르다
+     */
+    @Column(name = "email_password_hash", length = 100)
+    private String emailPasswordHash;
+
+    /** 끈 앱 푸시 알림 종류 (쉼표로 구분, 비어 있으면 모두 받는다) */
+    @Column(name = "push_off", length = 100)
+    private String pushOff;
+
+    /**
+     * 로그인 토큰 버전. 비밀번호를 정하거나 바꾸면 1 올라가서, 그 전에 받은 로그인 토큰(다른 기기)은 더는 안 된다.
+     * 토큰에 버전이 없으면(예전 토큰) 0 으로 본다
+     */
+    @Column(name = "token_version", nullable = false)
+    private int tokenVersion;
 
     protected Member() {
     }
@@ -180,17 +201,49 @@ public class Member {
     }
 
     /**
-     * 탈퇴: 이름·이메일·카카오 연결·학과를 지운다. 다시 가입하면 새 계정이 된다.
+     * 탈퇴: 이름·이메일·카카오 연결·이메일 비밀번호·학과를 지운다. 다시 가입하면 새 계정이 된다.
      * 3교시·공지에는 "탈퇴한 원우"로 남는다.
      */
     public void withdraw(Instant now) {
         this.name = WITHDRAWN_NAME;
         this.kakaoId = null;
         this.email = null;
+        this.emailPasswordHash = null;
         this.department = null;
         this.role = MemberRole.USER;
         this.status = MemberStatus.WITHDRAWN;
         this.withdrawnAt = now;
+    }
+
+    /** 학교 이메일 인증을 마친 뒤 이메일 로그인 비밀번호를 정한다 (BCrypt 로 바꾼 값) */
+    /** 이메일 로그인 비밀번호를 정하거나 바꾼다. 다른 기기의 로그인은 풀린다 (토큰 버전 +1) */
+    public void setEmailPassword(String hash) {
+        this.emailPasswordHash = hash;
+        this.tokenVersion++;
+    }
+
+    public int getTokenVersion() {
+        return tokenVersion;
+    }
+
+    public Set<PushType> getPushOff() {
+        return PushType.parseList(pushOff);
+    }
+
+    public void changePushOff(Collection<PushType> off) {
+        this.pushOff = PushType.joinList(off);
+    }
+
+    public boolean hasEmailPassword() {
+        return emailPasswordHash != null;
+    }
+
+    public String getEmailPasswordHash() {
+        return emailPasswordHash;
+    }
+
+    public boolean isKakaoLinked() {
+        return kakaoId != null;
     }
 
     /** 학교 이메일 인증을 마친 카카오 계정을 이 회원에 연결한다 (예전 회원 이전, 카카오 계정 변경) */

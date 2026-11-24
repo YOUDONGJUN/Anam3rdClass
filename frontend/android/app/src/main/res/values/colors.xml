@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 안내판 색 (index.css 의 board 색) -->
+    <color name="board">#1B2533</color>
+    <!-- 알림 아이콘 색 (favicon 주황) -->
+    <color name="notification_accent">#D3843A</color>
+</resources>

@@ -6,6 +6,8 @@ import {
   countBySchool,
   EMPTY_FILTERS,
   filterMembers,
+  findDuplicates,
+  isLegacy,
   sortMembers,
 } from './members'
 
@@ -26,6 +28,7 @@ function member(over: Partial<AdminMember>): AdminMember {
     role: 'USER',
     status: 'ACTIVE',
     kakaoLinked: true,
+    hasPassword: false,
     createdAt: '2026-11-01T00:00:00Z',
     ...over,
   }
@@ -127,5 +130,27 @@ describe('통계', () => {
       ['연세대 인공지능컴퓨팅전공', 1],
       ['학과 미입력', 1],
     ])
+  })
+})
+
+describe('예전 회원 · 중복 가입 의심', () => {
+  it('예전 회원은 카카오도 이메일 비밀번호도 없는 계정 (탈퇴한 원우 빼고)', () => {
+    expect(isLegacy(member({ kakaoLinked: false }))).toBe(true)
+    expect(isLegacy(member({ kakaoLinked: false, hasPassword: true }))).toBe(false) // 이메일로 가입
+    expect(isLegacy(member({ kakaoLinked: true }))).toBe(false)
+    expect(isLegacy(member({ kakaoLinked: false, status: 'WITHDRAWN' }))).toBe(false)
+  })
+
+  it('같은 학교 · 이름 · 기수 · 학과가 같으면 중복 의심 (다른 학교·탈퇴는 빼고)', () => {
+    const rows = [
+      member({ id: 1, name: '김고대' }),
+      member({ id: 2, name: '김 고대', email: 'godae2@korea.ac.kr' }),
+      member({ id: 3, name: '김고대', cohort: 60, cohortLabel: '60기' }),
+      member({ id: 4, name: '김고대', school: YONSEI }),
+      member({ id: 5, name: '김고대', status: 'WITHDRAWN' }),
+      member({ id: 6, name: '이안암' }),
+    ]
+    expect(findDuplicates(rows).map((g) => g.map((m) => m.id))).toEqual([[1, 2]])
+    expect(findDuplicates(list)).toEqual([])
   })
 })

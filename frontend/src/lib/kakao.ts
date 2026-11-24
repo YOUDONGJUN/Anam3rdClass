@@ -47,6 +47,16 @@ export function consumeKakaoState(state: string | null): boolean {
   return Boolean(state) && saved === state
 }
 
+/** 로그인 뒤 돌아갈 화면을 기억한다 (이메일 로그인·비밀번호 정하기도 같은 곳으로 돌아간다) */
+export function saveReturnPath(from: string) {
+  session()?.setItem(FROM_KEY, from)
+}
+
+/** 로그아웃: 돌아갈 화면을 지운다 (같은 탭의 다음 사람이 이어받지 않게) */
+export function clearReturnPath() {
+  session()?.removeItem(FROM_KEY)
+}
+
 /** 로그인 뒤 돌아갈 화면 */
 export function takeReturnPath(): string {
   const from = session()?.getItem(FROM_KEY) ?? '/'
@@ -54,13 +64,24 @@ export function takeReturnPath(): string {
   return from.startsWith('/') && !from.startsWith('//') ? from : '/'
 }
 
-/** 가입 중인 단계 — 이메일 인증 전(email 없음) 또는 프로필 입력 전(email 있음) */
+/**
+ * 가입 중인 단계 — 이메일 인증 전(email 없음) 또는 그 뒤(email 있음).
+ * 이메일 인증 뒤: existing 이면 새 비밀번호, 아니면 이름·기수·학과(+ 이메일로 시작했으면 비밀번호)
+ */
 export interface SignupProgress {
   signupToken: string
   email: string | null
   /** 이메일 인증을 마친 학교 — 이 학교의 기수·학과를 고른다 */
   schoolId: number | null
   schoolName: string | null
+  /** 어떻게 시작했나 (없으면 카카오 — 예전에 저장한 진행) */
+  via?: 'kakao' | 'email'
+  /** 비밀번호 찾기·만들기로 시작했나 (화면 문구만 다르다) */
+  purpose?: 'signup' | 'password'
+  /** 이미 가입한 학교 이메일 → 새 비밀번호 */
+  existing?: boolean
+  /** 미리 채워 둘 학교 이메일 (로그인한 채로 비밀번호를 만들 때) */
+  presetEmail?: string | null
 }
 
 export function saveSignupProgress(progress: SignupProgress) {

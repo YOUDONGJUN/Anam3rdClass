@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -177,9 +178,19 @@ public class SchoolService {
         }
     }
 
+    /** 누구나 만들 수 있는 메일(지메일·네이버 등)이나 ac.kr 같은 공용 끝자리 — 학교 도메인으로 넣으면 아무나 그 학교로 가입한다 */
+    private static final Set<String> PUBLIC_DOMAINS = Set.of(
+            "gmail.com", "googlemail.com", "naver.com", "daum.net", "hanmail.net", "kakao.com", "nate.com",
+            "outlook.com", "hotmail.com", "live.com", "icloud.com", "me.com", "yahoo.com", "proton.me",
+            "ac.kr", "co.kr", "or.kr", "go.kr", "re.kr", "kr", "com", "net", "org", "edu");
+
     private static String normalizeDomain(String raw) {
         String domain = raw.strip().toLowerCase(Locale.ROOT);
-        return domain.startsWith("@") ? domain.substring(1) : domain;
+        domain = domain.startsWith("@") ? domain.substring(1) : domain;
+        if (PUBLIC_DOMAINS.contains(domain) || !domain.contains(".")) {
+            throw ApiException.badRequest("PUBLIC_DOMAIN", "학교 이메일 도메인만 넣을 수 있어요 (예: korea.ac.kr)");
+        }
+        return domain;
     }
 
     private static String blankToNull(String s) {

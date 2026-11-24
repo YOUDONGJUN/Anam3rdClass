@@ -1,9 +1,11 @@
 import { Link, useNavigate } from 'react-router'
-import { ChevronRight, Crown, EyeOff, FileText, LogOut, Mail, Pencil, ShieldCheck, Users, UserX } from 'lucide-react'
+import { Check, ChevronRight, Crown, EyeOff, FileText, KeyRound, LogOut, Mail, Minus, Pencil, ShieldCheck, Users, UserX } from 'lucide-react'
 import { useAdminStats, useAuthConfig, useBlocks, useMyMeetups, useUnblock, useWithdraw } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
+import { MadeBy } from '../components/MadeBy'
 import { MeetupRow, MeetupRowSkeleton } from '../components/MeetupRow'
 import { RoleTag } from '../components/PersonName'
+import { PushSettings } from '../components/PushSettings'
 import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, EmptyState, ErrorState, Segmented } from '../components/ui'
 import { buttonClass, cardClass } from '../components/styles'
@@ -92,6 +94,21 @@ function BlockedPeople() {
 }
 
 const rowClass = 'flex h-14 w-full items-center gap-3 px-5 text-left text-[15px] font-semibold text-ink hover:bg-surface-2'
+
+/** 로그인 방법 하나: 켜져 있으면 체크 */
+function LoginMethod({ on, label }: { on: boolean; label: string }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[13px] font-semibold ${
+        on ? 'bg-accent-soft text-accent-ink' : 'bg-surface-2 text-ink-3'
+      }`}
+    >
+      {on ? <Check className="size-3.5" strokeWidth={3} aria-hidden /> : <Minus className="size-3.5" aria-hidden />}
+      {label}
+      <span className="sr-only">{on ? '(사용 중)' : '(안 씀)'}</span>
+    </span>
+  )
+}
 
 /** 대학원장·교수: 관리 화면 바로가기 + 처리할 일 */
 function StaffShortcut() {
@@ -256,10 +273,30 @@ export function MyPage() {
 
       <ThemeSettings schoolName={member.school.shortName} />
 
+      <PushSettings />
+
       <BlockedPeople />
 
       <section className={`${cardClass} divide-y divide-line overflow-hidden`}>
         <h2 className="sr-only">계정</h2>
+        <div className="flex flex-col gap-2 px-5 py-4">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <KeyRound className="size-5 text-ink-3" aria-hidden />
+            <span className="text-[15px] font-semibold text-ink">로그인</span>
+            <span className="flex gap-1.5">
+              <LoginMethod on={member.kakaoLinked} label="카카오" />
+              <LoginMethod on={member.hasPassword} label="이메일" />
+            </span>
+            {member.email && (
+              <Link to="/password" className="ml-auto text-sm font-semibold text-accent-ink underline underline-offset-4">
+                {member.hasPassword ? '비밀번호 바꾸기' : '비밀번호 만들기'}
+              </Link>
+            )}
+          </div>
+          {!member.hasPassword && member.email && (
+            <p className="text-[13px] leading-relaxed text-ink-3">비밀번호를 만들면 학교 메일로도 들어올 수 있어요. 같은 계정이에요.</p>
+          )}
+        </div>
         <Link to="/terms" className={rowClass}>
           <FileText className="size-5 text-ink-3" aria-hidden />
           이용약관
@@ -307,6 +344,8 @@ export function MyPage() {
           </button>
         </div>
       )}
+
+      <MadeBy className="pb-2 text-center" />
     </div>
   )
 }

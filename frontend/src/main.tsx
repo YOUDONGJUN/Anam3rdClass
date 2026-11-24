@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ApiError } from './api/client'
 import { AuthProvider } from './auth/AuthProvider'
 import { ToastProvider } from './components/ToastProvider'
+import { NativeBridge } from './components/NativeBridge'
 import { UpdateWatcher } from './components/UpdateWatcher'
 import { App } from './App'
 import { applyTheme, loadPrefs, loadSchoolCode } from './lib/theme'
@@ -33,6 +34,7 @@ createRoot(document.getElementById('root')!).render(
         <AuthProvider>
           <ThemeProvider>
             <ToastProvider>
+              <NativeBridge />
               <App />
             </ToastProvider>
           </ThemeProvider>

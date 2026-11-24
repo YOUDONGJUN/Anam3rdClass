@@ -1,5 +1,7 @@
 package com.anam3.auth;
 
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -9,6 +11,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.core.env.Environment;
 import org.springframework.data.domain.PageRequest;
@@ -25,9 +29,12 @@ import com.anam3.auth.AuthDtos.AuthConfig;
 import com.anam3.auth.AuthDtos.AuthStep;
 import com.anam3.auth.AuthDtos.EmailCodeRequest;
 import com.anam3.auth.AuthDtos.EmailCodeSent;
+import com.anam3.auth.AuthDtos.EmailLoginRequest;
 import com.anam3.auth.AuthDtos.EmailVerifyRequest;
+import com.anam3.auth.AuthDtos.KakaoAppLoginRequest;
 import com.anam3.auth.AuthDtos.KakaoLoginRequest;
 import com.anam3.auth.AuthDtos.LegacyClaimRequest;
+import com.anam3.auth.AuthDtos.PasswordSetRequest;
 import com.anam3.auth.AuthDtos.SignupOptions;
 import com.anam3.auth.AuthDtos.SignupRequest;
 import com.anam3.auth.JwtService.SignupClaims;
@@ -49,11 +56,15 @@ import com.anam3.school.School;
 import com.anam3.school.SchoolService;
 
 /**
- * 로그인·가입.
+ * 로그인·가입. 학교 이메일 하나에 계정 하나 — 카카오로 오든 이메일로 오든 같은 학교 이메일이면 같은 계정이다.
  * <pre>
  * 카카오 로그인 ─┬─ 이미 가입한 카카오 계정 → 로그인 끝
- *               └─ 처음 → 학교 이메일로 인증코드 → 코드 확인 ─┬─ 이미 있는 학교 이메일(예전 회원, 카카오 계정 변경) → 그 계정에 연결하고 로그인
+ *               └─ 처음 → 학교 이메일로 인증코드 → 코드 확인 ─┬─ 이미 있는 학교 이메일(예전 회원, 카카오 계정 변경, 이메일 가입자) → 그 계정에 카카오 연결하고 로그인
  *                                                           └─ 처음 → 이름·기수·학과 입력 → 가입하고 로그인
+ *
+ * 이메일로 시작(가입 · 비밀번호 찾기 · 비밀번호 만들기) → 학교 이메일로 인증코드 → 코드 확인 ─┬─ 이미 있는 학교 이메일 → 새 비밀번호 → 로그인
+ *                                                                                        └─ 처음 → 이름·기수·학과 + 비밀번호 → 가입하고 로그인
+ * 이메일 로그인: 학교 이메일 + 비밀번호
  * </pre>
  */
 @Service
@@ -73,8 +84,24 @@ public class AuthService {
     static final int DAILY_FAILED_LIMIT_PER_EMAIL = 20;
     /** 예전 아이디·비밀번호 확인: 카카오 계정마다 1시간에 틀릴 수 있는 횟수 */
     static final int HOURLY_LEGACY_FAILURES = 10;
-    /** 예전(아이디·비밀번호 시절) 비밀번호는 BCrypt 로 저장돼 있다 */
-    private static final PasswordEncoder LEGACY_PASSWORDS = new BCryptPasswordEncoder();
+    /** 이메일 로그인: 이메일마다 1시간에 틀릴 수 있는 횟수 */
+    static final int HOURLY_LOGIN_FAILURES = 10;
+    /**
+     * "이메일로 시작"(카카오 없이 누구나 할 수 있다)한 인증코드 요청 한도. 메일 발송 한도(Gmail 하루 500통)를 다 쓰거나
+     * 남의 메일함을 채우지 못하게 따로 센다. 카카오로 시작한 요청은 이 수에 들지 않아서 막히지 않는다
+     */
+    static final int HOURLY_LIMIT_EMAIL_START = 100;
+    static final int DAILY_LIMIT_EMAIL_START = 300;
+    /** 같은 이메일로 "이메일로 시작"한 코드 요청 (1시간) */
+    private static final int HOURLY_LIMIT_EMAIL_START_PER_EMAIL = 5;
+    /** BCrypt 는 72바이트까지만 쓴다 (한글이 섞인 긴 비밀번호) */
+    private static final int PASSWORD_MAX_BYTES = 72;
+    /** 비밀번호 확인(BCrypt)은 무거워서 동시에 몇 개만 (몰려오면 서버 CPU 를 다 쓰지 않게) */
+    private final Semaphore passwordChecks = new Semaphore(4);
+    /** 비밀번호는 BCrypt (예전 아이디·비밀번호 시절 비밀번호도 BCrypt 로 저장돼 있다) */
+    private static final PasswordEncoder PASSWORDS = new BCryptPasswordEncoder();
+    /** 없는 이메일로 로그인해도 비밀번호 확인만큼 시간이 걸리게 (응답 시간으로 가입 여부를 알 수 없게) */
+    private static final String NO_ACCOUNT_HASH = PASSWORDS.encode("no-account-" + System.nanoTime());
 
     private final MemberRepository members;
     private final KakaoClient kakao;
@@ -91,6 +118,9 @@ public class AuthService {
     private final TransactionTemplate tx;
     /** 예전 아이디·비밀번호를 틀린 시각 (카카오 계정마다). 서버가 한 대라 메모리로 충분하다 */
     private final Map<Long, Deque<Instant>> legacyFailures = new ConcurrentHashMap<>();
+    /** 이메일 로그인 비밀번호를 틀린 시각 (이메일마다) */
+    private final Map<String, Deque<Instant>> loginFailures = new ConcurrentHashMap<>();
+    private final SecureRandom random = new SecureRandom();
 
     public AuthService(MemberRepository members, KakaoClient kakao, JwtService jwtService,
             EmailVerificationRepository verifications, VerificationCodes codes, VerificationMailer mailer,
@@ -125,6 +155,95 @@ public class AuthService {
                 .orElseGet(() -> AuthStep.emailRequired(jwtService.issueSignup(kakaoId, null))));
     }
 
+    /** 앱(안드로이드): 카카오톡으로 로그인해서 받은 토큰. 그다음은 웹 카카오 로그인과 같다 */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public AuthStep kakaoAppLogin(KakaoAppLoginRequest req) {
+        long kakaoId = kakao.fetchUserIdByAccessToken(req.accessToken()); // DB 연결 없이 카카오 서버를 기다린다
+        return tx.execute(status -> members.findByKakaoId(kakaoId)
+                .map(this::done)
+                .orElseGet(() -> AuthStep.emailRequired(jwtService.issueSignup(kakaoId, null))));
+    }
+
+    // ---------------- 1-1. 이메일로 시작 · 이메일 로그인 ----------------
+
+    /**
+     * 카카오 없이 시작: 가입 · 비밀번호 찾기 · 비밀번호 만들기 모두 여기서 시작해 학교 이메일 인증으로 간다.
+     * 요청한 사람 번호는 임의의 음수 (카카오 회원번호는 양수라 겹치지 않는다)
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public AuthStep emailStart() {
+        long requesterId = -1 - random.nextLong(Long.MAX_VALUE - 1);
+        return AuthStep.emailRequired(jwtService.issueSignup(new SignupClaims(requesterId, false, null)));
+    }
+
+    /**
+     * 학교 이메일 + 비밀번호. 없는 이메일·비밀번호 없는 계정·틀린 비밀번호는 모두 같은 말로 답한다.
+     * 비밀번호 확인(BCrypt)은 DB 커넥션을 잡지 않고 하고, 동시에 몇 개만 돌린다
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public AuthStep emailLogin(EmailLoginRequest req) {
+        String email = Emails.normalize(req.email());
+        Instant now = clock.instant();
+        Instant hourAgo = now.minus(Duration.ofHours(1));
+        Deque<Instant> failures = loginFailures.get(email);
+        if (failures != null) {
+            failures.removeIf(at -> at.isBefore(hourAgo));
+            if (failures.size() >= HOURLY_LOGIN_FAILURES) {
+                throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
+                        "비밀번호를 너무 많이 틀렸어요. 1시간 뒤에 다시 하거나 비밀번호 찾기를 해 주세요");
+            }
+        }
+        Optional<String> found = tx.execute(status -> members.findByEmail(email)
+                .filter(Member::hasEmailPassword)
+                .map(Member::getEmailPasswordHash));
+        boolean matched = checkPassword(req.password(), found == null ? null : found.orElse(null));
+        if (!matched || found == null || found.isEmpty()) {
+            recordLoginFailure(email, now, hourAgo);
+            throw ApiException.badRequest("LOGIN_FAILED", "이메일이나 비밀번호가 맞지 않아요");
+        }
+        loginFailures.remove(email);
+        return tx.execute(status -> done(members.findByEmail(email).orElseThrow()));
+    }
+
+    /** 비밀번호 확인. 계정이 없어도(hash=null) 같은 시간이 걸리게 가짜 값과 비교한다 */
+    private boolean checkPassword(String raw, String hash) {
+        if (raw.getBytes(StandardCharsets.UTF_8).length > PASSWORD_MAX_BYTES) {
+            return false;
+        }
+        try {
+            if (!passwordChecks.tryAcquire(3, TimeUnit.SECONDS)) {
+                throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "BUSY", "지금 로그인하는 사람이 많아요. 잠시 후 다시 시도해 주세요");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "BUSY", "잠시 후 다시 시도해 주세요");
+        }
+        try {
+            return PASSWORDS.matches(raw, hash == null ? NO_ACCOUNT_HASH : hash) && hash != null;
+        } finally {
+            passwordChecks.release();
+        }
+    }
+
+    /** 틀린 기록은 틀렸을 때만 남기고, 너무 많아지면 1시간 지난 기록을 치운다 (아무 이메일로 마구 틀려도 메모리가 늘지 않게) */
+    private void recordLoginFailure(String email, Instant now, Instant hourAgo) {
+        if (loginFailures.size() > 5_000) {
+            loginFailures.entrySet().removeIf(e -> {
+                e.getValue().removeIf(at -> at.isBefore(hourAgo));
+                return e.getValue().isEmpty();
+            });
+        }
+        loginFailures.computeIfAbsent(email, k -> new ConcurrentLinkedDeque<>()).add(now);
+    }
+
+    /** 새 비밀번호 (BCrypt 는 72바이트까지라 그보다 길면 받지 않는다) */
+    private static String encodePassword(String raw) {
+        if (raw.getBytes(StandardCharsets.UTF_8).length > PASSWORD_MAX_BYTES) {
+            throw ApiException.badRequest("PASSWORD_TOO_LONG", "비밀번호가 너무 길어요. 영문·숫자 위주로 줄여 주세요");
+        }
+        return PASSWORDS.encode(raw);
+    }
+
     // ---------------- 2. 학교 이메일 인증코드 ----------------
 
     /** 코드를 저장(커밋)한 뒤 메일을 보낸다. 메일이 실패하면 저장한 코드를 지운다 */
@@ -154,22 +273,35 @@ public class AuthService {
         Instant now = clock.instant();
 
         verifications.deleteCreatedBefore(now.minus(Duration.ofDays(1)));
-        verifications.findFirstByEmailAndKakaoIdOrderByCreatedAtDescIdDesc(email, claims.kakaoId())
+        verifications.findFirstByEmailAndRequesterIdOrderByCreatedAtDescIdDesc(email, claims.requesterId())
                 .filter(last -> last.getCreatedAt().isAfter(now.minus(RESEND_AFTER)))
                 .ifPresent(last -> {
                     throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_SOON",
                             "인증코드는 1분에 한 번만 받을 수 있어요. 메일함을 먼저 확인해 주세요");
                 });
         Instant hourAgo = now.minus(Duration.ofHours(1));
-        if (verifications.countByEmailAndKakaoIdAndCreatedAtAfter(email, claims.kakaoId(), hourAgo) >= HOURLY_LIMIT_PER_REQUESTER
-                || verifications.countByEmailAndCreatedAtAfter(email, hourAgo) >= HOURLY_LIMIT_PER_EMAIL
-                || verifications.countByKakaoIdAndCreatedAtAfter(claims.kakaoId(), hourAgo) >= HOURLY_LIMIT_PER_KAKAO) {
+        // 이메일 하나에 대한 한도는 카카오로 시작한 요청과 이메일로 시작한 요청을 따로 센다
+        // (누구나 만들 수 있는 "이메일로 시작" 요청으로 남의 카카오 가입을 막지 못하게)
+        long sameEmail = claims.kakao()
+                ? verifications.countByEmailAndRequesterIdGreaterThanAndCreatedAtAfter(email, 0L, hourAgo)
+                : verifications.countByEmailAndRequesterIdLessThanAndCreatedAtAfter(email, 0L, hourAgo);
+        int sameEmailLimit = claims.kakao() ? HOURLY_LIMIT_PER_EMAIL : HOURLY_LIMIT_EMAIL_START_PER_EMAIL;
+        if (verifications.countByEmailAndRequesterIdAndCreatedAtAfter(email, claims.requesterId(), hourAgo) >= HOURLY_LIMIT_PER_REQUESTER
+                || sameEmail >= sameEmailLimit
+                || verifications.countByRequesterIdAndCreatedAtAfter(claims.requesterId(), hourAgo) >= HOURLY_LIMIT_PER_KAKAO) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
                     "인증코드를 너무 많이 요청했어요. 1시간 뒤에 다시 시도해 주세요");
         }
+        if (!claims.kakao()
+                && (verifications.countByRequesterIdLessThanAndCreatedAtAfter(0L, hourAgo) >= HOURLY_LIMIT_EMAIL_START
+                        || verifications.countByRequesterIdLessThanAndCreatedAtAfter(0L, now.minus(Duration.ofDays(1)))
+                                >= DAILY_LIMIT_EMAIL_START)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
+                    "지금은 인증코드를 보낼 수 없어요. 잠시 뒤에 다시 시도하거나 카카오로 시작해 주세요");
+        }
 
         EmailVerification saved = verifications.save(
-                new EmailVerification(email, claims.kakaoId(), codes.hash(email, code), now.plus(CODE_TTL), now));
+                new EmailVerification(email, claims.requesterId(), codes.hash(email, code), now.plus(CODE_TTL), now));
         return new SavedCode(saved.getId(), school.getName());
     }
 
@@ -183,7 +315,7 @@ public class AuthService {
         Instant now = clock.instant();
 
         EmailVerification verification = verifications
-                .findLatestIds(email, claims.kakaoId(), PageRequest.of(0, 1)).stream().findFirst()
+                .findLatestIds(email, claims.requesterId(), PageRequest.of(0, 1)).stream().findFirst()
                 .flatMap(verifications::findByIdForUpdate)
                 .filter(v -> v.isUsableAt(now))
                 .orElseThrow(() -> ApiException.badRequest("CODE_EXPIRED", "인증코드가 만료됐어요. 새 코드를 받아 주세요"));
@@ -200,10 +332,24 @@ public class AuthService {
         }
         School school = schoolService.requireForEmail(email);
 
-        // 이미 있는 학교 이메일: 예전 회원(관리자가 이메일을 넣어 둠)이거나 카카오 계정이 바뀐 경우 → 그 계정에 연결
+        // 이미 있는 학교 이메일 → 새 계정을 만들지 않는다 (학교 이메일 하나에 계정 하나)
         Optional<Member> existing = members.findByEmail(email);
-        if (existing.isPresent()) {
+        if (existing.isPresent() && !claims.kakao()) {
+            // 이메일로 시작: 비밀번호 찾기 · 카카오 가입자의 비밀번호 만들기 → 새 비밀번호를 정하면 그 계정으로 로그인
             Member member = existing.get();
+            if (!member.isActive()) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "BANNED", "이용이 제한된 계정이에요. 관리자에게 문의해 주세요");
+            }
+            verification.markVerified(now);
+            return AuthStep.passwordRequired(jwtService.issueSignup(claims.withVerifiedEmail(email)), email,
+                    school.getId(), school.getName());
+        }
+        if (existing.isPresent()) {
+            // 카카오로 시작: 예전 회원(관리자가 이메일을 넣어 둠), 카카오 계정이 바뀐 경우, 이메일로 가입한 원우 → 그 계정에 카카오 연결
+            Member member = existing.get();
+            if (!member.isActive()) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "BANNED", "이용이 제한된 계정이에요. 관리자에게 문의해 주세요");
+            }
             members.findByKakaoId(claims.kakaoId())
                     .filter(other -> !other.getId().equals(member.getId()))
                     .ifPresent(other -> {
@@ -216,11 +362,11 @@ public class AuthService {
         }
 
         verification.markVerified(now);
-        return AuthStep.profileRequired(jwtService.issueSignup(claims.kakaoId(), email), email, school.getId(),
+        return AuthStep.profileRequired(jwtService.issueSignup(claims.withVerifiedEmail(email)), email, school.getId(),
                 school.getName());
     }
 
-    // ---------------- 4. 이름·기수·학과 입력 + 약관 동의 → 가입 ----------------
+    // ---------------- 4. 이름·기수·학과 입력 + 약관 동의 (+ 이메일 가입이면 비밀번호) → 가입 ----------------
 
     public AuthStep signup(SignupRequest req) {
         SignupClaims claims = signupClaims(req.signupToken());
@@ -228,8 +374,12 @@ public class AuthService {
         if (email == null) {
             throw ApiException.badRequest("EMAIL_NOT_VERIFIED", "학교 이메일 인증을 먼저 해 주세요");
         }
-        if (members.findByKakaoId(claims.kakaoId()).isPresent()) {
+        Long kakaoId = claims.kakaoId();
+        if (kakaoId != null && members.findByKakaoId(kakaoId).isPresent()) {
             throw ApiException.conflict("ALREADY_SIGNED_UP", "이미 가입한 카카오 계정이에요. 다시 로그인해 주세요");
+        }
+        if (kakaoId == null && req.password() == null) {
+            throw ApiException.badRequest("PASSWORD_REQUIRED", AuthDtos.PASSWORD_MESSAGE);
         }
         if (members.existsByEmail(email)) {
             throw ApiException.conflict("DUPLICATE_EMAIL", "이미 가입된 학교 이메일이에요");
@@ -239,10 +389,33 @@ public class AuthService {
         Department department = schoolService.requireDepartment(school, req.departmentId(), null);
 
         Instant now = clock.instant();
-        Member member = members.save(new Member(claims.kakaoId(), email, school, req.name().strip(), req.cohort(),
+        Member member = members.save(new Member(kakaoId, email, school, req.name().strip(), req.cohort(),
                 department, MemberRole.USER, now));
+        if (kakaoId == null) {
+            member.setEmailPassword(encodePassword(req.password()));
+        }
         member.agreeTerms(now);
         ownerPolicy.apply(member);
+        return done(member);
+    }
+
+    // ---------------- 4-2. 이미 가입한 학교 이메일: 새 비밀번호 (비밀번호 찾기 · 비밀번호 만들기) ----------------
+
+    /** 학교 이메일 인증을 마친 사람만 (가입 토큰에 인증한 이메일이 있다). 정하면 그 계정으로 로그인된다 */
+    public AuthStep setPassword(PasswordSetRequest req) {
+        SignupClaims claims = signupClaims(req.signupToken());
+        String email = claims.verifiedEmail();
+        if (email == null) {
+            throw ApiException.badRequest("EMAIL_NOT_VERIFIED", "학교 이메일 인증을 먼저 해 주세요");
+        }
+        Member member = members.findByEmail(email)
+                .orElseThrow(() -> ApiException.badRequest("NO_ACCOUNT", "이 메일로 가입한 계정이 없어요. 가입부터 해 주세요"));
+        if (!member.isActive()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "BANNED", "이용이 제한된 계정이에요. 관리자에게 문의해 주세요");
+        }
+        member.setEmailPassword(encodePassword(req.password()));
+        ownerPolicy.apply(member);
+        loginFailures.remove(email);
         return done(member);
     }
 
@@ -272,6 +445,9 @@ public class AuthService {
         if (email == null) {
             throw ApiException.badRequest("EMAIL_NOT_VERIFIED", "학교 이메일 인증을 먼저 해 주세요");
         }
+        if (!claims.kakao()) {
+            throw ApiException.badRequest("LEGACY_NEEDS_KAKAO", "예전 계정 잇기는 카카오 로그인으로 해 주세요");
+        }
         if (members.findByKakaoId(claims.kakaoId()).isPresent()) {
             throw ApiException.conflict("ALREADY_SIGNED_UP", "이미 가입한 카카오 계정이에요. 다시 로그인해 주세요");
         }
@@ -284,7 +460,7 @@ public class AuthService {
         Member member = members.findByLoginId(req.loginId().strip().toLowerCase(Locale.ROOT))
                 .filter(Member::isUnclaimedLegacy)
                 .filter(m -> m.isSameSchool(school.getId())) // 예전 계정과 같은 학교 이메일로만 잇는다
-                .filter(m -> LEGACY_PASSWORDS.matches(req.password(), m.getLegacyPasswordHash()))
+                .filter(m -> PASSWORDS.matches(req.password(), m.getLegacyPasswordHash()))
                 .orElseThrow(() -> {
                     legacyFailures.computeIfAbsent(claims.kakaoId(), k -> new ConcurrentLinkedDeque<>()).add(now);
                     return ApiException.badRequest("LEGACY_LOGIN_FAILED", "예전 아이디나 비밀번호가 맞지 않아요");
@@ -321,6 +497,6 @@ public class AuthService {
 
     private SignupClaims signupClaims(String token) {
         return jwtService.verifySignup(token)
-                .orElseThrow(() -> ApiException.badRequest("SIGNUP_EXPIRED", "가입 시간이 지났어요. 카카오 로그인부터 다시 해 주세요"));
+                .orElseThrow(() -> ApiException.badRequest("SIGNUP_EXPIRED", "가입 시간이 지났어요. 처음부터 다시 해 주세요"));
     }
 }

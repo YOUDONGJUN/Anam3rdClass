@@ -37,9 +37,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith(PREFIX)) {
-            var member = jwtService.verify(header.substring(PREFIX.length()))
-                    .flatMap(members::findWithSchool)
-                    .filter(Member::isActive);
+            var token = jwtService.verify(header.substring(PREFIX.length()));
+            // 비밀번호를 바꾸기 전에 받은 토큰(버전이 다름)은 받지 않는다
+            var member = token.flatMap(t -> members.findWithSchool(t.memberId()))
+                    .filter(Member::isActive)
+                    .filter(m -> m.getTokenVersion() == token.get().version());
             if (member.isPresent()) {
                 if (!member.get().hasAgreedTerms() && !allowedBeforeTerms(request)) {
                     SecurityConfig.writeError(response, 403, "TERMS_REQUIRED", "이용약관에 먼저 동의해 주세요");

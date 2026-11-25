@@ -160,6 +160,97 @@ class MeetupApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 연_사람은_최소_인원이_안_차도_지금_인원으로_확정한다() throws Exception {
+        long id = createMeetup(host, 4, 6, IN_2H, IN_1H, CHAT);
+        post("/api/meetups/" + id + "/join", anam, null);
+        post("/api/meetups/" + id + "/join", horang, null)
+                .andExpect(jsonPath("$.status").value("RECRUITING"));
+
+        get("/api/meetups/" + id, host).andExpect(jsonPath("$.canConfirm").value(true));
+        get("/api/meetups/" + id, anam).andExpect(jsonPath("$.canConfirm").value(false));
+        post("/api/meetups/" + id + "/confirm", anam, null).andExpect(status().isForbidden());
+
+        post("/api/meetups/" + id + "/confirm", host, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.minPeople").value(3))
+                .andExpect(jsonPath("$.canConfirm").value(false));
+
+        // 성사와 똑같이: 참여자끼리 실명과 단톡방이 열린다
+        get("/api/meetups/" + id, anam)
+                .andExpect(jsonPath("$.revealed").value(true))
+                .andExpect(jsonPath("$.participants[*].name", contains("김고대", "이안암", "박호랑")))
+                .andExpect(jsonPath("$.openChatUrl").value(CHAT));
+
+        // 확정한 뒤에도 정원까지는 더 참여할 수 있다
+        post("/api/meetups/" + id + "/join", outsider, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.participantCount").value(4));
+
+        post("/api/meetups/" + id + "/confirm", host, null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ALREADY_REACHED"));
+    }
+
+    @Test
+    void 혼자면_확정할_수_없다() throws Exception {
+        long id = createMeetup(host, 3, 6, IN_2H, IN_1H, null);
+
+        get("/api/meetups/" + id, host).andExpect(jsonPath("$.canConfirm").value(false));
+        post("/api/meetups/" + id + "/confirm", host, null)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("TOO_FEW"));
+    }
+
+    @Test
+    void 무산된_3교시도_모임_시간_전이면_지금_인원으로_되살린다() throws Exception {
+        long id = createMeetup(host, 4, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + id + "/join", anam, null);
+        long late = createMeetup(host, 4, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + late + "/join", anam, null);
+
+        clock.advance(Duration.ofMinutes(90)); // 마감 지나 무산, 모임 전
+        get("/api/meetups/" + id, host)
+                .andExpect(jsonPath("$.status").value("FAILED"))
+                .andExpect(jsonPath("$.canConfirm").value(true));
+
+        post("/api/meetups/" + id + "/confirm", host, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.minPeople").value(2));
+        get("/api/meetups/" + id, anam).andExpect(jsonPath("$.revealed").value(true));
+        // 다시 목록에 나온다 (마감이 지났으니 새로 참여는 못 한다 — 중간 합류가 꺼져 있어서)
+        get("/api/meetups", outsider).andExpect(jsonPath("$[*].id", contains((int) id)));
+        post("/api/meetups/" + id + "/join", outsider, null)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CLOSED"));
+
+        clock.advance(Duration.ofMinutes(31)); // 모임 시간 지남
+        get("/api/meetups/" + late, host).andExpect(jsonPath("$.canConfirm").value(false));
+        post("/api/meetups/" + late + "/confirm", host, null)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("NOT_OPEN"));
+    }
+
+    @Test
+    void 성사된_뒤에_누가_나가도_확정이_유지되고_실명도_그대로() throws Exception {
+        long id = createMeetup(host, 3, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + id + "/join", anam, null);
+        post("/api/meetups/" + id + "/join", horang, null)
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+
+        delete("/api/meetups/" + id + "/join", horang)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.participantCount").value(2));
+
+        get("/api/meetups/" + id, anam)
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.minPeople").value(2))
+                .andExpect(jsonPath("$.revealed").value(true))
+                .andExpect(jsonPath("$.participants[*].name", contains("김고대", "이안암")));
+    }
+
+    @Test
     void 마감까지_미달이면_무산되고_목록에서_조용히_사라진다() throws Exception {
         long id = createMeetup(host, 3, 6, IN_2H, IN_1H, null);
         post("/api/meetups/" + id + "/join", anam, null);
@@ -187,10 +278,12 @@ class MeetupApiTest extends ApiTestSupport {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("HOST_CANNOT_LEAVE"));
 
+        // 둘이 모여 성사됐던 3교시라, 한 명이 나가도 확정은 유지된다 (최소 인원 없음으로)
         delete("/api/meetups/" + id + "/join", anam)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.participantCount").value(1))
-                .andExpect(jsonPath("$.status").value("RECRUITING"));
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.minPeople").isEmpty());
 
         post("/api/meetups/" + id + "/join", anam, null);
         clock.advance(Duration.ofMinutes(61));

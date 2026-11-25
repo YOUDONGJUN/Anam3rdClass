@@ -101,7 +101,8 @@ public class MeetupMapper {
                 m.isLateJoin(),
                 m.getFee(),
                 m.isFeePrepaid(),
-                canDelete);
+                canDelete,
+                (hosting || viewer.isOwner()) && m.isConfirmableAt(now));
     }
 
     private PersonView person(Member member, LoginMember viewer, boolean revealed, boolean host, Long ref) {

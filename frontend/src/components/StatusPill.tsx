@@ -11,7 +11,8 @@ const toneClass: Record<Tone, string> = {
 export function StatusPill({ meetup }: { meetup: Pick<MeetupSummary, 'status' | 'joinable' | 'minPeople'> }) {
   const { label, tone } = statusView(meetup)
   return (
-    <span className={`inline-flex h-6 shrink-0 items-center rounded-md px-2 text-xs font-bold ${toneClass[tone]}`}>
+    <span className={`inline-flex h-6 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-bold ${toneClass[tone]}`}>
+      <span className="size-1.5 rounded-full bg-current" aria-hidden />
       {label}
     </span>
   )

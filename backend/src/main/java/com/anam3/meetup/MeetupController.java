@@ -70,6 +70,12 @@ public class MeetupController {
         meetupService.delete(me, id);
     }
 
+    /** 지금 인원으로 확정 (무산된 3교시도 모임 전이면 되살린다): 연 사람 · 대학원장 */
+    @PostMapping("/{id}/confirm")
+    public MeetupDetail confirm(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
+        return meetupService.confirm(me, id);
+    }
+
     @PostMapping("/{id}/join")
     public MeetupDetail join(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
         return meetupService.join(me, id);

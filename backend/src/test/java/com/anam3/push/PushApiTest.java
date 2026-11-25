@@ -118,9 +118,9 @@ class PushApiTest extends ApiTestSupport {
         assertThat(last("anam-phone").body()).isEqualTo("성사됐어요! 참여자 실명과 단톡방이 공개됐어요");
         assertThat(pushes.to("horang-phone")).isEmpty();
 
-        // 마감 전에 나가면 연 사람에게
+        // 마감 전에 나가면 연 사람에게 (이미 성사돼서 확정은 유지된다)
         delete("/api/meetups/" + id + "/join", anam).andExpect(status().isOk());
-        assertThat(last("host-phone").body()).isEqualTo("한 명이 나갔어요 · 성사까지 1명");
+        assertThat(last("host-phone").body()).isEqualTo("한 명이 나갔어요 · 지금 2/4명");
         assertThat(types("host-phone")).containsExactly(PushType.JOIN, PushType.REACHED, PushType.JOIN);
     }
 
@@ -231,6 +231,34 @@ class PushApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 연_사람이_지금_인원으로_확정하면_참여자에게_성사_알림() throws Exception {
+        String host = signup("godae", "김고대", 61);
+        String anam = signup("anam", "이안암", 61);
+        String horang = signup("horang", "박호랑", 61);
+        registerDevice(host, "host-phone");
+        registerDevice(anam, "anam-phone");
+        registerDevice(horang, "horang-phone");
+        long id = createMeetup(host, 4, 6, Duration.ofHours(2), Duration.ofHours(1), null);
+        post("/api/meetups/" + id + "/join", anam, null).andExpect(status().isOk());
+        long revive = createMeetup(host, 4, 6, Duration.ofHours(2), Duration.ofHours(1), null);
+        post("/api/meetups/" + revive + "/join", horang, null).andExpect(status().isOk());
+        post("/api/meetups/" + id + "/join", horang, null).andExpect(status().isOk());
+        pushes.clear();
+
+        post("/api/meetups/" + id + "/confirm", host, null).andExpect(status().isOk());
+        PushMessage confirmed = last("anam-phone");
+        assertThat(confirmed.type()).isEqualTo(PushType.REACHED);
+        assertThat(confirmed.body()).isEqualTo("성사됐어요! 3명으로 확정했어요 · 참여자 실명과 단톡방이 공개됐어요");
+        assertThat(last("horang-phone").body()).isEqualTo(confirmed.body());
+        assertThat(pushes.to("host-phone")).isEmpty(); // 확정한 본인에게는 안 보낸다
+
+        // 무산된 3교시를 되살리면 "다시 진행해요"
+        clock.advance(Duration.ofMinutes(90));
+        post("/api/meetups/" + revive + "/confirm", host, null).andExpect(status().isOk());
+        assertThat(last("horang-phone").body()).isEqualTo("다시 진행해요! 2명으로 확정했어요 · 참여자 실명과 단톡방이 공개됐어요");
+    }
+
+    @Test
     void 모집_마감_30분_전에_한_번_알린다() throws Exception {
         String host = signup("godae", "김고대", 61);
         String anam = signup("anam", "이안암", 61);
@@ -249,7 +277,12 @@ class PushApiTest extends ApiTestSupport {
         PushMessage remind = last("anam-phone");
         assertThat(remind.type()).isEqualTo(PushType.DEADLINE);
         assertThat(remind.body()).isEqualTo("모집 마감 20분 전이에요 · 2명 더 모이면 성사돼요");
-        assertThat(last("host-phone").type()).isEqualTo(PushType.DEADLINE);
+        // 연 사람에게는 지금 인원으로 진행할지 묻는다
+        PushMessage toHost = last("host-phone");
+        assertThat(toHost.type()).isEqualTo(PushType.DEADLINE);
+        assertThat(toHost.body()).isEqualTo("모집 마감 20분 전 · 2명 모였어요. 이 인원으로 진행할까요?");
+        assertThat(toHost.path()).isEqualTo("/meetups/" + id);
+        assertThat(pushes.to("host-phone")).hasSize(1);
         assertThat(quick).isPositive();
 
         clock.advance(Duration.ofMinutes(1));

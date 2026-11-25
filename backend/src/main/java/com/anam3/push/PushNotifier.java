@@ -71,6 +71,14 @@ public class PushNotifier {
                 "성사됐어요! 참여자 실명과 단톡방이 공개됐어요", path(meetup), tag(meetup, "reached")));
     }
 
+    /** 연 사람이 지금 인원으로 확정(무산에서 되살림 포함): 참여자 모두에게 (확정한 사람 빼고) */
+    public void confirmedByHost(Meetup meetup, Long actorId, boolean revived) {
+        String body = (revived ? "다시 진행해요! " : "성사됐어요! ") + meetup.getParticipantCount()
+                + "명으로 확정했어요 · 참여자 실명과 단톡방이 공개됐어요";
+        push.send(others(meetup, actorId), new PushMessage(PushType.REACHED, meetup.getTitle(), body, path(meetup),
+                tag(meetup, "reached")));
+    }
+
     /** 시간·장소가 바뀜: 참여자에게 (고친 사람 빼고) */
     public void changed(Meetup meetup, Long actorId, boolean timeChanged, boolean placeChanged) {
         if (!timeChanged && !placeChanged) {
@@ -121,6 +129,7 @@ public class PushNotifier {
 
     /**
      * 모집 마감 30분 전인데 아직 최소 인원이 안 모인 3교시: 참여자 모두에게 한 번 (DeadlineReminderJob 이 1분마다 부른다).
+     * 연 사람에게는 지금 인원으로 진행할지 묻는 문구로 보낸다.
      * 보낸 3교시 수를 돌려준다
      */
     @Transactional
@@ -136,8 +145,15 @@ public class PushNotifier {
             }
             long minutes = Math.max(1, (Duration.between(now, m.getDeadlineAt()).toSeconds() + 59) / 60);
             int left = m.getMinPeople() - m.getParticipantCount();
-            push.send(participations.findMemberIds(m.getId()), new PushMessage(PushType.DEADLINE, m.getTitle(),
-                    "모집 마감 " + minutes + "분 전이에요 · " + left + "명 더 모이면 성사돼요", path(m), tag(m, "deadline")));
+            String waiting = "모집 마감 " + minutes + "분 전이에요 · " + left + "명 더 모이면 성사돼요";
+            Long hostId = m.getHost().getId();
+            List<Long> others = participations.findMemberIds(m.getId()).stream().filter(id -> !id.equals(hostId)).toList();
+            push.send(others, new PushMessage(PushType.DEADLINE, m.getTitle(), waiting, path(m), tag(m, "deadline")));
+            // 연 사람에게는 "이 인원으로 진행할까요?" — 눌러서 상세에서 지금 인원으로 확정한다 (혼자면 기다리는 안내만)
+            String toHost = m.getParticipantCount() >= 2
+                    ? "모집 마감 " + minutes + "분 전 · " + m.getParticipantCount() + "명 모였어요. 이 인원으로 진행할까요?"
+                    : waiting;
+            push.send(List.of(hostId), new PushMessage(PushType.DEADLINE, m.getTitle(), toHost, path(m), tag(m, "deadline")));
             sent++;
         }
         return sent;

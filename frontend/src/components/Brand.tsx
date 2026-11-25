@@ -4,7 +4,7 @@ import { Link } from 'react-router'
 export function Brand({ subtitle = true }: { subtitle?: boolean }) {
   return (
     <Link to="/" className="flex items-center gap-2.5 rounded-lg">
-      <span className="flex size-8 items-center justify-center rounded-full bg-accent text-[17px] font-black text-on-accent">
+      <span className="flex size-8 items-center justify-center rounded-full bg-accent text-[17px] font-black text-on-accent shadow-[inset_0_-2px_0_rgb(0_0_0/0.12),0_2px_0_rgb(0_0_0/0.22)]">
         3
       </span>
       <span className="flex flex-col leading-none">

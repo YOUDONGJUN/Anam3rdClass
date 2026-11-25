@@ -10,7 +10,7 @@ function Dot({ category, size }: { category: MeetupCategory; size: BadgeSize }) 
   const meta = CATEGORY[category]
   return (
     <span
-      className={`${BOX[size]} inline-flex shrink-0 items-center justify-center rounded-full ring-2 ring-surface`}
+      className={`${BOX[size]} inline-flex shrink-0 items-center justify-center rounded-full shadow-[inset_0_-2px_0_rgb(0_0_0/0.2)] ring-2 ring-surface`}
       style={{ backgroundColor: meta.color, color: meta.ink }}
       title={meta.label}
     >

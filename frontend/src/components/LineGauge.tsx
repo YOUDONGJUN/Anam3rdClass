@@ -20,6 +20,14 @@ interface GaugeProps {
   status: MeetupStatus
 }
 
+/*
+ * 입체감: 빈 선로는 홈이 파인 듯(.track 안쪽 그림자), 칠해진 선로·역은 아래쪽을 살짝 어둡게.
+ * 광택·흐림 없이 두께만.
+ */
+const FILLED_SHADE = 'inset 0 -2px 0 rgb(0 0 0 / 0.22)'
+const SEGMENT_SHADE = 'inset 0 -1px 0 rgb(0 0 0 / 0.2)'
+const EMPTY_STOP_SHADE = 'inset 0 1px 2px rgb(0 0 0 / 0.12)'
+
 /** 역(점)으로 그리는 최대 자리 수. 넘으면 막대 게이지 */
 const MAX_STOPS = 8
 
@@ -32,20 +40,40 @@ function OpenEnd({ vertical = false }: { vertical?: boolean }) {
   return vertical ? (
     <span aria-hidden className="h-full w-0 border-l-4 border-dotted border-line-strong" />
   ) : (
-    <span aria-hidden className="h-0 min-w-4 flex-1 border-t-[3px] border-dotted border-line-strong" />
+    <span aria-hidden className="h-0 min-w-4 flex-1 border-t-4 border-dotted border-line-strong" />
   )
 }
 
-/** 목록용 가로 게이지 */
-export function LineGauge({ count, min, max, status }: GaugeProps) {
+/** 역 하나의 모양 (가로·세로 게이지 공통) */
+function stopStyle(filled: boolean, transfer: boolean, reached: boolean, fill: string, ring: number) {
+  if (transfer) {
+    return {
+      borderColor: filled || reached ? fill : 'var(--line-strong)',
+      backgroundColor: 'var(--surface)',
+      // 환승역: 가운데를 칠한 이중 원
+      boxShadow: filled ? `inset 0 0 0 ${ring}px var(--surface), inset 0 0 0 20px ${fill}` : EMPTY_STOP_SHADE,
+    }
+  }
+  return filled
+    ? { borderColor: fill, backgroundColor: fill, boxShadow: FILLED_SHADE }
+    : { borderColor: 'var(--line-strong)', backgroundColor: 'var(--surface)', boxShadow: EMPTY_STOP_SHADE }
+}
+
+/**
+ * 목록용 가로 게이지.
+ * size="lg" 는 "다음 출발" 카드처럼 크게 — 줄 너비를 다 쓰고 역도 크다.
+ */
+export function LineGauge({ count, min, max, status, size = 'md' }: GaugeProps & { size?: 'md' | 'lg' }) {
   const target = min ?? 1
   const reached = count >= target
   const fill = lineColor(status, reached)
   const unlimited = max === null
+  const lg = size === 'lg'
   const rule = min === null ? '최소 인원 없이 무조건 진행' : `${min}명이 모이면 성사`
   const label = unlimited ? `${count}명 참여, ${rule}, 인원 제한 없음` : `정원 ${max}명 중 ${count}명 참여, ${rule}`
   // 그릴 역 개수: 정원, 또는 제한 없음이면 (성사 지점과 현재 인원 중 큰 쪽 + 빈 역 1개)
   const stops = unlimited ? Math.max(target, count) + 1 : max
+  const width = lg ? 'w-full' : 'w-full max-w-56'
 
   // 역은 줄어들지 않으므로 9개부터는 막대로 그린다. 360px 폰의 목록 한 줄(약 100px)에 역 8개까지 들어간다
   if (stops > MAX_STOPS) {
@@ -53,21 +81,21 @@ export function LineGauge({ count, min, max, status }: GaugeProps) {
     const pct = unlimited ? 88 : Math.min(100, (count / stops) * 100)
     const minPct = unlimited ? Math.min(80, (target / Math.max(count, target)) * 80) : (target / stops) * 100
     return (
-      <div role="img" aria-label={label} className="flex w-full max-w-56 items-center">
-        <div className="relative h-2.5 flex-1 rounded-full bg-line">
-          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: fill }} />
+      <div role="img" aria-label={label} className={`flex items-center ${width}`}>
+        <div className={`track relative flex-1 rounded-full ${lg ? 'h-3' : 'h-2.5'}`}>
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: fill, boxShadow: FILLED_SHADE }} />
           <span
-            className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] bg-surface"
+            className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-surface ${lg ? 'size-5 border-4' : 'size-4 border-[3px]'}`}
             style={{ left: `${minPct}%`, borderColor: reached ? fill : 'var(--line-strong)' }}
           />
         </div>
-        {unlimited && <span className="ml-1 w-6 border-t-[3px] border-dotted border-line-strong" aria-hidden />}
+        {unlimited && <span className="ml-1 w-6 border-t-4 border-dotted border-line-strong" aria-hidden />}
       </div>
     )
   }
 
   return (
-    <div role="img" aria-label={label} className="flex w-full max-w-56 items-center">
+    <div role="img" aria-label={label} className={`flex items-center ${width}`}>
       {Array.from({ length: stops }, (_, i) => {
         const filled = i < count
         const transfer = i === target - 1
@@ -75,17 +103,15 @@ export function LineGauge({ count, min, max, status }: GaugeProps) {
           <Fragment key={i}>
             {i > 0 && (
               <span
-                className="h-[3px] min-w-0.5 flex-1"
-                style={{ backgroundColor: i < count ? fill : 'var(--line-strong)' }}
+                className={`-mx-px min-w-0.5 flex-1 rounded-full ${lg ? 'h-1.5' : 'h-1'} ${i < count ? '' : 'track'}`}
+                style={i < count ? { backgroundColor: fill, boxShadow: SEGMENT_SHADE } : undefined}
               />
             )}
             <span
-              className={`shrink-0 rounded-full ${transfer ? 'size-3.5 border-[3px]' : 'size-2.5 border-2'}`}
-              style={{
-                borderColor: filled || (transfer && reached) ? fill : 'var(--line-strong)',
-                backgroundColor: filled ? (transfer ? 'var(--surface)' : fill) : 'var(--surface)',
-                boxShadow: transfer && filled ? `inset 0 0 0 2px ${fill}` : undefined,
-              }}
+              className={`relative shrink-0 rounded-full ${
+                transfer ? (lg ? 'size-[22px] border-4' : 'size-4 border-[3px]') : lg ? 'size-3.5 border-2' : 'size-[11px] border-2'
+              }`}
+              style={stopStyle(filled, transfer, reached, fill, 2)}
             />
           </Fragment>
         )
@@ -141,8 +167,8 @@ export function ParticipantRoute({
             {!isLast && (
               <span
                 aria-hidden
-                className="absolute top-1/2 left-5 h-full w-1 -translate-x-1/2"
-                style={{ backgroundColor: nextFilled ? fill : 'var(--line-strong)' }}
+                className={`absolute top-1/2 left-5 h-full w-1.5 -translate-x-1/2 rounded-full ${nextFilled ? '' : 'track'}`}
+                style={nextFilled ? { backgroundColor: fill, boxShadow: 'inset -1px 0 0 rgb(0 0 0 / 0.18)' } : undefined}
               />
             )}
             {/* 역 */}
@@ -151,11 +177,7 @@ export function ParticipantRoute({
                 className={`rounded-full ${transfer ? 'size-7 border-4' : 'size-5 border-[3px]'} ${
                   i === highlightIndex ? 'station-arrive' : ''
                 } ${transfer && reached && i === highlightIndex ? 'transfer-glow' : ''}`}
-                style={{
-                  borderColor: filled || (transfer && reached) ? fill : 'var(--line-strong)',
-                  backgroundColor: filled && !transfer ? fill : 'var(--surface)',
-                  boxShadow: transfer && filled ? `inset 0 0 0 3px var(--surface), inset 0 0 0 10px ${fill}` : undefined,
-                }}
+                style={stopStyle(filled, transfer, reached, fill, 3)}
               />
             </span>
             {/* 역 이름 */}

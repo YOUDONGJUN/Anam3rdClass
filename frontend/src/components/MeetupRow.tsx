@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import { MeetupOptionTags } from './MeetupOptionTags'
-import { MapPin } from 'lucide-react'
+import { Check, MapPin } from 'lucide-react'
 import type { MeetupSummary } from '../api/types'
 import { useMeetupAction } from '../api/queries'
 import { formatDayLabel, formatRemaining, formatTime } from '../lib/time'
@@ -14,13 +14,14 @@ import { StatusPill } from './StatusPill'
 import { Button } from './ui'
 import { useToast } from './toastContext'
 
-function QuickJoin({ meetup }: { meetup: MeetupSummary }) {
+/** 목록에서 바로 참여. block 이면 "다음 출발" 카드처럼 큰 버튼 */
+export function QuickJoin({ meetup, block = false }: { meetup: MeetupSummary; block?: boolean }) {
   const action = useMeetupAction()
   const toast = useToast()
   return (
     <Button
-      size="sm"
-      className="relative z-10"
+      size={block ? 'lg' : 'sm'}
+      className={`relative z-10 ${block ? 'w-full' : ''}`}
       loading={action.isPending}
       onClick={() =>
         action.mutate(
@@ -45,18 +46,50 @@ function QuickJoin({ meetup }: { meetup: MeetupSummary }) {
   )
 }
 
-/** 3교시 목록의 한 줄 — 왼쪽 시간 칸, 오른쪽 정보 + 노선도 게이지 */
-export function MeetupRow({ meetup, showDate = false, now }: { meetup: MeetupSummary; showDate?: boolean; now: Date }) {
+/** 내 3교시 · 참여 중 · 바로 참여 — 줄 오른쪽 끝 */
+export function MeetupRole({ meetup, block = false }: { meetup: MeetupSummary; block?: boolean }) {
+  if (meetup.hosting)
+    return <span className="rounded-lg bg-board px-2 py-1 text-xs font-bold text-on-board">내 3교시</span>
+  if (meetup.joined)
+    return (
+      <span className="inline-flex items-center gap-1 rounded-lg bg-ok-soft px-2 py-1 text-xs font-bold text-ok-ink">
+        <Check className="size-3.5" strokeWidth={3} aria-hidden />
+        참여 중
+      </span>
+    )
+  if (meetup.joinable) return <QuickJoin meetup={meetup} block={block} />
+  return null
+}
+
+/**
+ * 3교시 목록의 한 줄 — 왼쪽 시간 칸(안내판 숫자판), 오른쪽 정보 + 노선도 게이지.
+ * hideTime: 위에 시간을 따로 적는 곳(내 3교시 노선)에서는 시간 칸을 뺀다
+ */
+export function MeetupRow({
+  meetup,
+  showDate = false,
+  hideTime = false,
+  now,
+}: {
+  meetup: MeetupSummary
+  showDate?: boolean
+  hideTime?: boolean
+  now: Date
+}) {
   const live = isLive(meetup.status)
   const recruiting = live && new Date(meetup.deadlineAt) > now
   return (
     <article className="group relative flex gap-3.5 px-4 py-4 transition-colors focus-within:bg-surface-2 hover:bg-surface-2/70 sm:gap-5 sm:px-5">
-      <div className="w-[54px] shrink-0 pt-0.5 sm:w-16">
-        <p className={`tabular text-lg leading-none font-extrabold tracking-[-0.02em] whitespace-nowrap sm:text-[22px] ${live ? 'text-ink' : 'text-ink-3'}`}>
-          {formatTime(meetup.meetAt)}
-        </p>
-        {showDate && <p className="mt-1.5 text-xs font-medium text-ink-3">{formatDayLabel(meetup.meetAt, now)}</p>}
-      </div>
+      {!hideTime && (
+        <div className="w-[58px] shrink-0 self-start rounded-xl bg-surface-2 py-2 text-center shadow-[inset_0_0_0_1px_var(--line)] sm:w-16">
+          <p
+            className={`tabular text-[17px] leading-none font-extrabold tracking-[-0.02em] whitespace-nowrap sm:text-xl ${live ? 'text-ink' : 'text-ink-3'}`}
+          >
+            {formatTime(meetup.meetAt)}
+          </p>
+          {showDate && <p className="mt-1.5 text-[11px] font-semibold text-ink-3">{formatDayLabel(meetup.meetAt, now)}</p>}
+        </div>
+      )}
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start gap-2">
@@ -96,13 +129,7 @@ export function MeetupRow({ meetup, showDate = false, now }: { meetup: MeetupSum
             </span>
           </div>
           <div className="shrink-0">
-            {meetup.hosting ? (
-              <span className="rounded-md bg-board px-2 py-1 text-xs font-bold text-on-board">내 3교시</span>
-            ) : meetup.joined ? (
-              <span className="rounded-md bg-ok-soft px-2 py-1 text-xs font-bold text-ok-ink">참여 중</span>
-            ) : meetup.joinable ? (
-              <QuickJoin meetup={meetup} />
-            ) : null}
+            <MeetupRole meetup={meetup} />
           </div>
         </div>
 
@@ -131,7 +158,7 @@ export function MeetupRow({ meetup, showDate = false, now }: { meetup: MeetupSum
 export function MeetupRowSkeleton() {
   return (
     <div className="flex gap-4 px-5 py-5" aria-hidden>
-      <div className="h-5 w-12 animate-pulse rounded bg-surface-2" />
+      <div className="h-11 w-[58px] animate-pulse rounded-xl bg-surface-2" />
       <div className="flex-1 space-y-3">
         <div className="h-4 w-2/3 animate-pulse rounded bg-surface-2" />
         <div className="h-3 w-1/3 animate-pulse rounded bg-surface-2" />

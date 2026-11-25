@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, Link } from 'react-router'
-import { CircleUser, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, TrainFront, type LucideIcon } from 'lucide-react'
+import { CircleUser, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, Ticket, TrainFront, type LucideIcon } from 'lucide-react'
 import { useAdminStats } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from './toastContext'
@@ -53,18 +53,24 @@ export function AppShell() {
   // 연합 게시판을 보고 있으면 "3교시 열기"도 연합으로
   const newMeetupPath = pathname === '/' && new URLSearchParams(search).get('board') === 'all' ? '/meetups/new?audience=ALL' : '/meetups/new'
 
-  const items: NavItem[] = [
-    { to: '/', label: '3교시', Icon: TrainFront, end: true },
-    { to: '/notices', label: '공지', Icon: Megaphone },
-    { to: '/me', label: '내 정보', Icon: CircleUser },
-  ]
   const staff = isStaff(member?.role)
   const stats = useAdminStats(staff)
-  if (staff) items.push({ to: '/admin', label: '관리', Icon: ShieldCheck, badge: stats.data?.openReports })
+  const openReports = staff ? stats.data?.openReports : undefined
+
+  const feed: NavItem = { to: '/', label: '3교시', Icon: TrainFront, end: true }
+  const mine: NavItem = { to: '/my-meetups', label: '내 3교시', Icon: Ticket }
+  const notices: NavItem = { to: '/notices', label: '공지', Icon: Megaphone }
+  // 모바일 하단 메뉴에는 관리 칸이 없다 — 교수·대학원장은 내 정보 › 관리 화면, 처리할 신고 수는 내 정보에 붙는다
+  const me: NavItem = { to: '/me', label: '내 정보', Icon: CircleUser, badge: openReports }
+  /** 데스크톱 왼쪽 레일: 관리까지 다 */
+  const railItems: NavItem[] = [feed, mine, notices, { ...me, badge: undefined }]
+  if (staff) railItems.push({ to: '/admin', label: '관리', Icon: ShieldCheck, badge: openReports })
   // 관리 화면은 표·카드가 많아 더 넓게
   const wide = pathname.startsWith('/admin')
-
-  const showFab = pathname === '/' || pathname === '/me'
+  // 3교시 상세: 하단 메뉴 대신 그 3교시의 행동 버튼(나도 콜 …)만 바닥에 둔다
+  const detail = /^\/meetups\/\d+$/.test(pathname)
+  // 안내판이 머리에서 이어지는 화면은 머리 아래 띠를 빼서 한 장으로 보이게
+  const continuesBoard = pathname === '/' || pathname === '/my-meetups' || detail
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -81,7 +87,7 @@ export function AppShell() {
           </Link>
         </div>
         <nav aria-label="주 메뉴" className="mt-6 flex flex-col gap-1 px-3">
-          {items.map(({ to, label, Icon, end, badge }) => (
+          {railItems.map(({ to, label, Icon, end, badge }) => (
             <NavLink
               key={to}
               to={to}
@@ -141,59 +147,67 @@ export function AppShell() {
               </button>
             )}
           </div>
-          <div className="h-1 bg-accent" aria-hidden />
+          {!continuesBoard && <div className="h-1 bg-accent" aria-hidden />}
         </header>
         {slow && <SlowServerBanner />}
-        {/* 모바일 아래 여백: 하단 탭(64px) + "3교시 열기" 버튼(52px)에 마지막 줄이 가리지 않게 */}
-        <main className={`mx-auto w-full flex-1 px-4 pt-6 pb-40 sm:px-6 lg:px-10 lg:pt-10 lg:pb-16 ${wide ? 'max-w-5xl' : 'max-w-3xl'}`}>
+        {/* 모바일 아래 여백: 하단 메뉴(64px) + 가운데 열기 버튼이 위로 솟은 만큼 마지막 줄이 가리지 않게. 상세는 자기 행동 바만큼 따로 둔다 */}
+        <main
+          className={`mx-auto w-full flex-1 px-4 pt-6 sm:px-6 lg:px-10 lg:pt-10 lg:pb-16 ${detail ? 'pb-8' : 'pb-32'} ${
+            wide ? 'max-w-5xl' : 'max-w-3xl'
+          }`}
+        >
           <Outlet />
         </main>
       </div>
 
-      {/* 모바일: 하단 탭 */}
-      <nav
-        aria-label="주 메뉴"
-        className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface lg:hidden"
-      >
-        <div className="grid h-16" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
-          {items.map(({ to, label, Icon, end, badge }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `relative flex flex-col items-center justify-center gap-1 text-[11px] font-semibold ${
-                  isActive ? 'text-ink' : 'text-ink-3'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span className="relative">
-                    <Icon className={`size-[22px] ${isActive ? 'text-accent-ink' : ''}`} strokeWidth={isActive ? 2.4 : 2} aria-hidden />
-                    {!!badge && <NavBadge count={badge} className="absolute -top-1.5 left-3.5" />}
-                  </span>
-                  {label}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </div>
-      </nav>
-
-      {showFab && (
-        <Link
-          to={newMeetupPath}
-          className={buttonClass(
-            'primary',
-            'lg',
-            'fixed right-4 bottom-[calc(80px+env(safe-area-inset-bottom))] z-40 rounded-full! px-5 shadow-[0_10px_28px_-8px_rgb(0_0_0/0.45)] lg:hidden',
-          )}
+      {/* 모바일: 하단 메뉴 5칸 — 3교시 · 내 3교시 · (열기) · 공지 · 내 정보 */}
+      {!detail && (
+        <nav
+          aria-label="주 메뉴"
+          className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface shadow-[0_-8px_20px_-16px_rgb(0_0_0/0.4)] lg:hidden"
         >
-          <Plus className="size-5" strokeWidth={2.6} aria-hidden />
-          3교시 열기
-        </Link>
+          <div className="grid h-16 grid-cols-5">
+            <TabLink item={feed} />
+            <TabLink item={mine} />
+            <Link
+              to={newMeetupPath}
+              aria-label="3교시 열기"
+              className="group relative flex flex-col items-center justify-end pb-2.5 text-[11px] font-bold text-accent-ink"
+            >
+              <span className="absolute -top-6 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-on-accent shadow-[0_4px_0_color-mix(in_oklab,var(--accent)_62%,#000),0_0_0_6px_var(--surface)] transition-transform duration-100 group-active:translate-y-[3px]">
+                <Plus className="size-[26px]" strokeWidth={2.8} aria-hidden />
+              </span>
+              열기
+            </Link>
+            <TabLink item={notices} />
+            <TabLink item={me} />
+          </div>
+        </nav>
       )}
     </div>
+  )
+}
+
+function TabLink({ item: { to, label, Icon, end, badge } }: { item: NavItem }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `relative flex flex-col items-center justify-center gap-1 text-[11px] ${
+          isActive ? 'font-extrabold text-ink' : 'font-semibold text-ink-3'
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span className="relative">
+            <Icon className={`size-[22px] ${isActive ? 'text-accent-ink' : ''}`} strokeWidth={isActive ? 2.4 : 2} aria-hidden />
+            {!!badge && <NavBadge count={badge} className="absolute -top-1.5 left-3.5" />}
+          </span>
+          {label}
+        </>
+      )}
+    </NavLink>
   )
 }

@@ -15,6 +15,7 @@ const ITEMS: Array<{ type: PushType; label: string; hint: string }> = [
   { type: 'REMINDER', label: '모임 1시간 전', hint: '참여한 3교시가 성사됐으면 모이기 1시간 전에' },
   { type: 'CHANGED', label: '시간·장소 변경 · 취소', hint: '참여한 3교시가 바뀌거나 취소되면' },
   { type: 'SPOT', label: '빈자리', hint: '자리 나면 알림을 신청한 3교시에 자리가 나면' },
+  { type: 'SETTLE', label: '정산', hint: '정산 요청·다시 알리기, 내가 계산한 정산이 끝나면' },
   { type: 'SCHOOL', label: '새 우리 학교 3교시', hint: '우리 학교 3교시가 열리면 (우리 기수만 3교시는 그 기수에게만)' },
   { type: 'FEDERATION', label: '새 연합 3교시', hint: '다섯 학교 연합 3교시가 열리면' },
   { type: 'NOTICE', label: '새 공지', hint: '교수·대학원장이 올린 공지' },
@@ -99,7 +100,7 @@ export function PushSettings() {
         <p className="flex items-start gap-2 rounded-xl bg-surface-2 px-3.5 py-3 text-[13px] leading-snug text-ink-2">
           <Moon className="mt-0.5 size-4 shrink-0 text-ink-3" aria-hidden />
           <span>
-            새 3교시·새 공지는 밤 12시~아침 8시에 쉬었다가 아침 8시에 보내요. 내 3교시 알림은 밤에도 바로 가요.
+            새 3교시·새 공지·정산 알림은 밤 12시~아침 8시에 쉬었다가 아침 8시에 보내요. 내 3교시 알림은 밤에도 바로 가요.
           </span>
         </p>
       )}

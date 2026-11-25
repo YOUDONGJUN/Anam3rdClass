@@ -28,6 +28,8 @@ import type {
   ReportInput,
   Role,
   School,
+  SettlementDue,
+  SettlementInput,
   SignupOptions,
 } from './types'
 
@@ -45,6 +47,7 @@ export const keys = {
   feedbackPending: ['feedback-pending'] as const,
   places: ['places'] as const,
   ranking: (period: RankingPeriod, scope: RankingScope) => ['ranking', period, scope] as const,
+  mySettlements: ['my-settlements'] as const,
 }
 
 // ---------------- 로그인 · 가입 (로그인 없이 호출) ----------------
@@ -105,6 +108,7 @@ function afterMeetupChange(qc: QueryClient, detail: MeetupDetail) {
   qc.invalidateQueries({ queryKey: keys.myMeetups })
   qc.invalidateQueries({ queryKey: keys.admin })
   qc.invalidateQueries({ queryKey: keys.places })
+  qc.invalidateQueries({ queryKey: keys.mySettlements })
 }
 
 export function useCreateMeetup() {
@@ -149,6 +153,66 @@ export function useAddSeats() {
     mutationFn: ({ id, maxPeople }: { id: number; maxPeople: number }) =>
       api<MeetupDetail>(`/api/meetups/${id}/seats`, { method: 'PUT', body: { maxPeople } }),
     onSuccess: (d) => afterMeetupChange(qc, d),
+  })
+}
+
+// ---------------- 정산 ----------------
+
+export type SettlementAction =
+  | { kind: 'create' | 'update'; input: SettlementInput }
+  | { kind: 'cancel' | 'remind' }
+  /** 보냈어요 (내 몫) */
+  | { kind: 'sent'; sent: boolean }
+  /** 받았어요 (계산한 사람이 한 사람 몫을 표시) */
+  | { kind: 'share'; ref: number; sent: boolean }
+
+/** 정산 만들기 · 고치기 · 취소 · 다시 알리기 · 보냄 표시 → 바뀐 3교시 상세 */
+export function useSettlementAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, action }: { id: number; action: SettlementAction }) => {
+      const base = `/api/meetups/${id}/settlement`
+      switch (action.kind) {
+        case 'create':
+          return api<MeetupDetail>(base, { method: 'POST', body: action.input })
+        case 'update':
+          return api<MeetupDetail>(base, { method: 'PUT', body: action.input })
+        case 'cancel':
+          return api<MeetupDetail>(base, { method: 'DELETE' })
+        case 'remind':
+          return api<MeetupDetail>(`${base}/remind`, { method: 'POST' })
+        case 'sent':
+          return api<MeetupDetail>(`${base}/sent`, { method: 'PUT', body: { sent: action.sent } })
+        case 'share':
+          return api<MeetupDetail>(`${base}/shares/${action.ref}`, { method: 'PUT', body: { sent: action.sent } })
+      }
+    },
+    onSuccess: (d) => afterMeetupChange(qc, d),
+  })
+}
+
+/** 내가 보낼 정산 (내 3교시 탭 배지) */
+export function useMySettlements(enabled = true) {
+  return useQuery({
+    queryKey: keys.mySettlements,
+    queryFn: () => api<SettlementDue[]>('/api/me/settlements'),
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
+/** 송금 링크 (비우면 지운다) → 바뀐 내 정보 */
+export function usePayLinks() {
+  const qc = useQueryClient()
+  const { updateMember } = useAuth()
+  return useMutation({
+    mutationFn: (input: { tossId: string; kakaoPayUrl: string }) =>
+      api<Member>('/api/me/pay-links', { method: 'PUT', body: input }),
+    onSuccess: (m) => {
+      updateMember(m)
+      // 내가 계산한 정산의 송금 버튼이 바뀐다
+      qc.invalidateQueries({ queryKey: ['meetup'] })
+    },
   })
 }
 

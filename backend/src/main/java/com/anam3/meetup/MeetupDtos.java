@@ -15,6 +15,7 @@ import jakarta.validation.constraints.Size;
 import com.anam3.feedback.FeedbackDtos.FeedbackPrompt;
 import com.anam3.ranking.RankingCategory;
 import com.anam3.school.SchoolDtos.SchoolTag;
+import com.anam3.settlement.SettlementDtos.SettlementView;
 
 public final class MeetupDtos {
 
@@ -33,7 +34,7 @@ public final class MeetupDtos {
      * crowns 는 이번 달 방장왕·출석왕 1등 배지 (RankingService.crowns). 없으면 빈 목록.
      */
     public record PersonView(String name, String cohortLabel, String departmentLabel, SchoolTag school, boolean me,
-            boolean host, boolean owner, boolean masked, Long ref, List<RankingCategory> crowns) {
+            boolean host, boolean owner, boolean masked, Long ref, List<RankingCategory> crowns, boolean withdrawn) {
     }
 
     public record MeetupSummary(
@@ -123,7 +124,11 @@ public final class MeetupDtos {
             /** 대기 중인 사람 수: 연 사람·대학원장에게만 (그 밖엔 null). 누구인지는 보이지 않는다 */
             Integer waitCount,
             /** 정원 늘리기: 연 사람·대학원장, 열려 있고 최대 인원이 30명 아래일 때 */
-            boolean canAddSeats) {
+            boolean canAddSeats,
+            /** 정산 만들기: 함께한 사람, 성사된 3교시가 모인 뒤 7일 안, 아직 정산이 없을 때 */
+            boolean canSettle,
+            /** 정산: 함께한 사람에게만 (없으면 null) */
+            SettlementView settlement) {
     }
 
     /** 정원 늘리기 (빈자리 대기자를 태우려고). 지금 최대 인원보다 커야 한다 */

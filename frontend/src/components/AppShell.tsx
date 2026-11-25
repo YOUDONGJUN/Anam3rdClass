@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, Link } from 'react-router'
 import { CircleUser, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, Ticket, TrainFront, Trophy, type LucideIcon } from 'lucide-react'
-import { useAdminStats } from '../api/queries'
+import { useAdminStats, useMySettlements } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from './toastContext'
 import { useSlowServer } from '../lib/hooks'
@@ -17,15 +17,17 @@ interface NavItem {
   label: string
   Icon: LucideIcon
   end?: boolean
-  /** 처리할 일 수 (관리: 처리 안 된 신고) */
+  /** 처리할 일 수 (관리: 처리 안 된 신고 · 내 3교시: 보낼 정산) */
   badge?: number
+  /** 화면 읽기 프로그램용 배지 이름 ("처리할 신고") */
+  badgeLabel?: string
 }
 
-function NavBadge({ count, className = '' }: { count: number; className?: string }) {
+function NavBadge({ count, label = '처리할 신고', className = '' }: { count: number; label?: string; className?: string }) {
   return (
     <span
       className={`tabular inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1.5 text-[11px] leading-none font-bold text-white ${className}`}
-      aria-label={`처리할 신고 ${count}건`}
+      aria-label={`${label} ${count}건`}
     >
       {count > 99 ? '99+' : count}
     </span>
@@ -57,9 +59,11 @@ export function AppShell() {
   const staff = isStaff(member?.role)
   const stats = useAdminStats(staff)
   const openReports = staff ? stats.data?.openReports : undefined
+  // 내가 보낼 정산이 있으면 내 3교시에 숫자
+  const dues = useMySettlements(Boolean(member)).data?.length
 
   const feed: NavItem = { to: '/', label: '3교시', Icon: TrainFront, end: true }
-  const mine: NavItem = { to: '/my-meetups', label: '내 3교시', Icon: Ticket }
+  const mine: NavItem = { to: '/my-meetups', label: '내 3교시', Icon: Ticket, badge: dues, badgeLabel: '보낼 정산' }
   const notices: NavItem = { to: '/notices', label: '공지', Icon: Megaphone }
   const ranking: NavItem = { to: '/ranking', label: '랭킹', Icon: Trophy }
   const me: NavItem = { to: '/me', label: '내 정보', Icon: CircleUser }
@@ -89,7 +93,7 @@ export function AppShell() {
           </Link>
         </div>
         <nav aria-label="주 메뉴" className="mt-6 flex flex-col gap-1 px-3">
-          {railItems.map(({ to, label, Icon, end, badge }) => (
+          {railItems.map(({ to, label, Icon, end, badge, badgeLabel }) => (
             <NavLink
               key={to}
               to={to}
@@ -104,7 +108,7 @@ export function AppShell() {
                 <>
                   <Icon className={`size-5 ${isActive ? 'text-accent' : ''}`} aria-hidden />
                   {label}
-                  {!!badge && <NavBadge count={badge} className="ml-auto" />}
+                  {!!badge && <NavBadge count={badge} label={badgeLabel} className="ml-auto" />}
                 </>
               )}
             </NavLink>
@@ -190,7 +194,7 @@ export function AppShell() {
 }
 
 /** 모바일 상단 오른쪽 아이콘 바로가기 (이름은 아래에 작게) */
-function HeaderLink({ item: { to, label, Icon, badge } }: { item: NavItem }) {
+function HeaderLink({ item: { to, label, Icon, badge, badgeLabel } }: { item: NavItem }) {
   return (
     <NavLink
       to={to}
@@ -204,14 +208,14 @@ function HeaderLink({ item: { to, label, Icon, badge } }: { item: NavItem }) {
         <>
           <Icon className={`size-5 ${isActive ? 'text-accent' : ''}`} aria-hidden />
           {label}
-          {!!badge && <NavBadge count={badge} className="absolute -top-0.5 right-0" />}
+          {!!badge && <NavBadge count={badge} label={badgeLabel} className="absolute -top-0.5 right-0" />}
         </>
       )}
     </NavLink>
   )
 }
 
-function TabLink({ item: { to, label, Icon, end, badge } }: { item: NavItem }) {
+function TabLink({ item: { to, label, Icon, end, badge, badgeLabel } }: { item: NavItem }) {
   return (
     <NavLink
       to={to}
@@ -226,7 +230,7 @@ function TabLink({ item: { to, label, Icon, end, badge } }: { item: NavItem }) {
         <>
           <span className="relative">
             <Icon className={`size-[22px] ${isActive ? 'text-accent-ink' : ''}`} strokeWidth={isActive ? 2.4 : 2} aria-hidden />
-            {!!badge && <NavBadge count={badge} className="absolute -top-1.5 left-3.5" />}
+            {!!badge && <NavBadge count={badge} label={badgeLabel} className="absolute -top-1.5 left-3.5" />}
           </span>
           {label}
         </>

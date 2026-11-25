@@ -19,6 +19,9 @@ import com.anam3.meetup.ParticipationRepository;
 import com.anam3.notice.Notice;
 import com.anam3.notice.NoticeRepository;
 import com.anam3.safety.MemberBlockRepository;
+import com.anam3.settlement.Settlement;
+import com.anam3.settlement.SettlementRepository;
+import com.anam3.settlement.SettlementShareRepository;
 
 /**
  * 무슨 일이 생겼을 때 누구에게 어떤 알림을 보낼지. 서비스(3교시·공지·탈퇴)가 일을 마친 뒤 부른다.
@@ -46,15 +49,20 @@ public class PushNotifier {
     private final ParticipationRepository participations;
     private final MeetupRepository meetups;
     private final NoticeRepository notices;
+    private final SettlementRepository settlements;
+    private final SettlementShareRepository settlementShares;
     private final MemberBlockRepository blocks;
     private final Clock clock;
 
     public PushNotifier(PushService push, ParticipationRepository participations, MeetupRepository meetups,
-            NoticeRepository notices, MemberBlockRepository blocks, Clock clock) {
+            NoticeRepository notices, SettlementRepository settlements, SettlementShareRepository settlementShares,
+            MemberBlockRepository blocks, Clock clock) {
         this.push = push;
         this.participations = participations;
         this.meetups = meetups;
         this.notices = notices;
+        this.settlements = settlements;
+        this.settlementShares = settlementShares;
         this.blocks = blocks;
         this.clock = clock;
     }
@@ -162,6 +170,49 @@ public class PushNotifier {
                 "자리가 났어요! 먼저 참여하는 원우가 타요 · " + headcount(meetup), path(meetup), tag(meetup, "spot")));
     }
 
+    /**
+     * 정산 요청 (고쳤으면 "정산을 고쳤어요"): 나눌 원우에게. 급하지 않은 알림이라 밤(0~8시)이면 아침 8시로 미룬다
+     * (정산을 저장하는 트랜잭션 안에서 불러야 미룬 것이 저장된다)
+     */
+    public void settlementRequested(Settlement settlement, List<Long> to, boolean edited) {
+        if (QuietHours.contains(clock.instant())) {
+            settlement.holdRequest();
+            return;
+        }
+        push.send(to, settleMessage(settlement, (edited ? "정산을 고쳤어요" : "정산 요청") + " · 1인 "
+                + won(settlement.getPerPerson())));
+    }
+
+    /** 다시 알리기: 아직 안 보낸 원우에게. 밤이면 아침 8시로 미룬다 */
+    public void settlementReminded(Settlement settlement, List<Long> unsent) {
+        if (QuietHours.contains(clock.instant())) {
+            settlement.holdRequest();
+            return;
+        }
+        push.send(unsent, settleMessage(settlement, "아직 안 보낸 정산이 있어요 · 1인 " + won(settlement.getPerPerson())));
+    }
+
+    /** 모두 보냈어요: 계산한 사람에게 (계산한 사람이 마지막을 표시했으면 보내지 않는다). 밤이면 아침 8시로 미룬다 */
+    public void settlementDone(Settlement settlement, Long actorId) {
+        if (settlement.isPaidBy(actorId)) {
+            return;
+        }
+        if (QuietHours.contains(clock.instant())) {
+            settlement.holdDone();
+            return;
+        }
+        push.send(List.of(settlement.getPayer().getId()), settleMessage(settlement, "정산 끝! 모두 보냈어요"));
+    }
+
+    private static PushMessage settleMessage(Settlement settlement, String body) {
+        Meetup m = settlement.getMeetup();
+        return new PushMessage(PushType.SETTLE, m.getTitle(), body, path(m), tag(m, "settle"));
+    }
+
+    private static String won(int amount) {
+        return String.format("%,d원", amount);
+    }
+
     private Set<Long> hostAndBlocked(Meetup meetup) {
         Long hostId = meetup.getHost().getId();
         Set<Long> except = new HashSet<>(blocks.findBlockedIds(hostId));
@@ -251,8 +302,9 @@ public class PushNotifier {
     }
 
     /**
-     * 밤사이 미룬 새 3교시 · 새 공지 알림을 보낸다 (아침 8시부터, ReminderJob 이 1분마다 부른다).
-     * 그사이 마감·취소됐거나 꽉 찬 3교시는 건너뛴다. 지운 공지는 이미 없다.
+     * 밤사이 미룬 새 3교시 · 새 공지 · 정산 알림을 보낸다 (아침 8시부터, ReminderJob 이 1분마다 부른다).
+     * 그사이 마감·취소됐거나 꽉 찬 3교시는 건너뛴다. 지운 공지·취소한 정산은 이미 없다.
+     * 정산 요청은 그사이 모두 보냈으면, 정산 끝은 그사이 누가 보냄을 취소했으면 건너뛴다.
      * 보낸 수를 돌려준다
      */
     @Transactional
@@ -275,6 +327,22 @@ public class PushNotifier {
             }
             announce(n);
             sent++;
+        }
+        for (Settlement s : settlements.findHeld()) {
+            boolean request = s.isRequestPending();
+            boolean done = s.isDonePending();
+            if (settlements.releaseHeld(s.getId()) == 0) {
+                continue;
+            }
+            if (request && !s.isDone()) {
+                push.send(settlementShares.findUnsentMemberIds(s.getId()),
+                        settleMessage(s, "정산 요청 · 1인 " + won(s.getPerPerson())));
+                sent++;
+            }
+            if (done && s.isDone()) {
+                push.send(List.of(s.getPayer().getId()), settleMessage(s, "정산 끝! 모두 보냈어요"));
+                sent++;
+            }
         }
         return sent;
     }

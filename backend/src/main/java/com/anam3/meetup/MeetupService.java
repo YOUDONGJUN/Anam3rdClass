@@ -30,6 +30,7 @@ import com.anam3.member.MemberRepository;
 import com.anam3.push.PushNotifier;
 import com.anam3.safety.MemberBlockRepository;
 import com.anam3.safety.ReportRepository;
+import com.anam3.settlement.SettlementService;
 
 @Service
 @Transactional
@@ -52,11 +53,12 @@ public class MeetupService {
     private final PushNotifier notifier;
     private final FeedbackService feedback;
     private final MeetupWaitRepository waits;
+    private final SettlementService settlements;
     private final Clock clock;
 
     public MeetupService(MeetupRepository meetups, ParticipationRepository participations, MemberRepository members,
             MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, PushNotifier notifier,
-            FeedbackService feedback, MeetupWaitRepository waits, Clock clock) {
+            FeedbackService feedback, MeetupWaitRepository waits, SettlementService settlements, Clock clock) {
         this.meetups = meetups;
         this.participations = participations;
         this.members = members;
@@ -66,6 +68,7 @@ public class MeetupService {
         this.notifier = notifier;
         this.feedback = feedback;
         this.waits = waits;
+        this.settlements = settlements;
         this.clock = clock;
     }
 
@@ -150,7 +153,7 @@ public class MeetupService {
         WaitInfo wait = new WaitInfo(!joined && waits.existsByMeetupIdAndMemberId(id, viewer.id()),
                 manages ? waits.countByMeetupId(id) : 0);
         return mapper.toDetail(meetup, people, viewer, blocked, feedback.prompt(meetup, viewer, joined, now), wait,
-                now);
+                settlements.info(meetup, people, viewer, joined, now), now);
     }
 
     /** 수정은 개설자와 대학원장만 */
@@ -358,6 +361,7 @@ public class MeetupService {
         List<Long> people = meetup.isOpenAt(clock.instant()) ? participations.findMemberIds(id) : List.of();
         reports.detachMeetup(id);
         feedback.deleteFor(id);
+        settlements.deleteFor(id);
         waits.deleteByMeetupId(id);
         participations.deleteByMeetupId(id);
         meetups.delete(meetup);

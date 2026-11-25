@@ -35,6 +35,7 @@ import { ParticipantRoute } from '../components/LineGauge'
 import { PersonName } from '../components/PersonName'
 import { PurposeTags } from '../components/PurposeTags'
 import { ReportDialog, type ReportTargetInfo } from '../components/ReportDialog'
+import { SettlementCard } from '../components/SettlementCard'
 import { StatusPill } from '../components/StatusPill'
 import { Button, ErrorState, Spinner } from '../components/ui'
 import { buttonClass, cardClass } from '../components/styles'
@@ -544,6 +545,8 @@ export function MeetupDetailPage() {
           <WaitlistCard m={m} />
 
           {m.joined && live && <CalendarCard m={m} />}
+
+          <SettlementCard m={m} />
 
           <FeedbackCard m={m} now={now} />
 

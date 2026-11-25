@@ -20,6 +20,7 @@ import com.anam3.auth.LoginMember;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
 import com.anam3.meetup.MeetupService;
 import com.anam3.member.MeDtos.MyProfileRequest;
+import com.anam3.member.MeDtos.PayLinksRequest;
 import com.anam3.member.MeDtos.RankingSettingRequest;
 
 /**
@@ -61,6 +62,12 @@ public class MeController {
     public MemberResponse rankingSetting(@AuthenticationPrincipal LoginMember me,
             @Valid @RequestBody RankingSettingRequest req) {
         return accountService.changeRankingHidden(me, req.hidden());
+    }
+
+    /** 송금 링크 (정산할 때 함께한 원우에게만 보인다) */
+    @PutMapping("/pay-links")
+    public MemberResponse payLinks(@AuthenticationPrincipal LoginMember me, @Valid @RequestBody PayLinksRequest req) {
+        return accountService.changePayLinks(me, req.tossId(), req.kakaoPayUrl());
     }
 
     /** 이용약관·개인정보 처리방침 동의 (예전 회원) */

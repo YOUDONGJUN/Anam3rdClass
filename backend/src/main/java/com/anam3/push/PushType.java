@@ -25,7 +25,9 @@ public enum PushType {
     /** 자리 나면 알림을 신청한 3교시에 자리가 남 */
     SPOT,
     /** 참여한 3교시가 성사됐고 모이기 1시간 전 */
-    REMINDER;
+    REMINDER,
+    /** 정산 요청 · 다시 알리기 · 정산 끝 */
+    SETTLE;
 
     /** "NOTICE,FEDERATION" → 종류 (모르는 이름은 건너뛴다) */
     public static Set<PushType> parseList(String csv) {

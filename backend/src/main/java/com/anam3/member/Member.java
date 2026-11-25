@@ -121,6 +121,14 @@ public class Member {
     @Column(name = "ranking_hidden", nullable = false)
     private boolean rankingHidden;
 
+    /** 송금 링크: 토스 아이디 (정산할 때 함께한 원우에게만 보인다) */
+    @Column(name = "toss_id", length = 30)
+    private String tossId;
+
+    /** 송금 링크: 카카오페이 송금 링크 (https://qr.kakaopay.com/…) */
+    @Column(name = "kakaopay_url", length = 100)
+    private String kakaoPayUrl;
+
     protected Member() {
     }
 
@@ -236,6 +244,20 @@ public class Member {
         this.rankingHidden = hidden;
     }
 
+    public String getTossId() {
+        return tossId;
+    }
+
+    public String getKakaoPayUrl() {
+        return kakaoPayUrl;
+    }
+
+    /** 송금 링크 바꾸기 (PayLinks 로 다듬고 확인한 값) */
+    public void changePayLinks(String tossId, String kakaoPayUrl) {
+        this.tossId = tossId;
+        this.kakaoPayUrl = kakaoPayUrl;
+    }
+
     public void agreeTerms(Instant now) {
         this.termsAgreedAt = now;
     }
@@ -250,6 +272,8 @@ public class Member {
         this.email = null;
         this.emailPasswordHash = null;
         this.department = null;
+        this.tossId = null;
+        this.kakaoPayUrl = null;
         this.role = MemberRole.USER;
         this.status = MemberStatus.WITHDRAWN;
         this.withdrawnAt = now;

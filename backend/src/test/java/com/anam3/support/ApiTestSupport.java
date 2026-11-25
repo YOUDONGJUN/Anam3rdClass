@@ -76,11 +76,14 @@ public abstract class ApiTestSupport {
             seededDepartments = ids("select id from departments");
         }
         jdbc.update("delete from push_devices");
-        jdbc.update("update members set push_off = null, ranking_hidden = false, profile_changed_at = null");
+        jdbc.update("update members set push_off = null, ranking_hidden = false, profile_changed_at = null, "
+                + "toss_id = null, kakaopay_url = null");
         jdbc.update("delete from reports");
         jdbc.update("delete from member_blocks");
         jdbc.update("delete from email_verifications");
         jdbc.update("delete from meetup_feedbacks");
+        jdbc.update("delete from settlement_shares");
+        jdbc.update("delete from settlements");
         jdbc.update("delete from meetup_waits");
         jdbc.update("delete from participations");
         jdbc.update("delete from meetups");

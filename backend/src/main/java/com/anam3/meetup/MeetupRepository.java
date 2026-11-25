@@ -95,6 +95,29 @@ public interface MeetupRepository extends JpaRepository<Meetup, Long> {
     @Query("update Meetup m set m.deadlineRemindedAt = :now where m.id = :id and m.deadlineRemindedAt is null")
     int markDeadlineReminded(@Param("id") Long id, @Param("now") Instant now);
 
+    /** 모임 시간이 from ~ until 사이인 성사된 3교시 중 1시간 전 알림을 안 보낸 것 (최소 인원이 없으면 2명 이상) */
+    @Query("""
+            select m from Meetup m
+            where m.canceled = false and m.meetRemindedAt is null
+              and m.participantCount >= coalesce(m.minPeople, 2)
+              and m.meetAt > :from and m.meetAt <= :until
+            """)
+    List<Meetup> findDueForMeetReminder(@Param("from") Instant from, @Param("until") Instant until);
+
+    /** 1시간 전 알림을 보냈다고 적는다. 이미 적혀 있으면 0 (서버가 둘이어도 한 번만 보낸다) */
+    @Modifying
+    @Query("update Meetup m set m.meetRemindedAt = :now where m.id = :id and m.meetRemindedAt is null")
+    int markMeetReminded(@Param("id") Long id, @Param("now") Instant now);
+
+    /** 밤에 열려서 새 3교시 알림을 아침으로 미룬 3교시 */
+    @Query("select m from Meetup m join fetch m.host join fetch m.school where m.announcePending = true order by m.id")
+    List<Meetup> findHeldAnnouncements();
+
+    /** 미룬 알림을 이제 처리했다고 적는다. 이미 처리됐으면 0 (서버가 둘이어도 한 번만 보낸다) */
+    @Modifying
+    @Query("update Meetup m set m.announcePending = false where m.id = :id and m.announcePending = true")
+    int releaseHeldAnnouncement(@Param("id") Long id);
+
     /** 성사된(최소 인원이 모인) 3교시 수. 최소 인원이 없으면 2명 이상 모였을 때만 친다 */
     @Query("select count(m) from Meetup m where m.canceled = false and m.participantCount >= coalesce(m.minPeople, 2)")
     long countConfirmed();

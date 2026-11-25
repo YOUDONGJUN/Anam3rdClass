@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildIcs, foldIcsLine, googleCalendarUrl, icsText, icsTime } from './calendar'
+import { MAP_PROVIDERS } from './map'
 import { optionsSummary, seatsToAdd } from './meetup'
 import { canEditOwnName, profileEditRule, profileLockedUntil } from './person'
 import { mergePlaces } from './places'
@@ -115,5 +116,17 @@ describe('내 정보 고치기 규칙', () => {
     expect(profileEditRule('USER')).toContain('30일')
     expect(profileEditRule('MANAGER')).toContain('대학원장에게')
     expect(profileEditRule('OWNER')).toContain('언제든')
+  })
+})
+
+describe('지도 바로가기', () => {
+  it('장소 글자로 카카오맵 · 네이버지도 검색을 연다', () => {
+    const [kakao, naver] = MAP_PROVIDERS
+    expect(kakao.label).toBe('카카오맵')
+    expect(kakao.url(' 안암역 2번 출구 & 치킨집 ')).toBe(
+      `https://map.kakao.com/link/search/${encodeURIComponent('안암역 2번 출구 & 치킨집')}`,
+    )
+    expect(naver.label).toBe('네이버지도')
+    expect(new URL(naver.url('참살이길 #2')).pathname).toBe(`/p/search/${encodeURIComponent('참살이길 #2')}`)
   })
 })

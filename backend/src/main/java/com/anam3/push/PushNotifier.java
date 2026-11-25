@@ -17,6 +17,7 @@ import com.anam3.meetup.Meetup;
 import com.anam3.meetup.MeetupRepository;
 import com.anam3.meetup.ParticipationRepository;
 import com.anam3.notice.Notice;
+import com.anam3.notice.NoticeRepository;
 import com.anam3.safety.MemberBlockRepository;
 
 /**
@@ -29,22 +30,31 @@ public class PushNotifier {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("M/d(E) HH:mm", Locale.KOREAN)
             .withZone(SEOUL);
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm").withZone(SEOUL);
     /** 모집 마감 몇 분 전에 알리나 */
     static final Duration DEADLINE_NOTICE = Duration.ofMinutes(30);
     /** 열고 금방 마감하는 3교시(마감까지 1시간 이하)는 마감 알림을 보내지 않는다 */
     private static final Duration SHORT_RECRUIT = Duration.ofHours(1);
+    /** 모임 몇 분 전에 알리나 */
+    static final Duration MEET_NOTICE = Duration.ofHours(1);
+    /** 이보다 적게 남았으면 이미 이동 중이라 1시간 전 알림을 보내지 않는다 (서버가 늦게 깼을 때) */
+    static final Duration MEET_NOTICE_TOO_LATE = Duration.ofMinutes(10);
+    /** 모임 2시간 안쪽에 연 3교시는 방금 모였으니 1시간 전 알림을 보내지 않는다 */
+    private static final Duration SHORT_NOTICE = Duration.ofHours(2);
 
     private final PushService push;
     private final ParticipationRepository participations;
     private final MeetupRepository meetups;
+    private final NoticeRepository notices;
     private final MemberBlockRepository blocks;
     private final Clock clock;
 
     public PushNotifier(PushService push, ParticipationRepository participations, MeetupRepository meetups,
-            MemberBlockRepository blocks, Clock clock) {
+            NoticeRepository notices, MemberBlockRepository blocks, Clock clock) {
         this.push = push;
         this.participations = participations;
         this.meetups = meetups;
+        this.notices = notices;
         this.blocks = blocks;
         this.clock = clock;
     }
@@ -102,8 +112,19 @@ public class PushNotifier {
                 tag(meetup, "changed")));
     }
 
-    /** 새 3교시: 연합이면 다섯 학교 모두, 아니면 우리 학교(우리 기수만이면 그 기수) 원우에게 */
+    /**
+     * 새 3교시: 연합이면 다섯 학교 모두, 아니면 우리 학교(우리 기수만이면 그 기수) 원우에게.
+     * 밤(0~8시)에는 보내지 않고 아침 8시로 미룬다 (3교시를 여는 트랜잭션 안에서 불러야 미룬 것이 저장된다)
+     */
     public void opened(Meetup meetup) {
+        if (QuietHours.contains(clock.instant())) {
+            meetup.holdAnnouncement();
+            return;
+        }
+        announce(meetup);
+    }
+
+    private void announce(Meetup meetup) {
         if (meetup.isFederated()) {
             federationOpened(meetup);
         } else {
@@ -157,6 +178,14 @@ public class PushNotifier {
         if (!notice.getAuthor().isStaff()) {
             return;
         }
+        if (QuietHours.contains(clock.instant())) {
+            notice.holdAnnouncement(); // 아침 8시에 announceHeld 가 보낸다
+            return;
+        }
+        announce(notice);
+    }
+
+    private void announce(Notice notice) {
         push.broadcast(notice.isFederated() ? null : notice.getSchool().getId(),
                 new PushMessage(PushType.NOTICE, notice.isFederated() ? "새 연합 공지" : "새 공지", notice.getTitle(),
                         "/notices/" + notice.getId(), "notice-" + notice.getId()),
@@ -164,7 +193,7 @@ public class PushNotifier {
     }
 
     /**
-     * 모집 마감 30분 전인데 아직 최소 인원이 안 모인 3교시: 참여자 모두에게 한 번 (DeadlineReminderJob 이 1분마다 부른다).
+     * 모집 마감 30분 전인데 아직 최소 인원이 안 모인 3교시: 참여자 모두에게 한 번 (ReminderJob 이 1분마다 부른다).
      * 연 사람에게는 지금 인원으로 진행할지 묻는 문구로 보낸다.
      * 보낸 3교시 수를 돌려준다
      */
@@ -190,6 +219,61 @@ public class PushNotifier {
                     ? "모집 마감 " + minutes + "분 전 · " + m.getParticipantCount() + "명 모였어요. 이 인원으로 진행할까요?"
                     : waiting;
             push.send(List.of(hostId), new PushMessage(PushType.DEADLINE, m.getTitle(), toHost, path(m), tag(m, "deadline")));
+            sent++;
+        }
+        return sent;
+    }
+
+    /**
+     * 성사된 3교시가 1시간 뒤 모인다: 참여자 모두에게 한 번 (연 사람 포함, ReminderJob 이 1분마다 부른다).
+     * 모임 2시간 안쪽에 연 3교시와, 서버가 늦게 깨서 10분 이하 남은 3교시는 보내지 않는다.
+     * 보낸 3교시 수를 돌려준다
+     */
+    @Transactional
+    public int remindMeetups() {
+        Instant now = clock.instant();
+        int sent = 0;
+        for (Meetup m : meetups.findDueForMeetReminder(now.plus(MEET_NOTICE_TOO_LATE), now.plus(MEET_NOTICE))) {
+            if (meetups.markMeetReminded(m.getId(), now) == 0) {
+                continue; // 다른 서버가 먼저 보냈다
+            }
+            if (Duration.between(m.getCreatedAt(), m.getMeetAt()).compareTo(SHORT_NOTICE) < 0) {
+                continue; // 방금 모였다 (보낸 것으로 적어 두고 다시 찾지 않는다)
+            }
+            long minutes = (Duration.between(now, m.getMeetAt()).toSeconds() + 59) / 60;
+            String when = minutes >= 55 ? "1시간 뒤" : minutes + "분 뒤";
+            push.send(participations.findMemberIds(m.getId()), new PushMessage(PushType.REMINDER, m.getTitle(),
+                    when + " 3교시예요 · " + TIME.format(m.getMeetAt()) + " · " + m.getPlace(), path(m),
+                    tag(m, "reminder")));
+            sent++;
+        }
+        return sent;
+    }
+
+    /**
+     * 밤사이 미룬 새 3교시 · 새 공지 알림을 보낸다 (아침 8시부터, ReminderJob 이 1분마다 부른다).
+     * 그사이 마감·취소됐거나 꽉 찬 3교시는 건너뛴다. 지운 공지는 이미 없다.
+     * 보낸 수를 돌려준다
+     */
+    @Transactional
+    public int announceHeld() {
+        Instant now = clock.instant();
+        if (QuietHours.contains(now)) {
+            return 0;
+        }
+        int sent = 0;
+        for (Meetup m : meetups.findHeldAnnouncements()) {
+            if (meetups.releaseHeldAnnouncement(m.getId()) == 0 || !m.isJoinableAt(now)) {
+                continue;
+            }
+            announce(m);
+            sent++;
+        }
+        for (Notice n : notices.findHeldAnnouncements()) {
+            if (notices.releaseHeldAnnouncement(n.getId()) == 0) {
+                continue;
+            }
+            announce(n);
             sent++;
         }
         return sent;

@@ -41,7 +41,7 @@ public record AppProperties(Jwt jwt, Owner owner, Kakao kakao, Mail mail, Cors c
 
     /**
      * 앱 푸시 알림. firebaseServiceAccount: Firebase 서비스 계정 키(JSON 그대로 또는 base64). 없으면 보내지 않고 로그만.
-     * reminders: 모집 마감 30분 전 알림을 1분마다 찾을지 (테스트에서는 끈다)
+     * reminders: 때가 된 알림(마감 30분 전 · 모임 1시간 전 · 밤사이 미룬 알림)을 1분마다 찾을지 (테스트에서는 끈다)
      */
     public record Push(String firebaseServiceAccount, Boolean reminders) {
     }

@@ -9,6 +9,7 @@ import { AdminPage } from './pages/AdminPage'
 import { FeedPage } from './pages/FeedPage'
 import { MeetupDetailPage } from './pages/MeetupDetailPage'
 import { MeetupCreatePage, MeetupEditPage } from './pages/MeetupFormPage'
+import { MyMeetupsPage } from './pages/MyMeetupsPage'
 import { MyPage } from './pages/MyPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { NoticeCreatePage, NoticeDetailPage, NoticeEditPage, NoticesPage } from './pages/NoticePages'
@@ -100,6 +101,7 @@ export function App() {
         <Route path="notices/new" element={<NoticeCreatePage />} />
         <Route path="notices/:id" element={<NoticeDetailPage />} />
         <Route path="notices/:id/edit" element={<NoticeEditPage />} />
+        <Route path="my-meetups" element={<MyMeetupsPage />} />
         <Route path="me" element={<MyPage />} />
         <Route
           path="admin"

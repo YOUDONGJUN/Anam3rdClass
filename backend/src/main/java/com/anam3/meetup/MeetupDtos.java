@@ -108,7 +108,9 @@ public final class MeetupDtos {
             /** 참여비 선입금 */
             boolean feePrepaid,
             /** 지우기: 연 사람 · 그 학교 교수 · 대학원장 */
-            boolean canDelete) {
+            boolean canDelete,
+            /** 지금 인원으로 확정 (무산된 3교시도 모임 전이면 되살리기): 연 사람 · 대학원장, 2명 이상일 때 */
+            boolean canConfirm) {
     }
 
     public record MeetupCreateRequest(

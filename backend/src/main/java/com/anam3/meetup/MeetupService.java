@@ -283,6 +283,31 @@ public class MeetupService {
         }
     }
 
+    /**
+     * 지금 인원으로 확정: 최소 인원이 안 찼어도 연 사람이 "이 인원으로 간다"고 정하면 바로 성사.
+     * 마감이 지나 무산된 3교시도 모임 시간 전이면 되살린다. 수정과 같은 사람(연 사람 · 대학원장)만.
+     */
+    public MeetupDetail confirm(LoginMember viewer, Long id) {
+        Instant now = clock.instant();
+        Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
+        if (!viewer.isOwner() && !meetup.isHostedBy(viewer.id())) {
+            throw ApiException.forbidden("3교시를 연 사람만 확정할 수 있어요");
+        }
+        if (meetup.isCanceled() || !now.isBefore(meetup.getMeetAt())) {
+            throw ApiException.badRequest("NOT_OPEN", "이미 끝났거나 취소된 3교시예요");
+        }
+        if (meetup.isReached()) {
+            throw ApiException.conflict("ALREADY_REACHED", "이미 성사된 3교시예요");
+        }
+        if (!meetup.isConfirmableAt(now)) {
+            throw ApiException.badRequest("TOO_FEW", "나 말고 한 명은 더 있어야 확정할 수 있어요");
+        }
+        boolean revived = meetup.statusAt(now) == MeetupStatus.FAILED;
+        meetup.confirmWithCurrent(now);
+        notifier.confirmedByHost(meetup, viewer.id(), revived);
+        return detail(viewer, id);
+    }
+
     public MeetupDetail join(LoginMember viewer, Long id) {
         Instant now = clock.instant();
         Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
@@ -320,7 +345,7 @@ public class MeetupService {
         Participation participation = participations.findByMeetupIdAndMemberId(id, viewer.id())
                 .orElseThrow(() -> ApiException.badRequest("NOT_JOINED", "참여하지 않은 3교시예요"));
         if (!meetup.isRecruitingAt(now)) {
-            throw ApiException.badRequest("CLOSED", "모집이 끝난 뒤에는 나갈 수 없어요. 오픈채팅에서 알려 주세요");
+            throw ApiException.badRequest("CLOSED", "모집이 끝난 뒤에는 나갈 수 없어요. 단톡방에서 알려 주세요");
         }
         participations.delete(participation);
         meetup.removeParticipant();

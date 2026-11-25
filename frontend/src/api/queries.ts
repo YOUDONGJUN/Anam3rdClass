@@ -116,9 +116,11 @@ export function useUpdateMeetup(id: number) {
 export function useMeetupAction() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, action }: { id: number; action: 'join' | 'leave' | 'cancel' }) => {
+    mutationFn: ({ id, action }: { id: number; action: 'join' | 'leave' | 'cancel' | 'confirm' }) => {
       if (action === 'join') return api<MeetupDetail>(`/api/meetups/${id}/join`, { method: 'POST' })
       if (action === 'leave') return api<MeetupDetail>(`/api/meetups/${id}/join`, { method: 'DELETE' })
+      // 지금 인원으로 확정 (무산된 3교시도 모임 전이면 되살린다)
+      if (action === 'confirm') return api<MeetupDetail>(`/api/meetups/${id}/confirm`, { method: 'POST' })
       return api<MeetupDetail>(`/api/meetups/${id}/cancel`, { method: 'POST' })
     },
     onSuccess: (d) => afterMeetupChange(qc, d),

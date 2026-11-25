@@ -240,8 +240,30 @@ public class Meetup {
         this.participantCount++;
     }
 
+    /**
+     * 한 명이 빠진다. 이미 성사된 3교시는 확정을 유지한다 — 최소 인원을 남은 인원으로 낮춰서
+     * 다시 "모집중"으로 돌아가거나 공개된 실명이 다시 가려지지 않게 한다 (남은 사람이 2명 밑이면 최소 인원 없음).
+     */
     public void removeParticipant() {
+        boolean wasReached = isReached();
         this.participantCount--;
+        if (wasReached && !isReached()) {
+            this.minPeople = participantCount >= 2 ? participantCount : null;
+        }
+    }
+
+    /**
+     * 연 사람이 "지금 인원으로 확정": 최소 인원을 지금 인원으로 낮춰 바로 성사시킨다.
+     * 마감이 지나 무산된 3교시도 모임 시간 전이면 이렇게 되살린다 (조건은 MeetupService 가 먼저 본다).
+     */
+    public void confirmWithCurrent(Instant now) {
+        this.minPeople = participantCount;
+        this.updatedAt = now;
+    }
+
+    /** 지금 인원으로 확정할 수 있는 상태: 취소 안 됨 · 모임 전 · 아직 성사 전 · 2명 이상 */
+    public boolean isConfirmableAt(Instant now) {
+        return !canceled && now.isBefore(meetAt) && !isReached() && participantCount >= 2;
     }
 
     public void update(String title, String description, String place, Collection<MeetupCategory> categories,

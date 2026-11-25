@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
+  CheckCheck,
   ChevronLeft,
-  Clock,
   EyeOff,
   Flag,
   Globe2,
   Hash,
+  Info,
   Lock,
   MapPin,
   MessageCircle,
@@ -14,6 +15,7 @@ import {
   Pencil,
   Share2,
   Trash2,
+  UserPlus,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -35,17 +37,47 @@ import { useNow } from '../lib/hooks'
 import { CATEGORY, headcount, isLive, seatsCaption, sortCategories } from '../lib/meetup'
 import { shareLink } from '../lib/native'
 import { affiliation } from '../lib/person'
-import { formatDateTime, formatRemaining } from '../lib/time'
+import { formatDate, formatDateTime, formatDayLabel, formatRemaining, formatTime } from '../lib/time'
+import { DepartureBoard } from '../components/DepartureBoard'
 
-function Countdown({ m, now }: { m: MeetupDetail; now: Date }) {
-  if (!isLive(m.status)) return null
+/** 승차권 아래칸 왼쪽: 모집 마감까지 / 모임까지 남은 시간 */
+function TicketCountdown({ m, now }: { m: MeetupDetail; now: Date }) {
+  if (!isLive(m.status)) {
+    return (
+      <div>
+        <p className="text-xs font-bold text-ink-3">모임</p>
+        <p className="mt-1.5 text-[15px] font-bold text-ink-2">{formatDateTime(m.meetAt, now)}</p>
+      </div>
+    )
+  }
   const deadline = new Date(m.deadlineAt)
-  const text =
-    deadline > now ? `모집 마감까지 ${formatRemaining(deadline, now)}` : `모임까지 ${formatRemaining(m.meetAt, now)}`
+  const beforeDeadline = deadline > now
   return (
-    <span className="tabular inline-flex items-center gap-1.5 rounded-md bg-exit px-2.5 py-1 text-sm font-bold text-on-exit">
-      <Clock className="size-4" aria-hidden />
-      {text}
+    <div>
+      <p className="text-xs font-bold text-ink-3">{beforeDeadline ? '모집 마감까지' : '모임까지'}</p>
+      <p className="tabular mt-1 text-2xl font-extrabold tracking-[-0.02em] text-ink">
+        {formatRemaining(beforeDeadline ? deadline : m.meetAt, now)}
+      </p>
+    </div>
+  )
+}
+
+/** 승차권에 찍히는 도장: 성사(확정) · 완료. 방금 참여해서 성사됐으면 쾅 찍힌다 */
+function Stamp({ m, animate }: { m: MeetupDetail; animate: boolean }) {
+  if (m.status !== 'CONFIRMED' && m.status !== 'DONE') return null
+  const done = m.status === 'DONE'
+  const word = done ? '완료' : m.minPeople === null ? '확정' : '성사'
+  const [mm, dd] = formatDate(m.meetAt).match(/\d+/g) ?? []
+  return (
+    <span
+      aria-hidden
+      className={`absolute top-[-14px] right-4 flex size-20 rotate-[-12deg] flex-col items-center justify-center rounded-full border-[3px] ${
+        done ? 'border-ink-3 text-ink-3' : 'border-ok text-ok'
+      } ${animate && !done ? 'stamp-in' : ''}`}
+      style={{ boxShadow: `inset 0 0 0 3px var(--surface), inset 0 0 0 4.5px ${done ? 'var(--ink-3)' : 'var(--ok)'}` }}
+    >
+      <span className="text-[21px] leading-none font-black tracking-[0.04em]">{word}</span>
+      {mm && <span className="tabular mt-1 text-[9px] font-extrabold tracking-[0.08em]">{`${mm}.${dd}`}</span>}
     </span>
   )
 }
@@ -60,9 +92,11 @@ function StateNote({ m }: { m: MeetupDetail }) {
   switch (m.status) {
     case 'RECRUITING':
       title = `${left}명만 더 모이면 성사돼요`
-      body = m.joined
-        ? '성사되면 참여자끼리 실명·단톡방 공개'
-        : '성사 전까지 내 이름은 가려져요'
+      body = m.canConfirm
+        ? `더 기다리거나, 지금 ${m.participantCount}명으로 바로 확정할 수 있어요`
+        : m.joined
+          ? '성사되면 참여자끼리 실명·단톡방 공개'
+          : '성사 전까지 내 이름은 가려져요'
       break
     case 'CONFIRMED':
       tone = 'ok'
@@ -78,7 +112,9 @@ function StateNote({ m }: { m: MeetupDetail }) {
     case 'FAILED':
       tone = 'muted'
       title = '이번엔 인원이 모이지 않았어요'
-      body = '나만 볼 수 있어요. 다음에 또 열어 봐요'
+      body = m.canConfirm
+        ? `모임 시간 전이라 지금 ${m.participantCount}명으로 다시 진행할 수 있어요`
+        : '나만 볼 수 있어요. 다음에 또 열어 봐요'
       break
     case 'DONE':
       tone = 'muted'
@@ -97,14 +133,24 @@ function StateNote({ m }: { m: MeetupDetail }) {
     ok: 'bg-ok-soft text-ok-ink',
     muted: 'bg-surface-2 text-ink-2',
   }[tone]
+  const iconClass = {
+    accent: 'bg-accent text-on-accent',
+    ok: 'bg-ok text-white',
+    muted: 'bg-line-strong text-ink-2',
+  }[tone]
+  const Icon = m.status === 'CONFIRMED' ? PartyPopper : m.status === 'RECRUITING' ? UserPlus : Info
 
   return (
-    <div className={`rounded-2xl px-5 py-4 ${toneClass}`}>
-      <p className="flex items-center gap-2 text-base font-bold">
-        {m.status === 'CONFIRMED' && <PartyPopper className="size-5" aria-hidden />}
-        {title}
-      </p>
-      {body && <p className="mt-1 text-[15px] leading-relaxed opacity-90">{body}</p>}
+    <div className={`flex items-center gap-3.5 rounded-2xl px-4 py-4 sm:px-5 ${toneClass}`}>
+      <span
+        className={`flex size-10 shrink-0 items-center justify-center rounded-xl shadow-[inset_0_-2px_0_rgb(0_0_0/0.2)] ${iconClass}`}
+      >
+        <Icon className="size-5" aria-hidden />
+      </span>
+      <div className="min-w-0">
+        <p className="text-base font-extrabold">{title}</p>
+        {body && <p className="mt-0.5 text-[15px] leading-relaxed text-ink-2">{body}</p>}
+      </div>
     </div>
   )
 }
@@ -127,6 +173,8 @@ export function MeetupDetailPage() {
   const navigate = useNavigate()
   const now = useNow()
   const [arrived, setArrived] = useState<number | null>(null)
+  /** 방금 "지금 인원으로 확정"을 눌렀으면 성사 도장이 쾅 찍힌다 */
+  const [justConfirmed, setJustConfirmed] = useState(false)
   const [reporting, setReporting] = useState<ReportTargetInfo | null>(null)
 
   if (isPending) return <Spinner />
@@ -149,7 +197,9 @@ export function MeetupDetailPage() {
   }
 
   const live = isLive(m.status)
-  const hasActions = m.canJoin || Boolean(m.joined && m.revealed && m.openChatUrl) || live || m.canLeave
+  const hasActions = m.canJoin || Boolean(m.joined && m.revealed && m.openChatUrl) || live || m.canLeave || m.canConfirm
+  /** 무산된 3교시를 되살리는 확정인지 */
+  const reviving = m.status === 'FAILED'
 
   function remove() {
     if (!window.confirm('3교시를 지울까요?\n\n• 목록과 기록에서 아예 사라져요\n• 참여자 기록도 함께 지워져요\n• 되돌릴 수 없어요')) return
@@ -162,15 +212,28 @@ export function MeetupDetailPage() {
     })
   }
 
-  function run(kind: 'join' | 'leave' | 'cancel') {
+  function run(kind: 'join' | 'leave' | 'cancel' | 'confirm') {
     if (kind === 'cancel' && !window.confirm('3교시를 취소할까요? 참여자들에게는 "취소됨"으로 보여요.')) return
     if (kind === 'leave' && !window.confirm('참여를 취소할까요?')) return
+    const count = m?.participantCount ?? 0
+    if (
+      kind === 'confirm' &&
+      !window.confirm(
+        reviving
+          ? `무산된 3교시를 지금 ${count}명으로 다시 진행할까요?\n\n• 바로 성사되고 참여자에게 알림이 가요\n• 참여자끼리 실명과 단톡방이 열려요`
+          : `지금 ${count}명으로 확정할까요?\n\n• 최소 인원이 ${count}명으로 바뀌고 바로 성사돼요\n• 참여자끼리 실명과 단톡방이 열려요\n• 정원까지는 계속 더 참여할 수 있어요`,
+      )
+    )
+      return
     const wasConfirmed = m?.status === 'CONFIRMED'
     action.mutate(
       { id, action: kind },
       {
         onSuccess: (d) => {
-          if (kind === 'join') {
+          if (kind === 'confirm') {
+            setJustConfirmed(true)
+            toast.show(reviving ? '다시 진행해요! 이제 서로 이름이 보여요' : '성사! 이제 서로 이름이 보여요', 'ok')
+          } else if (kind === 'join') {
             setArrived(d.participantCount - 1)
             toast.show(
               !wasConfirmed && d.status === 'CONFIRMED' ? '성사! 이제 서로 이름이 보여요' : '참여했어요',
@@ -194,10 +257,16 @@ export function MeetupDetailPage() {
           나도 콜
         </Button>
       )}
+      {m.canConfirm && (
+        <Button size="lg" loading={action.isPending} onClick={() => run('confirm')} className="w-full">
+          <CheckCheck className="size-5" aria-hidden />
+          {reviving ? `지금 ${m.participantCount}명으로 다시 진행` : `지금 ${m.participantCount}명으로 확정`}
+        </Button>
+      )}
       {m.joined && m.revealed && m.openChatUrl && (
         <a href={m.openChatUrl} target="_blank" rel="noreferrer" className={buttonClass('ok', 'lg', 'w-full')}>
           <MessageCircle className="size-5" aria-hidden />
-          오픈채팅 들어가기
+          단톡방 들어가기
         </a>
       )}
       <div className="flex gap-2.5">
@@ -220,44 +289,52 @@ export function MeetupDetailPage() {
     </div>
   )
 
-  return (
-    <div className="pb-24 lg:pb-0">
-      <button
-        type="button"
-        onClick={() => ((window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate('/'))}
-        className="mb-4 -ml-2 inline-flex h-10 items-center gap-1 rounded-lg px-2 text-[15px] font-semibold text-ink-2 hover:text-ink"
-      >
-        <ChevronLeft className="size-5" aria-hidden />
-        3교시 목록
-      </button>
+  const day = formatDayLabel(m.meetAt, now)
+  const date = formatDate(m.meetAt)
+  const time = formatTime(m.meetAt)
 
-      {/* 안내판 머리 */}
-      <header className="overflow-hidden rounded-3xl bg-board text-on-board">
-        <div className="px-5 pt-6 pb-6 sm:px-8 sm:pt-8">
+  return (
+    <div className={hasActions ? 'pb-40 lg:pb-0' : 'lg:pb-0'}>
+      {/* 모바일: 머리의 안내판이 이어지고, 승차권이 그 위로 겹쳐 올라온다 */}
+      <div className="-mx-4 -mt-6 bg-board px-2 pt-2 pb-24 sm:-mx-6 sm:px-4 lg:mx-0 lg:mt-0 lg:bg-transparent lg:p-0 lg:pb-4">
+        <button
+          type="button"
+          onClick={() => ((window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate('/'))}
+          className="inline-flex h-10 items-center gap-1 rounded-lg px-2 text-[15px] font-semibold text-on-board-2 hover:text-on-board lg:-ml-2 lg:text-ink-2 lg:hover:text-ink"
+        >
+          <ChevronLeft className="size-5" aria-hidden />
+          3교시 목록
+        </button>
+      </div>
+
+      {/* 승차권 */}
+      <header className={`${cardClass} relative -mt-20 overflow-hidden lg:mt-0`}>
+        {/* 고른 종류의 노선 색을 나란히 — 여러 노선이 지나는 환승역처럼 */}
+        <div className="flex h-1.5" aria-hidden>
+          {sortCategories(m.categories).map((c) => (
+            <span key={c} className="flex-1" style={{ backgroundColor: CATEGORY[c].color }} />
+          ))}
+        </div>
+        <div className="px-5 pt-4 pb-4 sm:px-7 sm:pt-6">
           <div className="flex items-center justify-between gap-3">
-            <span className="min-w-0 text-on-board-2">
+            <span className="min-w-0 text-ink-2">
               <CategoryBadges categories={m.categories} size="sm" withLabel />
             </span>
             <StatusPill meetup={m} />
           </div>
-          <h1 className="mt-4 text-[26px] leading-tight font-extrabold tracking-[-0.03em] sm:text-[32px]">{m.title}</h1>
-          <dl className="mt-5 flex flex-col gap-2.5 text-[15px]">
-            <div className="flex items-center gap-2.5">
-              <dt className="sr-only">모임 시간</dt>
-              <Clock className="size-4 shrink-0 text-on-board-2" aria-hidden />
-              <dd className="tabular font-semibold">{formatDateTime(m.meetAt, now)}</dd>
-            </div>
+          <h1 className="mt-3.5 text-[23px] leading-snug font-extrabold tracking-[-0.03em] text-ink sm:text-[30px]">{m.title}</h1>
+          <dl className="mt-3 flex flex-col gap-2 text-[15px] text-ink-2">
             <div className="flex items-center gap-2.5">
               <dt className="sr-only">장소</dt>
-              <MapPin className="size-4 shrink-0 text-on-board-2" aria-hidden />
-              <dd className="font-semibold">{m.place}</dd>
+              <MapPin className="size-4 shrink-0 text-ink-3" aria-hidden />
+              <dd className="font-semibold text-ink">{m.place}</dd>
             </div>
             {m.purposes.length > 0 && (
               <div className="flex items-center gap-2.5">
                 <dt className="sr-only">모임 목적</dt>
-                <Hash className="size-4 shrink-0 text-on-board-2" aria-hidden />
+                <Hash className="size-4 shrink-0 text-ink-3" aria-hidden />
                 <dd>
-                  <PurposeTags purposes={m.purposes} tone="board" />
+                  <PurposeTags purposes={m.purposes} />
                 </dd>
               </div>
             )}
@@ -265,13 +342,13 @@ export function MeetupDetailPage() {
               <div className="flex items-center gap-2.5">
                 <dt className="sr-only">모집 대상</dt>
                 {m.audience === 'ALL' ? (
-                  <Globe2 className="size-4 shrink-0 text-on-board-2" aria-hidden />
+                  <Globe2 className="size-4 shrink-0 text-ink-3" aria-hidden />
                 ) : (
-                  <Lock className="size-4 shrink-0 text-on-board-2" aria-hidden />
+                  <Lock className="size-4 shrink-0 text-ink-3" aria-hidden />
                 )}
                 <dd className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <AudienceBadge meetup={m} tone="board" />
-                  <span className="text-sm text-on-board-2">
+                  <AudienceBadge meetup={m} />
+                  <span className="text-sm text-ink-3">
                     {m.audience === 'ALL'
                       ? 'IT연합회 다섯 학교 누구나 참여해요'
                       : `${m.school.shortName} 다른 기수에게는 보이지 않아요`}
@@ -282,29 +359,45 @@ export function MeetupDetailPage() {
             {(m.fee !== null || m.lateJoin) && (
               <div className="flex items-center gap-2.5">
                 <dt className="sr-only">참여 방식</dt>
-                <Wallet className="size-4 shrink-0 text-on-board-2" aria-hidden />
+                <Wallet className="size-4 shrink-0 text-ink-3" aria-hidden />
                 <dd>
-                  <MeetupOptionTags meetup={m} tone="board" />
+                  <MeetupOptionTags meetup={m} />
                 </dd>
               </div>
             )}
             <div className="flex items-center gap-2.5">
               <dt className="sr-only">연 사람</dt>
-              <Users className="size-4 shrink-0 text-on-board-2" aria-hidden />
-              <dd className="flex min-w-0 flex-wrap items-center gap-x-1 text-on-board-2">
+              <Users className="size-4 shrink-0 text-ink-3" aria-hidden />
+              <dd className="flex min-w-0 flex-wrap items-center gap-x-1">
                 <PersonName person={m.host} showMe={false} showSchool={m.audience === 'ALL'} /> 님이 열었어요
               </dd>
             </div>
           </dl>
-          <div className="mt-5">
-            <Countdown m={m} now={now} />
-          </div>
+
+          <p className="mt-4 mb-1.5 text-xs font-bold text-ink-3">
+            출발 · {day}
+            {day !== date && ` ${date}`}
+          </p>
+          <DepartureBoard time={time} label={`${day} ${time} 출발`} />
         </div>
-        {/* 고른 종류의 노선 색을 나란히 — 여러 노선이 지나는 환승역처럼 */}
-        <div className="flex h-2" aria-hidden>
-          {sortCategories(m.categories).map((c) => (
-            <span key={c} className="flex-1" style={{ backgroundColor: CATEGORY[c].color }} />
-          ))}
+
+        {/* 절취선 */}
+        <div className="relative h-5" aria-hidden>
+          <span className="absolute top-0 -left-2.5 size-5 rounded-full bg-bg shadow-[inset_-1px_0_0_var(--line)]" />
+          <span className="absolute inset-x-5 top-1/2 border-t-2 border-dashed border-line" />
+          <span className="absolute top-0 -right-2.5 size-5 rounded-full bg-bg shadow-[inset_1px_0_0_var(--line)]" />
+        </div>
+
+        <div className="relative grid grid-cols-2 gap-3 px-5 pt-1 pb-5 sm:px-7">
+          <TicketCountdown m={m} now={now} />
+          <div>
+            <p className="text-xs font-bold text-ink-3">탑승</p>
+            <p className="tabular mt-1 text-2xl font-extrabold text-ink">
+              {m.participantCount}
+              <span className="font-medium text-ink-3">{m.maxPeople === null ? '명' : `/${m.maxPeople}`}</span>
+            </p>
+          </div>
+          <Stamp m={m} animate={arrived !== null || justConfirmed} />
         </div>
       </header>
 
@@ -409,9 +502,9 @@ export function MeetupDetailPage() {
 
       {reporting && <ReportDialog key={`${reporting.type}-${reporting.id}`} target={reporting} onClose={() => setReporting(null)} />}
 
-      {/* 모바일: 하단 고정 행동 바 (탭 바 바로 위) */}
+      {/* 모바일: 하단 고정 행동 바 (상세에서는 하단 메뉴 대신 이것만) */}
       {hasActions && (
-        <div className="fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-30 border-t border-line bg-surface px-4 py-3 shadow-[0_-8px_24px_-12px_rgb(0_0_0/0.18)] lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface px-4 pt-3 pb-[calc(16px+env(safe-area-inset-bottom))] shadow-[0_-8px_20px_-16px_rgb(0_0_0/0.4)] lg:hidden">
           {actions}
         </div>
       )}

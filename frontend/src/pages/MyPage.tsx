@@ -1,16 +1,14 @@
 import { Link, useNavigate } from 'react-router'
 import { Check, ChevronRight, Crown, EyeOff, FileText, KeyRound, LogOut, Mail, Minus, Pencil, ShieldCheck, Users, UserX } from 'lucide-react'
-import { useAdminStats, useAuthConfig, useBlocks, useMyMeetups, useUnblock, useWithdraw } from '../api/queries'
+import { useAdminStats, useAuthConfig, useBlocks, useUnblock, useWithdraw } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
 import { MadeBy } from '../components/MadeBy'
-import { MeetupRow, MeetupRowSkeleton } from '../components/MeetupRow'
 import { RoleTag } from '../components/PersonName'
 import { PushSettings } from '../components/PushSettings'
 import { SchoolBadge } from '../components/SchoolBadge'
-import { Button, EmptyState, ErrorState, Segmented } from '../components/ui'
-import { buttonClass, cardClass } from '../components/styles'
+import { Button, Segmented } from '../components/ui'
+import { cardClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
-import { useNow } from '../lib/hooks'
 import { affiliation, isStaff, maskName } from '../lib/person'
 import { isThemedSchool, type ThemeColor, type ThemeMode } from '../lib/theme'
 import { useTheme } from '../theme/ThemeContext'
@@ -135,12 +133,10 @@ function StaffShortcut() {
 
 export function MyPage() {
   const { member, signOut } = useAuth()
-  const { data, isPending, isError, error, refetch } = useMyMeetups()
   const config = useAuthConfig()
   const withdraw = useWithdraw()
   const toast = useToast()
   const navigate = useNavigate()
-  const now = useNow()
 
   if (!member) return null
   const supportEmail = config.data?.supportEmail
@@ -240,36 +236,6 @@ export function MyPage() {
           학과가 비어 있어요. 교수·대학원장에게 요청해 주세요.
         </p>
       )}
-
-      <section>
-        <h2 className="mb-3 px-1 text-[17px] font-extrabold text-ink">내 3교시</h2>
-        {isPending ? (
-          <div className={`${cardClass} divide-y divide-line`}>
-            <MeetupRowSkeleton />
-            <MeetupRowSkeleton />
-          </div>
-        ) : isError ? (
-          <ErrorState message={error.message} onRetry={() => refetch()} />
-        ) : data.length === 0 ? (
-          <div className={cardClass}>
-            <EmptyState
-              title="아직 함께한 3교시가 없어요"
-              body="내가 열고 참여한 3교시가 여기 모여요"
-              action={
-                <Link to="/" className={buttonClass('secondary')}>
-                  열린 3교시 보기
-                </Link>
-              }
-            />
-          </div>
-        ) : (
-          <div className={`${cardClass} divide-y divide-line overflow-hidden`}>
-            {data.map((m) => (
-              <MeetupRow key={m.id} meetup={m} now={now} showDate />
-            ))}
-          </div>
-        )}
-      </section>
 
       <ThemeSettings schoolName={member.school.shortName} />
 

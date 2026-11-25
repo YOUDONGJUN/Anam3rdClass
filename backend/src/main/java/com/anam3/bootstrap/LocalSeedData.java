@@ -39,11 +39,16 @@ import com.anam3.school.Department;
 import com.anam3.school.DepartmentRepository;
 import com.anam3.school.School;
 import com.anam3.school.SchoolRepository;
+import com.anam3.settlement.Settlement;
+import com.anam3.settlement.SettlementRepository;
+import com.anam3.settlement.SettlementShare;
+import com.anam3.settlement.SettlementShareRepository;
 
 /**
  * 로컬 개발(local 프로필)에서만 화면이 비어 보이지 않도록 샘플 데이터를 넣는다.
  * 로그인 화면의 "개발용 로그인"에서 아래 계정을 골라 들어간다 (카카오·메일 없이). 이름은 모두 지어낸 것이다.
  * 지난 3교시는 이번 달 랭킹에, 꽉 찬 "딱 셋이 와인 한 병"은 빈자리 대기에 보인다.
+ * "중간고사 끝 소주"는 정산 중이고, 어제 모인 "수업 끝나고 가볍게 한잔"은 정산을 새로 만들 수 있다.
  * <ul>
  *   <li>고려대: 유동준(대학원장), 이안암(교수), 김고대·박호랑·최석탑(원우)</li>
  *   <li>연세대 이신촌, 성균관대 박명륜, 서강대 최노고, 한양대 정왕십 (원우)</li>
@@ -65,12 +70,15 @@ public class LocalSeedData implements ApplicationRunner {
     private final NoticeRepository notices;
     private final MeetupFeedbackRepository feedbacks;
     private final MeetupWaitRepository waits;
+    private final SettlementRepository settlements;
+    private final SettlementShareRepository settlementShares;
     private final OwnerPolicy ownerPolicy;
     private final Clock clock;
 
     public LocalSeedData(MemberRepository members, SchoolRepository schools, DepartmentRepository departments,
             MeetupRepository meetups, ParticipationRepository participations, NoticeRepository notices,
-            MeetupFeedbackRepository feedbacks, MeetupWaitRepository waits, OwnerPolicy ownerPolicy, Clock clock) {
+            MeetupFeedbackRepository feedbacks, MeetupWaitRepository waits, SettlementRepository settlements,
+            SettlementShareRepository settlementShares, OwnerPolicy ownerPolicy, Clock clock) {
         this.members = members;
         this.schools = schools;
         this.departments = departments;
@@ -79,6 +87,8 @@ public class LocalSeedData implements ApplicationRunner {
         this.notices = notices;
         this.feedbacks = feedbacks;
         this.waits = waits;
+        this.settlements = settlements;
+        this.settlementShares = settlementShares;
         this.ownerPolicy = ownerPolicy;
         this.clock = clock;
     }
@@ -187,6 +197,13 @@ public class LocalSeedData implements ApplicationRunner {
         answered(lastWeek, godae, true, Rating.GOOD, now);
         answered(lastWeek, seoktap, true, Rating.OK, now);
         answered(lastWeek, owner, true, Rating.BAD, now);
+        // 정산: 박호랑이 계산했고(토스·카카오페이 링크), 김고대만 보냈다 — 대학원장·최석탑은 "보낼 정산"이 보인다
+        horang.changePayLinks("horang_park", "https://qr.kakaopay.com/FSeedHorang01");
+        Settlement soju = settlements.save(new Settlement(lastWeek, horang, 128_000, 4, now));
+        SettlementShare paid = settlementShares.save(new SettlementShare(soju, godae));
+        paid.mark(true, now);
+        settlementShares.save(new SettlementShare(soju, seoktap));
+        settlementShares.save(new SettlementShare(soju, owner));
 
         Meetup study2 = meetup(anam, MeetupAudience.SCHOOL, "논문 얘기 말고 수다만", "", "고대 정문 앞 카페",
                 List.of(MeetupCategory.NO_ALCOHOL), List.of("잡담"), at(today.minusDays(9), 19, 0),

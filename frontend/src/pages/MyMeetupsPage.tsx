@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { ChevronRight, Copy } from 'lucide-react'
-import { useMyMeetups } from '../api/queries'
+import { ChevronRight, Copy, ReceiptText } from 'lucide-react'
+import { useMyMeetups, useMySettlements } from '../api/queries'
 import type { MeetupSummary } from '../api/types'
 import { BoardHero, BoardSheet, HeroTabs } from '../components/BoardHero'
 import { MeetupRow, MeetupRowSkeleton } from '../components/MeetupRow'
@@ -9,6 +9,7 @@ import { EmptyState, ErrorState } from '../components/ui'
 import { buttonClass, cardClass } from '../components/styles'
 import { useNow } from '../lib/hooks'
 import { isLive } from '../lib/meetup'
+import { formatWon } from '../lib/settlement'
 import { formatDayLabel, formatTime } from '../lib/time'
 
 type Tab = 'upcoming' | 'past'
@@ -33,6 +34,38 @@ function stopTone(m: MeetupSummary) {
   if (m.status === 'CONFIRMED') return 'text-ok-ink'
   if (m.status === 'RECRUITING') return 'text-accent-ink'
   return 'text-ink-3'
+}
+
+/** 내가 보낼 정산: 누르면 그 3교시에서 송금하고 [보냈어요]를 누른다 */
+function SettlementDues() {
+  const { data } = useMySettlements()
+  const now = useNow()
+  if (!data || data.length === 0) return null
+  return (
+    <section className={`${cardClass} mb-6 overflow-hidden`} aria-labelledby="dues-title">
+      <h2 id="dues-title" className="flex items-center gap-2 border-b border-line px-5 py-3.5 text-[15px] font-extrabold text-ink">
+        <ReceiptText className="size-5 text-accent-ink" aria-hidden />
+        보낼 정산
+        <span className="tabular rounded-full bg-danger px-2 py-0.5 text-[12px] font-bold text-white">{data.length}</span>
+      </h2>
+      <ul className="divide-y divide-line">
+        {data.map((d) => (
+          <li key={d.meetupId}>
+            <Link to={`/meetups/${d.meetupId}`} className="flex items-center gap-3 px-5 py-3.5 hover:bg-surface-2">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-bold text-ink">{d.title}</span>
+                <span className="mt-0.5 block truncate text-[13px] text-ink-3">
+                  <b className="font-semibold text-ink-2">{d.payer.name}</b> 님에게 · {formatDayLabel(d.meetAt, now)} 3교시
+                </span>
+              </span>
+              <span className="tabular shrink-0 text-[15px] font-extrabold text-ink">{formatWon(d.amount)}</span>
+              <ChevronRight className="size-4 shrink-0 text-ink-3" aria-hidden />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
 }
 
 /** 내가 열고 참여한 3교시 — 내 일정이 한 줄 노선처럼 이어진다 */
@@ -64,6 +97,8 @@ export function MyMeetupsPage() {
       </BoardHero>
 
       <BoardSheet>
+        <SettlementDues />
+
         <h2 className="mb-3.5 flex items-baseline justify-between gap-3 px-1">
           <span className="text-[17px] font-extrabold text-ink">내 노선</span>
           <span className="text-[13px] text-ink-3">{tab === 'upcoming' ? '다가오는 순서대로' : '최근 순서대로'}</span>

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 public final class MeDtos {
 
@@ -29,5 +30,11 @@ public final class MeDtos {
 
     /** 랭킹에 안 나오기 */
     public record RankingSettingRequest(@NotNull(message = "설정을 골라 주세요") Boolean hidden) {
+    }
+
+    /** 송금 링크 (비우면 지운다). 형식은 PayLinks 가 확인한다 */
+    public record PayLinksRequest(
+            @Size(max = 60, message = "토스 아이디를 확인해 주세요") String tossId,
+            @Size(max = 120, message = "카카오페이 송금 링크를 확인해 주세요") String kakaoPayUrl) {
     }
 }

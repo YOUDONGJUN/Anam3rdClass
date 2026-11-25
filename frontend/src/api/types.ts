@@ -53,6 +53,9 @@ export interface Member {
   profileEditableAt: string | null
   /** 랭킹에 안 나오기 */
   rankingHidden: boolean
+  /** 정산 송금 링크: 토스 아이디 · 카카오페이 송금 링크 (없으면 null) */
+  tossId: string | null
+  kakaoPayUrl: string | null
 }
 
 /** 앱 알림 종류 (서버 PushType) */
@@ -66,6 +69,7 @@ export type PushType =
   | 'FEDERATION'
   | 'SCHOOL'
   | 'SPOT'
+  | 'SETTLE'
 
 export interface Department {
   id: number
@@ -160,6 +164,8 @@ export interface PersonView {
   ref: number | null
   /** 이번 달 방장왕·출석왕 1등 배지 */
   crowns: RankingCategory[]
+  /** 탈퇴한 원우 (이름이 "탈퇴한 원우") */
+  withdrawn: boolean
 }
 
 export interface MeetupSummary {
@@ -220,6 +226,61 @@ export interface MeetupDetail extends MeetupSummary {
   waitCount: number | null
   /** 정원 늘리기: 연 사람·대학원장, 최대 인원이 30명 아래일 때 */
   canAddSeats: boolean
+  /** 정산 만들기: 함께한 사람, 성사된 3교시가 모인 뒤 7일 안, 아직 정산이 없을 때 */
+  canSettle: boolean
+  /** 정산: 함께한 사람에게만 (없으면 null) */
+  settlement: SettlementView | null
+}
+
+/** 정산에서 한 사람 몫 (계산한 사람은 빼고) */
+export interface SettlementShare {
+  person: PersonView
+  sent: boolean
+  sentAt: string | null
+}
+
+/** 3교시 상세의 정산. 돈은 서비스가 받지 않고, 누가 보냈는지만 적는다 */
+export interface SettlementView {
+  /** 계산한 원우 */
+  payer: PersonView
+  /** 내가 계산했다 */
+  mine: boolean
+  total: number
+  /** 1인 금액 (100원 단위 올림) */
+  perPerson: number
+  /** 계산한 사람 포함 나눈 인원 */
+  headcount: number
+  shares: SettlementShare[]
+  sentCount: number
+  /** 계산한 사람의 토스 링크 (1인 금액이 붙어 있다) */
+  tossUrl: string | null
+  /** 계산한 사람의 카카오페이 송금 링크 (금액은 직접) */
+  kakaoPayUrl: string | null
+  /** 고치기: 계산한 사람, 아직 아무도 안 보냈을 때 */
+  editable: boolean
+  /** 다시 알리기: 계산한 사람, 하루에 한 번 */
+  canRemind: boolean
+  /** 다시 알리기를 할 수 있는 때 (계산한 사람, 안 끝났을 때만) */
+  remindableAt: string | null
+  done: boolean
+  createdAt: string
+}
+
+/** 정산 만들기 · 고치기. refs: 나눌 원우의 참여 번호 (participants[].ref, 나는 빼고) */
+export interface SettlementInput {
+  total: number
+  refs: number[]
+}
+
+/** 내가 보낼 정산 (내 3교시) */
+export interface SettlementDue {
+  meetupId: number
+  title: string
+  meetAt: string
+  amount: number
+  payer: PersonView
+  tossUrl: string | null
+  kakaoPayUrl: string | null
 }
 
 // ---------------- 랭킹 ----------------

@@ -107,12 +107,20 @@ public class AccountService {
         return MemberResponse.from(member);
     }
 
+    /** 송금 링크 (토스 아이디 · 카카오페이 송금 링크). 비우면 지운다 */
+    public MemberResponse changePayLinks(LoginMember viewer, String tossId, String kakaoPayUrl) {
+        Member member = load(viewer);
+        member.changePayLinks(PayLinks.tossId(tossId), PayLinks.kakaoPayUrl(kakaoPayUrl));
+        return MemberResponse.from(member);
+    }
+
     /**
      * 탈퇴. 바로 처리하고 되돌릴 수 없다.
      * <ul>
      *   <li>내가 연, 아직 모이기 전인 3교시는 취소한다</li>
      *   <li>아직 모집 중인 3교시에서는 빠진다 (인원도 줄어든다). 이미 성사·지난 3교시에는 "탈퇴한 원우"로 남는다</li>
-     *   <li>차단 기록을 지우고, 이름·이메일·카카오 연결·학과를 지운다. 같은 카카오·학교 이메일로 다시 가입할 수 있다</li>
+     *   <li>차단 기록을 지우고, 이름·이메일·카카오 연결·학과·송금 링크를 지운다. 같은 카카오·학교 이메일로 다시 가입할 수 있다</li>
+     *   <li>정산 기록에는 "탈퇴한 원우"로 남는다</li>
      * </ul>
      * 대학원장(OWNER_EMAIL)은 탈퇴할 수 없다 — 먼저 서버 설정에서 대학원장을 바꿔야 한다.
      */

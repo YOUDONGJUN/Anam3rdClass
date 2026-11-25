@@ -14,6 +14,7 @@ import com.anam3.meetup.MeetupDtos.PersonView;
 import com.anam3.member.Member;
 import com.anam3.ranking.RankingService;
 import com.anam3.school.SchoolDtos.SchoolTag;
+import com.anam3.settlement.SettlementDtos.SettlementInfo;
 
 /**
  * 3교시를 화면용 응답으로 바꾸면서 <b>누가 누구 이름을 볼 수 있는지</b>와 <b>무엇을 할 수 있는지</b>를 결정한다.
@@ -79,9 +80,10 @@ public class MeetupMapper {
      * @param blocked 나와 연 사람 사이에 차단이 있으면 true — 참여 버튼을 감춘다
      * @param feedback 후기를 받는 동안 함께한 사람에게만 (아니면 null)
      * @param wait 빈자리 대기
+     * @param settlement 정산 (함께한 사람에게만)
      */
     public MeetupDetail toDetail(Meetup m, List<Participation> participations, LoginMember viewer, boolean blocked,
-            FeedbackPrompt feedback, WaitInfo wait, Instant now) {
+            FeedbackPrompt feedback, WaitInfo wait, SettlementInfo settlement, Instant now) {
         boolean joined = participations.stream().anyMatch(p -> p.getMember().getId().equals(viewer.id()));
         boolean hosting = m.isHostedBy(viewer.id());
         boolean revealed = canSeeRealNames(m, viewer, joined);
@@ -127,7 +129,14 @@ public class MeetupMapper {
                 wait.waiting() && canWait,
                 canWait,
                 manages ? (int) wait.count() : null,
-                manages && open && m.getMaxPeople() != null && m.getMaxPeople() < MeetupService.MAX_SEATS);
+                manages && open && m.getMaxPeople() != null && m.getMaxPeople() < MeetupService.MAX_SEATS,
+                settlement.canSettle(),
+                settlement.view());
+    }
+
+    /** 다른 화면(정산)에서 사람을 보여줄 때. 공개 규칙은 3교시와 같다 */
+    public PersonView personView(Member member, LoginMember viewer, boolean revealed, boolean host, Long ref) {
+        return person(member, viewer, revealed, host, ref);
     }
 
     private PersonView person(Member member, LoginMember viewer, boolean revealed, boolean host, Long ref) {
@@ -138,6 +147,6 @@ public class MeetupMapper {
         String name = showReal ? member.getName() : NameMasker.mask(member.getName());
         return new PersonView(name, member.cohortLabel(), member.departmentShortLabel(),
                 SchoolTag.from(member.getSchool()), me, host, owner, !showReal, ref,
-                ranking.crowns().getOrDefault(member.getId(), List.of()));
+                ranking.crowns().getOrDefault(member.getId(), List.of()), member.isWithdrawn());
     }
 }

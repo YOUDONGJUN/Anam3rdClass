@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 import {
   Check,
   ChevronRight,
@@ -22,6 +22,7 @@ import {
   useAdminStats,
   useAuthConfig,
   useBlocks,
+  usePayLinks,
   useRanking,
   useRankingSetting,
   useUnblock,
@@ -32,6 +33,7 @@ import type { Member } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { AffiliationFields } from '../components/AffiliationFields'
 import { MadeBy } from '../components/MadeBy'
+import { PayLinksFields } from '../components/PayLinksFields'
 import { RoleTag } from '../components/PersonName'
 import { PushSettings } from '../components/PushSettings'
 import { SchoolBadge } from '../components/SchoolBadge'
@@ -39,6 +41,7 @@ import { Button, Field, FormError, Segmented } from '../components/ui'
 import { cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { affiliation, canEditOwnName, isStaff, maskName, profileEditRule, profileLockedUntil } from '../lib/person'
+import { normalizeKakaoPayUrl, normalizeTossId, payLinksError } from '../lib/settlement'
 import { formatDate } from '../lib/time'
 import { isThemedSchool, type ThemeColor, type ThemeMode } from '../lib/theme'
 import { useTheme } from '../theme/ThemeContext'
@@ -270,6 +273,57 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
 }
 
 /** 랭킹: 이번 달 내 기록 + 랭킹에 안 나오기 */
+/** 송금 링크: 정산할 때 함께한 원우에게만 보인다. 계좌번호는 받지 않는다 */
+function PayLinksCard({ member }: { member: Member }) {
+  const save = usePayLinks()
+  const toast = useToast()
+  const [tossId, setTossId] = useState(member.tossId ?? '')
+  const [kakaoPayUrl, setKakaoPayUrl] = useState(member.kakaoPayUrl ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const changed = tossId.trim() !== (member.tossId ?? '') || kakaoPayUrl.trim() !== (member.kakaoPayUrl ?? '')
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    const bad = payLinksError(tossId, kakaoPayUrl)
+    if (bad) return setError(bad)
+    save.mutate(
+      { tossId: normalizeTossId(tossId) ?? '', kakaoPayUrl: normalizeKakaoPayUrl(kakaoPayUrl) ?? '' },
+      {
+        onSuccess: (m) => {
+          setTossId(m.tossId ?? '')
+          setKakaoPayUrl(m.kakaoPayUrl ?? '')
+          toast.show(m.tossId || m.kakaoPayUrl ? '송금 링크를 저장했어요' : '송금 링크를 지웠어요', 'ok')
+        },
+        onError: (err) => setError(err.message),
+      },
+    )
+  }
+
+  return (
+    <section id="pay-links" className={`${cardClass} scroll-mt-20 px-5 py-5`} aria-labelledby="pay-links-title">
+      <h2 id="pay-links-title" className="text-[17px] font-extrabold text-ink">
+        송금 링크
+      </h2>
+      <p className="mt-0.5 text-sm text-ink-3">
+        내가 계산한 정산에서 함께한 원우에게만 보여요. 계좌번호는 받지 않아요.
+      </p>
+      <form onSubmit={submit} className="mt-4 flex flex-col gap-4" noValidate>
+        <PayLinksFields
+          tossId={tossId}
+          kakaoPayUrl={kakaoPayUrl}
+          onTossIdChange={setTossId}
+          onKakaoPayUrlChange={setKakaoPayUrl}
+        />
+        <FormError message={error} />
+        <Button type="submit" variant="secondary" disabled={!changed} loading={save.isPending}>
+          저장
+        </Button>
+      </form>
+    </section>
+  )
+}
+
 function RankingCard({ member }: { member: Member }) {
   const ranking = useRanking('month', 'all')
   const setting = useRankingSetting()
@@ -355,6 +409,13 @@ export function MyPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
+  const { hash } = useLocation()
+
+  // "/me#pay-links" · "/me#ranking" 처럼 들어오면 그 칸으로 내려간다
+  useEffect(() => {
+    if (!hash) return
+    document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView({ block: 'start' })
+  }, [hash])
 
   if (!member) return null
   const supportEmail = config.data?.supportEmail
@@ -467,6 +528,8 @@ export function MyPage() {
       )}
 
       <RankingCard member={member} />
+
+      <PayLinksCard member={member} />
 
       <ThemeSettings schoolName={member.school.shortName} />
 

@@ -94,6 +94,11 @@
 
   --chart-bar: #bf6f2c;
 
+  /* 후기 만족도 막대: 좋았어요(차가운 파랑) · 괜찮았어요(회색) · 아쉬웠어요(따뜻한 주황) — 색만으로 구분하지 않게 범례·숫자가 같이 간다 */
+  --sat-good: #3a6ea5;
+  --sat-ok: #b9b2a6;
+  --sat-bad: #c8642a;
+
   --kakao: #fee500;
   --on-kakao: rgb(0 0 0 / 0.85);
 
@@ -144,6 +149,10 @@
   --danger-soft: #3b1a1c;
 
   --chart-bar: #c47a3a;
+
+  --sat-good: #6f9fd6;
+  --sat-ok: #6e6a64;
+  --sat-bad: #e08a4f;
 
   --card-edge: rgb(0 0 0 / 0.5);
   --card-shadow: rgb(0 0 0 / 0.7);
@@ -516,11 +525,28 @@
   animation: toast-in 360ms var(--ease-out-expo) both;
 }
 
+/* 후기 창: 아래에서 올라온다 (넓은 화면에서는 가운데 창이라 살짝만) */
+@keyframes sheet-up {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.sheet-up {
+  animation: sheet-up 360ms var(--ease-out-expo) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .station-arrive,
   .transfer-glow,
   .toast-in,
-  .stamp-in {
+  .stamp-in,
+  .sheet-up {
     animation: none;
   }
 

@@ -50,4 +50,13 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
             order by m.meetAt desc
             """)
     List<Meetup> findMeetupsOfMember(@Param("memberId") Long memberId, Pageable pageable);
+
+    /** 후기: 이 원우가 함께한, 모임 시간이 since~now 사이인 3교시 (취소 빼고, 최근 것부터) */
+    @Query("""
+            select m from Participation p join p.meetup m
+            where p.member.id = :memberId and m.canceled = false and m.meetAt > :since and m.meetAt < :now
+            order by m.meetAt desc
+            """)
+    List<Meetup> findPastMeetupsOf(@Param("memberId") Long memberId, @Param("since") java.time.Instant since,
+            @Param("now") java.time.Instant now);
 }

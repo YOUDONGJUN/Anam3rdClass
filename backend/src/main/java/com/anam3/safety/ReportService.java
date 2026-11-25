@@ -13,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.anam3.auth.LoginMember;
 import com.anam3.common.ApiException;
+import com.anam3.feedback.MeetupFeedback.Rating;
+import com.anam3.feedback.MeetupFeedbackRepository;
 import com.anam3.meetup.Meetup;
 import com.anam3.meetup.MeetupRepository;
 import com.anam3.meetup.MeetupService;
@@ -44,15 +46,17 @@ public class ReportService {
     private final ParticipationRepository participations;
     private final NoticeRepository notices;
     private final MemberRepository members;
+    private final MeetupFeedbackRepository feedbacks;
     private final Clock clock;
 
     public ReportService(ReportRepository reports, MeetupRepository meetups, ParticipationRepository participations,
-            NoticeRepository notices, MemberRepository members, Clock clock) {
+            NoticeRepository notices, MemberRepository members, MeetupFeedbackRepository feedbacks, Clock clock) {
         this.reports = reports;
         this.meetups = meetups;
         this.participations = participations;
         this.notices = notices;
         this.members = members;
+        this.feedbacks = feedbacks;
         this.clock = clock;
     }
 
@@ -85,8 +89,14 @@ public class ReportService {
                         .filter(x -> canSee(x.getMeetup(), viewer))
                         .orElseThrow(() -> ApiException.notFound("신고할 사람을 찾을 수 없어요"));
                 Member target = p.getMember();
-                yield new Report(reporter, Report.TargetType.MEMBER, p.getMeetup(), null, target, target.getSchool(),
-                        req.reason(), detail, now);
+                Report r = new Report(reporter, Report.TargetType.MEMBER, p.getMeetup(), null, target,
+                        target.getSchool(), req.reason(), detail, now);
+                // 후기에서 '아쉬웠어요'를 정말 골랐을 때만 표시한다 (통계가 부풀지 않게)
+                if (Boolean.TRUE.equals(req.fromFeedback())
+                        && feedbacks.existsByMeetupIdAndMemberIdAndRating(p.getMeetup().getId(), viewer.id(), Rating.BAD)) {
+                    r.markFromFeedback();
+                }
+                yield r;
             }
         };
         if (report.getMember() != null && report.getMember().getId().equals(viewer.id())) {
@@ -109,7 +119,7 @@ public class ReportService {
         List<Report> found = viewer.isOwner()
                 ? reports.findForOwner(PageRequest.of(0, 200))
                 : reports.findForSchool(viewer.schoolId(), MemberRole.USER, PageRequest.of(0, 200));
-        return found.stream().map(ReportService::view).toList();
+        return found.stream().map(r -> view(r, viewer)).toList();
     }
 
     /** 처리 완료(resolved=true) / 다시 열기(false) */
@@ -123,7 +133,7 @@ public class ReportService {
         } else {
             report.reopen();
         }
-        return view(report);
+        return view(report, viewer);
     }
 
     /** 관리 화면 현황: 처리 안 된 신고 수 */
@@ -161,7 +171,8 @@ public class ReportService {
         return m == null ? null : m.getId();
     }
 
-    private static ReportView view(Report r) {
+    /** 후기에서 온 신고라는 표시는 대학원장에게만 (교수에게는 신고한 사람을 짐작할 단서를 주지 않는다) */
+    private static ReportView view(Report r, LoginMember viewer) {
         Meetup meetup = r.getMeetup();
         Notice notice = r.getNotice();
         Member member = r.getMember();
@@ -174,6 +185,7 @@ public class ReportService {
                 notice == null ? null : notice.getId(), notice == null ? null : notice.getTitle(),
                 member == null ? null : member.getId(), member == null ? null : member.getName(), affiliation,
                 member == null ? null : member.getRole(),
-                member != null && member.getStatus() == MemberStatus.BANNED, SchoolTag.from(r.getSchool()));
+                member != null && member.getStatus() == MemberStatus.BANNED, SchoolTag.from(r.getSchool()),
+                viewer.isOwner() && r.isFromFeedback());
     }
 }

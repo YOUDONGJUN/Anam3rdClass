@@ -75,6 +75,7 @@ public abstract class ApiTestSupport {
         jdbc.update("delete from reports");
         jdbc.update("delete from member_blocks");
         jdbc.update("delete from email_verifications");
+        jdbc.update("delete from meetup_feedbacks");
         jdbc.update("delete from participations");
         jdbc.update("delete from meetups");
         jdbc.update("delete from notices");

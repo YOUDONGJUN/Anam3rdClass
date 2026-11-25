@@ -107,7 +107,19 @@ public class Report {
     @JoinColumn(name = "resolved_by_id")
     private Member resolvedBy;
 
+    /** 3교시 후기에서 '아쉬웠어요'를 고른 뒤 한 신고. 대학원장에게만 표시한다 */
+    @Column(name = "from_feedback", nullable = false)
+    private boolean fromFeedback;
+
     protected Report() {
+    }
+
+    public void markFromFeedback() {
+        this.fromFeedback = true;
+    }
+
+    public boolean isFromFeedback() {
+        return fromFeedback;
     }
 
     public Report(Member reporter, TargetType targetType, Meetup meetup, Notice notice, Member member, School school,

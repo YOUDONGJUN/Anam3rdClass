@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.anam3.auth.LoginMember;
 import com.anam3.common.ApiException;
 import com.anam3.common.ContentFilter;
+import com.anam3.feedback.FeedbackService;
 import com.anam3.meetup.MeetupDtos.MeetupCreateRequest;
 import com.anam3.meetup.MeetupDtos.MeetupDetail;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
@@ -43,11 +44,12 @@ public class MeetupService {
     private final ReportRepository reports;
     private final MeetupMapper mapper;
     private final PushNotifier notifier;
+    private final FeedbackService feedback;
     private final Clock clock;
 
     public MeetupService(MeetupRepository meetups, ParticipationRepository participations, MemberRepository members,
             MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, PushNotifier notifier,
-            Clock clock) {
+            FeedbackService feedback, Clock clock) {
         this.meetups = meetups;
         this.participations = participations;
         this.members = members;
@@ -55,6 +57,7 @@ public class MeetupService {
         this.reports = reports;
         this.mapper = mapper;
         this.notifier = notifier;
+        this.feedback = feedback;
         this.clock = clock;
     }
 
@@ -136,7 +139,8 @@ public class MeetupService {
             throw closedTo(meetup);
         }
         boolean blocked = !meetup.isHostedBy(viewer.id()) && blocks.existsBetween(viewer.id(), meetup.getHost().getId());
-        return mapper.toDetail(meetup, people, viewer, blocked, clock.instant());
+        Instant now = clock.instant();
+        return mapper.toDetail(meetup, people, viewer, blocked, feedback.prompt(meetup, viewer, joined, now), now);
     }
 
     /** 수정은 개설자와 대학원장만 */
@@ -276,6 +280,7 @@ public class MeetupService {
         // 아직 열려 있던 3교시면 참여자에게 취소를 알린다 (지우면 참여 기록이 사라지니 먼저 읽어 둔다)
         List<Long> people = meetup.isOpenAt(clock.instant()) ? participations.findMemberIds(id) : List.of();
         reports.detachMeetup(id);
+        feedback.deleteFor(id);
         participations.deleteByMeetupId(id);
         meetups.delete(meetup);
         if (!people.isEmpty()) {

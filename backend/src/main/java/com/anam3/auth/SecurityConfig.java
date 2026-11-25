@@ -49,6 +49,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/admin/schools").hasRole("OWNER")
                         .requestMatchers("/api/admin/members/*/role", "/api/admin/members/*/email", "/api/admin/members/*/withdraw")
                         .hasRole("OWNER")
+                        // 3교시 후기 통계는 대학원장만 (교수는 후기 결과를 보지 않는다)
+                        .requestMatchers("/api/admin/feedback-stats").hasRole("OWNER")
                         // 교수·대학원장: 나머지 관리 화면
                         .requestMatchers("/api/admin/**").hasAnyRole("MANAGER", "OWNER")
                         .requestMatchers("/api/**").authenticated()

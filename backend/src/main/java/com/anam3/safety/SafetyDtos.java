@@ -28,7 +28,10 @@ public final class SafetyDtos {
             Report.Reason reason,
 
             @Size(max = 500, message = "자세한 내용은 500자까지 쓸 수 있어요")
-            String detail) {
+            String detail,
+
+            /** 3교시 후기에서 '아쉬웠어요' 뒤 사람 신고. 정말 그렇게 답했을 때만 표시가 붙는다 */
+            Boolean fromFeedback) {
     }
 
     /** 차단하기: 3교시 상세 화면의 참여 번호(PersonView.ref) */
@@ -53,7 +56,9 @@ public final class SafetyDtos {
             Long memberId, String memberName, String memberAffiliation,
             /** 신고당한 사람의 직책 — 대학원장·교수는 화면에서 "이용 차단" 버튼을 감춘다 */
             MemberRole memberRole, boolean memberBanned,
-            SchoolTag school) {
+            SchoolTag school,
+            /** 3교시 후기에서 한 신고 — 대학원장에게만 true 로 내려간다 (교수에게는 늘 false) */
+            boolean fromFeedback) {
     }
 
     public record ResolveRequest(@NotNull Boolean resolved) {

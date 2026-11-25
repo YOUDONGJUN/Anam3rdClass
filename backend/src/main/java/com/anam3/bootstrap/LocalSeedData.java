@@ -19,6 +19,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.anam3.auth.OwnerPolicy;
+import com.anam3.feedback.MeetupFeedback;
+import com.anam3.feedback.MeetupFeedback.Rating;
+import com.anam3.feedback.MeetupFeedbackRepository;
 import com.anam3.meetup.Meetup;
 import com.anam3.meetup.MeetupAudience;
 import com.anam3.meetup.MeetupCategory;
@@ -57,18 +60,20 @@ public class LocalSeedData implements ApplicationRunner {
     private final MeetupRepository meetups;
     private final ParticipationRepository participations;
     private final NoticeRepository notices;
+    private final MeetupFeedbackRepository feedbacks;
     private final OwnerPolicy ownerPolicy;
     private final Clock clock;
 
     public LocalSeedData(MemberRepository members, SchoolRepository schools, DepartmentRepository departments,
             MeetupRepository meetups, ParticipationRepository participations, NoticeRepository notices,
-            OwnerPolicy ownerPolicy, Clock clock) {
+            MeetupFeedbackRepository feedbacks, OwnerPolicy ownerPolicy, Clock clock) {
         this.members = members;
         this.schools = schools;
         this.departments = departments;
         this.meetups = meetups;
         this.participations = participations;
         this.notices = notices;
+        this.feedbacks = feedbacks;
         this.ownerPolicy = ownerPolicy;
         this.clock = clock;
     }
@@ -88,7 +93,7 @@ public class LocalSeedData implements ApplicationRunner {
         Member godae = member(korea, "godae@korea.ac.kr", "김고대", 61, "인융", MemberRole.USER, now);
         Member anam = member(korea, "anam@korea.ac.kr", "이안암", 60, "빅융", MemberRole.MANAGER, now);
         Member horang = member(korea, "horang@korea.ac.kr", "박호랑", 61, "소보", MemberRole.USER, now);
-        member(korea, "seoktap@korea.ac.kr", "최석탑", 62, "인융", MemberRole.USER, now);
+        Member seoktap = member(korea, "seoktap@korea.ac.kr", "최석탑", 62, "인융", MemberRole.USER, now);
 
         School yonsei = school("YONSEI");
         School skku = school("SKKU");
@@ -150,6 +155,46 @@ public class LocalSeedData implements ApplicationRunner {
                 List.of(MeetupCategory.ANYTHING), List.of(), tonight, tonight.minus(Duration.ofMinutes(20)), 2, 5,
                 null, now);
 
+        // 지난 3교시와 후기: 어제 성사된 3교시는 앱을 열면 후기를 묻고, 그 전 것들은 대학원장 통계에 숫자로 보인다
+        LocalDate yesterday = today.minusDays(1);
+        Meetup lastNight = meetup(godae, MeetupAudience.SCHOOL, "수업 끝나고 가볍게 한잔", "어제 모였던 3교시예요",
+                "참살이길 호프", List.of(MeetupCategory.BEER), List.of("친목"), at(yesterday, 19, 30), at(yesterday, 18, 0),
+                3, 6, "https://open.kakao.com/o/example", now);
+        join(lastNight, anam, now);
+        join(lastNight, horang, now);
+        join(lastNight, seoktap, now);
+
+        Meetup lastWeek = meetup(horang, MeetupAudience.SCHOOL, "중간고사 끝 소주", "시험 끝난 기념", "안암역 포차",
+                List.of(MeetupCategory.SOJU), List.of("친목"), at(today.minusDays(5), 20, 0), at(today.minusDays(5), 18, 0),
+                2, 6, null, now);
+        join(lastWeek, godae, now);
+        join(lastWeek, seoktap, now);
+        join(lastWeek, owner, now);
+        answered(lastWeek, horang, true, Rating.GOOD, now);
+        answered(lastWeek, godae, true, Rating.GOOD, now);
+        answered(lastWeek, seoktap, true, Rating.OK, now);
+        answered(lastWeek, owner, true, Rating.BAD, now);
+
+        Meetup study2 = meetup(anam, MeetupAudience.SCHOOL, "논문 얘기 말고 수다만", "", "고대 정문 앞 카페",
+                List.of(MeetupCategory.NO_ALCOHOL), List.of("잡담"), at(today.minusDays(9), 19, 0),
+                at(today.minusDays(9), 17, 0), 2, 4, null, now);
+        join(study2, godae, now);
+        join(study2, horang, now);
+        answered(study2, anam, true, Rating.GOOD, now);
+        answered(study2, godae, true, Rating.OK, now);
+        answered(study2, horang, false, null, now);
+
+        Meetup unitedPast = meetup(sinchon, MeetupAudience.ALL, "연합 첫 번개 뒤풀이", "", "신촌역 호프",
+                List.of(MeetupCategory.BEER), List.of("네트워킹"), at(today.minusDays(6), 19, 0),
+                at(today.minusDays(6), 17, 0), 2, 8, null, now);
+        join(unitedPast, myeongnyun, now);
+        answered(unitedPast, sinchon, true, Rating.GOOD, now);
+        answered(unitedPast, myeongnyun, true, Rating.GOOD, now);
+
+        meetup(seoktap, MeetupAudience.SCHOOL, "인원 모자랐던 하이볼", "", "참살이길 바",
+                List.of(MeetupCategory.HIGHBALL), List.of("친목"), at(today.minusDays(3), 21, 0),
+                at(today.minusDays(3), 19, 0), 4, 6, null, now); // 무산
+
         Notice welcome = notices.save(new Notice(owner, null, "안암3교시에 오신 걸 환영해요 🍻",
                 "IT연합회 다섯 학교가 함께 써요. 수업 끝나고 한잔하고 싶을 때, 3교시를 열어 보세요.\n\n"
                         + "• 최소 인원이 모이면 '성사'! 그때 참여자끼리 이름과 오픈채팅 링크가 공개돼요.\n"
@@ -189,6 +234,16 @@ public class LocalSeedData implements ApplicationRunner {
                 min, max, openChat, now));
         participations.save(new Participation(m, host, now));
         return m;
+    }
+
+    private static Instant at(LocalDate day, int hour, int minute) {
+        return day.atTime(LocalTime.of(hour, minute)).atZone(KST).toInstant();
+    }
+
+    private void answered(Meetup meetup, Member member, boolean met, Rating rating, Instant now) {
+        MeetupFeedback f = new MeetupFeedback(meetup, member, now);
+        f.answer(met, rating, now);
+        feedbacks.save(f);
     }
 
     private void join(Meetup meetup, Member member, Instant now) {

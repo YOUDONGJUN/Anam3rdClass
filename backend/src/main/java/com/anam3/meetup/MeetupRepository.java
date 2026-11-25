@@ -64,6 +64,10 @@ public interface MeetupRepository extends JpaRepository<Meetup, Long> {
     @Query("select m from Meetup m join fetch m.host join fetch m.school order by m.meetAt desc")
     List<Meetup> findAllWithHost(Pageable pageable);
 
+    /** 대학원장 후기 통계: 모임 시간이 since 이후, now 이전인 3교시 (취소 포함) */
+    @Query("select m from Meetup m join fetch m.school where m.meetAt >= :since and m.meetAt < :now")
+    List<Meetup> findPastWithSchool(@Param("since") Instant since, @Param("now") Instant now);
+
     /** 관리 화면: 교수는 자기 학교 3교시 (자기 학교 원우가 연 연합 3교시 포함) */
     @Query("""
             select m from Meetup m join fetch m.host join fetch m.school

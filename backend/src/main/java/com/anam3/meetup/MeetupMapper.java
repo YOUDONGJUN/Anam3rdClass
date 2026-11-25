@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import com.anam3.auth.LoginMember;
 import com.anam3.common.NameMasker;
+import com.anam3.feedback.FeedbackDtos.FeedbackPrompt;
 import com.anam3.meetup.MeetupDtos.MeetupDetail;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
 import com.anam3.meetup.MeetupDtos.PersonView;
@@ -63,9 +64,10 @@ public class MeetupMapper {
 
     /**
      * @param blocked 나와 연 사람 사이에 차단이 있으면 true — 참여 버튼을 감춘다
+     * @param feedback 후기를 받는 동안 함께한 사람에게만 (아니면 null)
      */
     public MeetupDetail toDetail(Meetup m, List<Participation> participations, LoginMember viewer, boolean blocked,
-            Instant now) {
+            FeedbackPrompt feedback, Instant now) {
         boolean joined = participations.stream().anyMatch(p -> p.getMember().getId().equals(viewer.id()));
         boolean hosting = m.isHostedBy(viewer.id());
         boolean revealed = canSeeRealNames(m, viewer, joined);
@@ -102,7 +104,8 @@ public class MeetupMapper {
                 m.getFee(),
                 m.isFeePrepaid(),
                 canDelete,
-                (hosting || viewer.isOwner()) && m.isConfirmableAt(now));
+                (hosting || viewer.isOwner()) && m.isConfirmableAt(now),
+                feedback);
     }
 
     private PersonView person(Member member, LoginMember viewer, boolean revealed, boolean host, Long ref) {

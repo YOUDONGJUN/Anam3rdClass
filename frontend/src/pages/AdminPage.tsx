@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff,
   Flag,
+  Frown,
   History,
   Pencil,
   RotateCcw,
@@ -46,6 +47,7 @@ import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, EmptyState, ErrorState, Field, FormError, Segmented, Spinner } from '../components/ui'
 import { cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
+import { FeedbackStatsPanel } from './AdminFeedbackStats'
 import { useNow } from '../lib/hooks'
 import {
   countByCohort,
@@ -64,7 +66,7 @@ import {
 import { affiliation, ROLE_LABEL } from '../lib/person'
 import { formatRelative } from '../lib/time'
 
-type Tab = 'home' | 'members' | 'reports' | 'meetups' | 'schools'
+type Tab = 'home' | 'members' | 'reports' | 'meetups' | 'schools' | 'stats'
 
 const PAGE_SIZE = 20
 
@@ -967,6 +969,12 @@ function ReportCard({ r }: { r: Report }) {
         </span>
         <span className="text-[15px] font-bold text-ink">{REASON_LABEL[r.reason]}</span>
         {r.school && <SchoolBadge school={r.school} />}
+        {r.fromFeedback && (
+          <span className="inline-flex items-center gap-1 rounded bg-accent-soft px-1.5 py-0.5 text-[11px] leading-none font-bold text-accent-ink">
+            <Frown className="size-3" aria-hidden />
+            3교시 후기에서
+          </span>
+        )}
         <span className="ml-auto text-sm text-ink-3">{formatRelative(r.createdAt)}</span>
       </div>
       <div className="flex flex-col gap-0.5 text-sm text-ink-2">
@@ -1048,23 +1056,60 @@ function ReportCard({ r }: { r: Report }) {
   )
 }
 
-function Reports() {
+/** 신고 목록 위 보기 칩 (전체 · 후기에서) */
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`h-8 rounded-full px-3 text-[13px] font-bold transition-colors ${
+        active
+          ? 'bg-board text-on-board shadow-[0_2px_0_rgb(0_0_0/0.25)]'
+          : 'border border-line-strong bg-surface text-ink shadow-[0_2px_0_var(--line-strong)] hover:bg-surface-2'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * 신고 목록. 대학원장은 "후기에서" 온 신고만 모아 볼 수 있다 (통계의 "신고 탭에서 보기"로 오면 그렇게 열린다).
+ * 교수에게는 후기에서 온 신고라는 표시가 내려오지 않는다.
+ */
+function Reports({ feedbackOnly, onFeedbackOnly }: { feedbackOnly: boolean; onFeedbackOnly: (on: boolean) => void }) {
   const { data, isPending, error, refetch } = useAdminReports()
   const isOwner = useIsOwner()
   if (isPending) return <Spinner />
   if (!data) return <ErrorState message={error?.message ?? '불러오지 못했어요'} onRetry={() => refetch()} />
+  const fromFeedback = data.filter((r) => r.fromFeedback)
+  const canFilter = isOwner && fromFeedback.length > 0
+  const list = canFilter && feedbackOnly ? fromFeedback : data
   return (
     <div className="flex flex-col gap-3">
-      <p className="px-1 text-sm text-ink-3">
-        {isOwner ? '다섯 학교 신고' : '우리 학교 신고'} · 신고한 사람은 안 보여요
-      </p>
-      {data.length === 0 ? (
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+        <p className="text-sm text-ink-3">
+          {isOwner ? '다섯 학교 신고' : '우리 학교 신고'} · 신고한 사람은 안 보여요
+        </p>
+        {canFilter && (
+          <div role="group" aria-label="신고 보기" className="flex gap-1.5">
+            <FilterChip active={!feedbackOnly} onClick={() => onFeedbackOnly(false)}>
+              전체 {data.length}
+            </FilterChip>
+            <FilterChip active={feedbackOnly} onClick={() => onFeedbackOnly(true)}>
+              후기에서 {fromFeedback.length}
+            </FilterChip>
+          </div>
+        )}
+      </div>
+      {list.length === 0 ? (
         <div className={cardClass}>
           <EmptyState title="들어온 신고가 없어요" />
         </div>
       ) : (
         <ul className={`${cardClass} divide-y divide-line overflow-hidden`}>
-          {data.map((r) => (
+          {list.map((r) => (
             <ReportCard key={r.id} r={r} />
           ))}
         </ul>
@@ -1499,8 +1544,15 @@ function Schools() {
 export function AdminPage() {
   const { member } = useAuth()
   const [tab, setTab] = useState<Tab>('home')
+  /** 신고 탭에서 후기에서 온 신고만 보기 (대학원장) */
+  const [feedbackOnly, setFeedbackOnly] = useState(false)
   const stats = useAdminStats()
   const open = stats.data?.openReports ?? 0
+  const owner = member?.role === 'OWNER'
+  const go = (next: Tab) => {
+    setFeedbackOnly(false)
+    setTab(next)
+  }
   return (
     <div>
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -1516,21 +1568,31 @@ export function AdminPage() {
         <Segmented
           label="관리 메뉴"
           value={tab}
-          onChange={setTab}
+          onChange={go}
           options={[
             { value: 'home', label: '홈' },
             { value: 'reports', label: open > 0 ? `신고 ${open}` : '신고' },
             { value: 'members', label: '원우' },
             { value: 'meetups', label: '3교시' },
             { value: 'schools', label: '학교' },
+            // 3교시 후기 통계는 대학원장만
+            ...(owner ? [{ value: 'stats' as const, label: '통계' }] : []),
           ]}
         />
       </div>
-      {tab === 'home' && <AdminHome onGo={setTab} />}
+      {tab === 'home' && <AdminHome onGo={go} />}
       {tab === 'members' && <Members />}
-      {tab === 'reports' && <Reports />}
+      {tab === 'reports' && <Reports feedbackOnly={feedbackOnly} onFeedbackOnly={setFeedbackOnly} />}
       {tab === 'meetups' && <Meetups />}
       {tab === 'schools' && <Schools />}
+      {tab === 'stats' && owner && (
+        <FeedbackStatsPanel
+          onOpenReports={() => {
+            setTab('reports')
+            setFeedbackOnly(true)
+          }}
+        />
+      )}
     </div>
   )
 }

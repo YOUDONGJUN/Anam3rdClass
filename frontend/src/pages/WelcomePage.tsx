@@ -7,7 +7,7 @@ import type { AuthStep, DevMember } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { useKakaoStep } from '../auth/loginSteps'
 import { RoleTag } from '../components/PersonName'
-import { MadeBy } from '../components/MadeBy'
+import { ByCompany } from '../components/MadeBy'
 import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, FormError, Spinner } from '../components/ui'
 import { saveReturnPath, startKakaoLogin } from '../lib/kakao'
@@ -223,7 +223,7 @@ export function WelcomePage() {
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-1 px-2 text-center text-xs leading-relaxed text-ink-3">
-            <MadeBy />
+            <ByCompany />
             <p>학생들이 만든 비공식 커뮤니티예요</p>
             <p>
               <Link to="/terms" className="underline underline-offset-4 hover:text-ink">

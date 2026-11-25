@@ -2,6 +2,10 @@
 
 <!-- 관련 이슈가 있으면: closes #번호 -->
 
+## 기획 문서
+
+<!-- docs/planning/ 의 기획 파일 링크. 머지되면 그 파일의 '결과'와 docs/planning/README.md 표를 고친다 -->
+
 ## 확인한 것
 
 - [ ] `cd backend && ./mvnw test` 통과

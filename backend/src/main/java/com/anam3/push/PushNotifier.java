@@ -102,15 +102,51 @@ public class PushNotifier {
                 tag(meetup, "changed")));
     }
 
+    /** 새 3교시: 연합이면 다섯 학교 모두, 아니면 우리 학교(우리 기수만이면 그 기수) 원우에게 */
+    public void opened(Meetup meetup) {
+        if (meetup.isFederated()) {
+            federationOpened(meetup);
+        } else {
+            schoolOpened(meetup);
+        }
+    }
+
     /** 새 연합 3교시: 다섯 학교 원우 모두에게 (연 사람, 연 사람과 차단 관계인 사람 빼고) */
     public void federationOpened(Meetup meetup) {
+        push.broadcast(null, new PushMessage(PushType.FEDERATION, "새 연합 3교시",
+                meetup.getSchool().getShortName() + " · " + meetup.getTitle() + " · " + WHEN.format(meetup.getMeetAt()),
+                path(meetup), "meetup-" + meetup.getId()), hostAndBlocked(meetup));
+    }
+
+    /**
+     * 새 우리 학교 3교시: 그 학교 원우에게, 우리 기수만 3교시는 그 기수에게만 (연 사람, 연 사람과 차단 관계인 사람 빼고).
+     * 이름은 넣지 않는다
+     */
+    public void schoolOpened(Meetup meetup) {
+        Integer cohort = meetup.getOnlyCohort();
+        PushMessage message = new PushMessage(PushType.SCHOOL, cohort == null ? "새 3교시" : "새 " + cohort + "기 3교시",
+                meetup.getTitle() + " · " + WHEN.format(meetup.getMeetAt()) + " · " + meetup.getPlace(), path(meetup),
+                "meetup-" + meetup.getId());
+        Long schoolId = meetup.getSchool().getId();
+        if (cohort == null) {
+            push.broadcast(schoolId, message, hostAndBlocked(meetup));
+        } else {
+            push.broadcastCohort(schoolId, cohort, message, hostAndBlocked(meetup));
+        }
+    }
+
+    /** 자리가 났어요: 자리 나면 알림을 신청한 사람에게. 먼저 참여한 사람이 탄다 */
+    public void spotOpened(Meetup meetup, List<Long> waiterIds) {
+        push.send(waiterIds, new PushMessage(PushType.SPOT, meetup.getTitle(),
+                "자리가 났어요! 먼저 참여하는 원우가 타요 · " + headcount(meetup), path(meetup), tag(meetup, "spot")));
+    }
+
+    private Set<Long> hostAndBlocked(Meetup meetup) {
         Long hostId = meetup.getHost().getId();
         Set<Long> except = new HashSet<>(blocks.findBlockedIds(hostId));
         except.addAll(blocks.findBlockerIds(hostId));
         except.add(hostId);
-        push.broadcast(null, new PushMessage(PushType.FEDERATION, "새 연합 3교시",
-                meetup.getSchool().getShortName() + " · " + meetup.getTitle() + " · " + WHEN.format(meetup.getMeetAt()),
-                path(meetup), "meetup-" + meetup.getId()), except);
+        return except;
     }
 
     /**

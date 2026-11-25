@@ -13,8 +13,10 @@ const ITEMS: Array<{ type: PushType; label: string; hint: string }> = [
   { type: 'REACHED', label: '성사', hint: '참여한 3교시가 성사되면' },
   { type: 'DEADLINE', label: '모집 마감 30분 전', hint: '참여한 3교시에 아직 인원이 모자라면' },
   { type: 'CHANGED', label: '시간·장소 변경 · 취소', hint: '참여한 3교시가 바뀌거나 취소되면' },
-  { type: 'NOTICE', label: '새 공지', hint: '교수·대학원장이 올린 공지' },
+  { type: 'SPOT', label: '빈자리', hint: '자리 나면 알림을 신청한 3교시에 자리가 나면' },
+  { type: 'SCHOOL', label: '새 우리 학교 3교시', hint: '우리 학교 3교시가 열리면 (우리 기수만 3교시는 그 기수에게만)' },
   { type: 'FEDERATION', label: '새 연합 3교시', hint: '다섯 학교 연합 3교시가 열리면' },
+  { type: 'NOTICE', label: '새 공지', hint: '교수·대학원장이 올린 공지' },
 ]
 
 /** 앱 알림 켜고 끄기 (앱에서만 보인다) */

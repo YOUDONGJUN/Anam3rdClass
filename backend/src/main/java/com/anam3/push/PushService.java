@@ -102,6 +102,11 @@ public class PushService {
         deliver(targets, message, except);
     }
 
+    /** 한 학교 한 기수 원우 모두에게. except 는 빼고 */
+    public void broadcastCohort(Long schoolId, int cohort, PushMessage message, Set<Long> except) {
+        deliver(devices.findCohortTargets(schoolId, cohort, MemberStatus.ACTIVE), message, except);
+    }
+
     private void deliver(List<PushTarget> targets, PushMessage message, Set<Long> except) {
         List<String> tokens = targets.stream()
                 .filter(t -> !except.contains(t.memberId()))

@@ -21,6 +21,7 @@ import com.anam3.meetup.MeetupDtos.MeetupCreateRequest;
 import com.anam3.meetup.MeetupDtos.MeetupDetail;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
 import com.anam3.meetup.MeetupDtos.MeetupUpdateRequest;
+import com.anam3.meetup.MeetupMapper.WaitInfo;
 import com.anam3.meetup.MeetupDtos.OptionsChange;
 import com.anam3.meetup.MeetupDtos.PeopleChange;
 import com.anam3.meetup.MeetupDtos.ScheduleChange;
@@ -36,6 +37,11 @@ public class MeetupService {
 
     private static final Duration MAX_AHEAD = Duration.ofDays(31);
     private static final int LIST_LIMIT = 100;
+    /** 최대 인원 상한 (MeetupCreateRequest 와 같다) */
+    public static final int MAX_SEATS = 30;
+    /** 장소 추천: 최근 이만큼 동안 열린 3교시에서, 이만큼까지 */
+    private static final Duration PLACE_WINDOW = Duration.ofDays(180);
+    private static final int PLACE_LIMIT = 8;
 
     private final MeetupRepository meetups;
     private final ParticipationRepository participations;
@@ -45,11 +51,12 @@ public class MeetupService {
     private final MeetupMapper mapper;
     private final PushNotifier notifier;
     private final FeedbackService feedback;
+    private final MeetupWaitRepository waits;
     private final Clock clock;
 
     public MeetupService(MeetupRepository meetups, ParticipationRepository participations, MemberRepository members,
             MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, PushNotifier notifier,
-            FeedbackService feedback, Clock clock) {
+            FeedbackService feedback, MeetupWaitRepository waits, Clock clock) {
         this.meetups = meetups;
         this.participations = participations;
         this.members = members;
@@ -58,6 +65,7 @@ public class MeetupService {
         this.mapper = mapper;
         this.notifier = notifier;
         this.feedback = feedback;
+        this.waits = waits;
         this.clock = clock;
     }
 
@@ -78,9 +86,7 @@ public class MeetupService {
                 req.maxPeople(), blankToNull(req.openChatUrl()), now));
         meetup.applyOptions(Boolean.TRUE.equals(req.lateJoin()), req.fee(), Boolean.TRUE.equals(req.feePrepaid()));
         participations.save(new Participation(meetup, host, now));
-        if (meetup.isFederated()) {
-            notifier.federationOpened(meetup);
-        }
+        notifier.opened(meetup); // 연합이면 다섯 학교, 아니면 우리 학교(우리 기수만이면 그 기수)
         return detail(viewer, meetup.getId());
     }
 
@@ -140,7 +146,11 @@ public class MeetupService {
         }
         boolean blocked = !meetup.isHostedBy(viewer.id()) && blocks.existsBetween(viewer.id(), meetup.getHost().getId());
         Instant now = clock.instant();
-        return mapper.toDetail(meetup, people, viewer, blocked, feedback.prompt(meetup, viewer, joined, now), now);
+        boolean manages = meetup.isHostedBy(viewer.id()) || viewer.isOwner();
+        WaitInfo wait = new WaitInfo(!joined && waits.existsByMeetupIdAndMemberId(id, viewer.id()),
+                manages ? waits.countByMeetupId(id) : 0);
+        return mapper.toDetail(meetup, people, viewer, blocked, feedback.prompt(meetup, viewer, joined, now), wait,
+                now);
     }
 
     /** 수정은 개설자와 대학원장만 */
@@ -157,6 +167,7 @@ public class MeetupService {
         Instant meetAtBefore = meetup.getMeetAt();
         String placeBefore = meetup.getPlace();
         boolean reachedBefore = meetup.isReached();
+        boolean fullBefore = meetup.isFull();
         if (req.schedule() != null) {
             changeSchedule(meetup, req.schedule(), now);
         }
@@ -178,7 +189,73 @@ public class MeetupService {
         if (!reachedBefore && meetup.isReached()) {
             notifier.reached(meetup, viewer.id()); // 최소 인원을 낮춰서 바로 성사
         }
+        notifyIfSpotOpened(meetup, fullBefore, now);
         return detail(viewer, id);
+    }
+
+    /**
+     * 정원 늘리기: 빈자리를 기다리는 사람을 태우려고 연 사람(·대학원장)이 누른다. 늘리기만 한다.
+     * 자리가 나면 기다리던 사람에게 알린다
+     */
+    public MeetupDetail addSeats(LoginMember viewer, Long id, int maxPeople) {
+        Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
+        if (!viewer.isOwner() && !meetup.isHostedBy(viewer.id())) {
+            throw ApiException.forbidden("3교시를 연 사람만 정원을 늘릴 수 있어요");
+        }
+        checkOpen(meetup);
+        if (meetup.getMaxPeople() == null) {
+            throw ApiException.badRequest("UNLIMITED", "인원 제한이 없는 3교시예요");
+        }
+        if (maxPeople <= meetup.getMaxPeople()) {
+            throw ApiException.badRequest("SEATS_NOT_MORE",
+                    "지금 정원(" + meetup.getMaxPeople() + "명)보다 많게 정해 주세요");
+        }
+        Instant now = clock.instant();
+        boolean fullBefore = meetup.isFull();
+        meetup.changePeople(meetup.getMinPeople(), maxPeople, now);
+        notifyIfSpotOpened(meetup, fullBefore, now);
+        return detail(viewer, id);
+    }
+
+    /**
+     * 빈자리 대기 신청: 정원이 찬 3교시에 "자리 나면 알림". 참여할 수 있는 사람만 (학교·기수·차단·마감 규칙은 참여와 같다).
+     * 이미 신청했으면 그대로 둔다
+     */
+    public MeetupDetail waitForSeat(LoginMember viewer, Long id) {
+        Instant now = clock.instant();
+        Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
+        if (participations.existsByMeetupIdAndMemberId(id, viewer.id())) {
+            throw ApiException.conflict("ALREADY_JOINED", "이미 참여 중인 3교시예요");
+        }
+        checkJoinRules(viewer, meetup, now);
+        if (!meetup.isFull()) {
+            throw ApiException.badRequest("NOT_FULL", "자리가 있어요. 바로 참여해 주세요");
+        }
+        if (!waits.existsByMeetupIdAndMemberId(id, viewer.id())) {
+            waits.save(new MeetupWait(meetup, members.getReferenceById(viewer.id()), now));
+        }
+        return detail(viewer, id);
+    }
+
+    /** 빈자리 대기 취소 (신청하지 않았어도 그대로 성공) */
+    public MeetupDetail cancelWait(LoginMember viewer, Long id) {
+        meetups.findById(id).orElseThrow(MeetupService::notFound);
+        waits.deleteOne(id, viewer.id());
+        return detail(viewer, id);
+    }
+
+    /** 우리 학교 3교시에서 많이 쓴 장소 (3교시 열기 화면의 추천) */
+    @Transactional(readOnly = true)
+    public List<String> popularPlaces(LoginMember viewer) {
+        Instant since = clock.instant().minus(PLACE_WINDOW);
+        return meetups.findPopularPlaces(viewer.schoolId(), viewer.cohort(), since, PageRequest.of(0, PLACE_LIMIT));
+    }
+
+    /** 꽉 찼던 3교시에 자리가 났으면 기다리던 사람 모두에게 알린다 (먼저 참여한 사람이 탄다) */
+    private void notifyIfSpotOpened(Meetup meetup, boolean fullBefore, Instant now) {
+        if (fullBefore && meetup.isJoinableAt(now)) {
+            notifier.spotOpened(meetup, waits.findMemberIds(meetup.getId()));
+        }
     }
 
     /** 열 때와 같은 시간 규칙: 모임은 지금 이후 한 달 이내, 마감은 지금 이후이고 모임 시간보다 늦지 않게 */
@@ -281,6 +358,7 @@ public class MeetupService {
         List<Long> people = meetup.isOpenAt(clock.instant()) ? participations.findMemberIds(id) : List.of();
         reports.detachMeetup(id);
         feedback.deleteFor(id);
+        waits.deleteByMeetupId(id);
         participations.deleteByMeetupId(id);
         meetups.delete(meetup);
         if (!people.isEmpty()) {
@@ -319,24 +397,14 @@ public class MeetupService {
         if (participations.existsByMeetupIdAndMemberId(id, viewer.id())) {
             throw ApiException.conflict("ALREADY_JOINED", "이미 참여 중인 3교시예요");
         }
-        if (!meetup.isOpenTo(viewer.schoolId(), viewer.cohort())) {
-            throw closedTo(meetup);
-        }
-        if (meetup.isCanceled()) {
-            throw ApiException.badRequest("CANCELED", "취소된 3교시예요");
-        }
-        if (blocks.existsBetween(viewer.id(), meetup.getHost().getId())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "BLOCKED", "참여할 수 없는 3교시예요");
-        }
-        if (!meetup.isTakingJoinsAt(now)) {
-            throw ApiException.badRequest("CLOSED", "모집이 마감된 3교시예요");
-        }
+        checkJoinRules(viewer, meetup, now);
         if (!meetup.isJoinableAt(now)) {
-            throw ApiException.badRequest("FULL", "정원이 다 찼어요");
+            throw ApiException.badRequest("FULL", "정원이 다 찼어요. 자리 나면 알림을 신청해 보세요");
         }
         boolean reachedBefore = meetup.isReached();
         participations.save(new Participation(meetup, members.getReferenceById(viewer.id()), now));
         meetup.addParticipant();
+        waits.deleteOne(id, viewer.id()); // 기다리던 사람이 탔다
         notifier.joined(meetup, viewer.id(), !reachedBefore && meetup.isReached());
         return detail(viewer, id);
     }
@@ -352,10 +420,28 @@ public class MeetupService {
         if (!meetup.isRecruitingAt(now)) {
             throw ApiException.badRequest("CLOSED", "모집이 끝난 뒤에는 나갈 수 없어요. 단톡방에서 알려 주세요");
         }
+        boolean fullBefore = meetup.isFull();
         participations.delete(participation);
         meetup.removeParticipant();
         notifier.left(meetup);
+        notifyIfSpotOpened(meetup, fullBefore, now);
         return detail(viewer, id, false);
+    }
+
+    /** 참여·빈자리 대기 공통: 학교·기수, 취소, 차단, 마감 */
+    private void checkJoinRules(LoginMember viewer, Meetup meetup, Instant now) {
+        if (!meetup.isOpenTo(viewer.schoolId(), viewer.cohort())) {
+            throw closedTo(meetup);
+        }
+        if (meetup.isCanceled()) {
+            throw ApiException.badRequest("CANCELED", "취소된 3교시예요");
+        }
+        if (blocks.existsBetween(viewer.id(), meetup.getHost().getId())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "BLOCKED", "참여할 수 없는 3교시예요");
+        }
+        if (!meetup.isTakingJoinsAt(now)) {
+            throw ApiException.badRequest("CLOSED", "모집이 마감된 3교시예요");
+        }
     }
 
     /**

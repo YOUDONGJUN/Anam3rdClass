@@ -1,15 +1,45 @@
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { Check, ChevronRight, Crown, EyeOff, FileText, KeyRound, LogOut, Mail, Minus, Pencil, ShieldCheck, Users, UserX } from 'lucide-react'
-import { useAdminStats, useAuthConfig, useBlocks, useUnblock, useWithdraw } from '../api/queries'
+import {
+  Check,
+  ChevronRight,
+  Crown,
+  EyeOff,
+  FileText,
+  KeyRound,
+  Lock,
+  LogOut,
+  Mail,
+  Minus,
+  Pencil,
+  ShieldCheck,
+  Trophy,
+  Users,
+  UserX,
+  X,
+} from 'lucide-react'
+import {
+  useAdminStats,
+  useAuthConfig,
+  useBlocks,
+  useRanking,
+  useRankingSetting,
+  useUnblock,
+  useUpdateMyProfile,
+  useWithdraw,
+} from '../api/queries'
+import type { Member } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { AffiliationFields } from '../components/AffiliationFields'
 import { MadeBy } from '../components/MadeBy'
 import { RoleTag } from '../components/PersonName'
 import { PushSettings } from '../components/PushSettings'
 import { SchoolBadge } from '../components/SchoolBadge'
-import { Button, Segmented } from '../components/ui'
-import { cardClass } from '../components/styles'
+import { Button, Field, FormError, Segmented } from '../components/ui'
+import { cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
-import { affiliation, isStaff, maskName } from '../lib/person'
+import { affiliation, canEditOwnName, isStaff, maskName, profileEditRule, profileLockedUntil } from '../lib/person'
+import { formatDate } from '../lib/time'
 import { isThemedSchool, type ThemeColor, type ThemeMode } from '../lib/theme'
 import { useTheme } from '../theme/ThemeContext'
 
@@ -108,6 +138,193 @@ function LoginMethod({ on, label }: { on: boolean; label: string }) {
   )
 }
 
+/**
+ * 내 정보 고치기 (한 장). 학과·기수는 누구나 — 원우는 30일에 한 번, 교수·대학원장은 언제든.
+ * 이름은 대학원장만 여기서 고치고, 교수·원우는 요청한다
+ */
+function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  const save = useUpdateMyProfile()
+  const toast = useToast()
+  const [name, setName] = useState(member.name)
+  const [cohort, setCohort] = useState(String(member.cohort))
+  const [departmentId, setDepartmentId] = useState<number | null>(member.departmentId)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const dialog = ref.current
+    if (dialog && !dialog.open) dialog.showModal()
+  }, [])
+
+  const nameEditable = canEditOwnName(member.role)
+  const lockedUntil = profileLockedUntil(member)
+  const affiliationChanged = Number(cohort) !== member.cohort || departmentId !== member.departmentId
+  const changed = affiliationChanged || (nameEditable && name.trim() !== member.name)
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (nameEditable && !name.trim()) return setError('이름을 입력해 주세요')
+    if (!cohort || !departmentId) return setError('기수와 학과를 골라 주세요')
+    if (
+      member.role === 'USER' &&
+      affiliationChanged &&
+      !window.confirm('학과·기수는 30일에 한 번 바꿀 수 있어요.\n이대로 바꿀까요?')
+    )
+      return
+    save.mutate(
+      { name: nameEditable ? name.trim() : undefined, cohort: Number(cohort), departmentId },
+      {
+        onSuccess: () => {
+          toast.show('내 정보를 고쳤어요', 'ok')
+          ref.current?.close()
+        },
+        onError: (err) => setError(err.message),
+      },
+    )
+  }
+
+  return (
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      aria-labelledby="profile-sheet-title"
+      className="m-auto max-h-[88dvh] w-[min(30rem,calc(100%-2rem))] overflow-y-auto rounded-3xl border border-line bg-surface p-0 text-ink backdrop:bg-black/45"
+    >
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-surface px-5 py-4">
+        <h2 id="profile-sheet-title" className="text-lg font-extrabold">
+          내 정보 고치기
+        </h2>
+        <button
+          type="button"
+          aria-label="닫기"
+          onClick={() => ref.current?.close()}
+          className="flex size-10 shrink-0 items-center justify-center rounded-lg text-ink-2 hover:bg-surface-2"
+        >
+          <X className="size-5" aria-hidden />
+        </button>
+      </div>
+      <form onSubmit={submit} className="flex flex-col gap-5 px-5 py-5" noValidate>
+        {nameEditable ? (
+          <Field label="이름">
+            {({ id }) => (
+              <input id={id} className={inputClass} maxLength={20} value={name} onChange={(e) => setName(e.target.value)} />
+            )}
+          </Field>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[15px] font-semibold text-ink">이름</span>
+            <p className="flex items-center gap-2 rounded-xl bg-surface-2 px-3.5 py-3 text-base text-ink">
+              <Lock className="size-4 shrink-0 text-ink-3" aria-hidden />
+              {member.name}
+            </p>
+            <p className="text-sm text-ink-3">
+              학교 이메일로 본인 인증을 해서 이름은 바꿀 수 없어요.{' '}
+              {member.role === 'MANAGER' ? '대학원장에게 요청해 주세요.' : '교수·대학원장에게 요청해 주세요.'}
+            </p>
+          </div>
+        )}
+
+        {lockedUntil ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[15px] font-semibold text-ink">기수 · 학과</span>
+            <p className="flex items-center gap-2 rounded-xl bg-surface-2 px-3.5 py-3 text-base text-ink">
+              <Lock className="size-4 shrink-0 text-ink-3" aria-hidden />
+              {affiliation(member.cohortLabel, member.departmentLabel)}
+            </p>
+            <p className="text-sm text-ink-3">
+              학과·기수는 30일에 한 번 바꿀 수 있어요.{' '}
+              <b className="font-semibold text-ink-2">{formatDate(lockedUntil)}</b>부터 다시 바꿀 수 있어요.
+            </p>
+          </div>
+        ) : (
+          <>
+            <AffiliationFields
+              schoolId={member.school.id}
+              cohort={cohort}
+              departmentId={departmentId}
+              onCohortChange={setCohort}
+              onDepartmentChange={setDepartmentId}
+            />
+            {member.role === 'USER' && (
+              <p className="-mt-2 text-sm text-ink-3">학과·기수는 30일에 한 번 바꿀 수 있어요.</p>
+            )}
+          </>
+        )}
+
+        <FormError message={error} />
+
+        <div className="flex gap-2.5">
+          <Button variant="secondary" className="flex-1" onClick={() => ref.current?.close()}>
+            닫기
+          </Button>
+          {(nameEditable || !lockedUntil) && (
+            <Button type="submit" className="flex-[2]" loading={save.isPending} disabled={!changed}>
+              저장
+            </Button>
+          )}
+        </div>
+      </form>
+    </dialog>
+  )
+}
+
+/** 랭킹: 이번 달 내 기록 + 랭킹에 안 나오기 */
+function RankingCard({ member }: { member: Member }) {
+  const ranking = useRanking('month', 'all')
+  const setting = useRankingSetting()
+  const toast = useToast()
+  const mine = (category: 'HOST' | 'ATTEND') => ranking.data?.categories.find((c) => c.category === category)?.mine
+  const host = mine('HOST')
+  const attend = mine('ATTEND')
+  const record = (label: string, e: typeof host) => (
+    <div className="flex-1 rounded-xl bg-surface-2 px-3.5 py-3">
+      <p className="text-[13px] font-semibold text-ink-3">{label}</p>
+      <p className="tabular mt-0.5 text-lg font-extrabold text-ink">
+        {e ? `${e.value}번` : '0번'}
+        {e?.rank != null && <span className="ml-1.5 text-sm font-semibold text-accent-ink">{e.rank}등</span>}
+      </p>
+    </div>
+  )
+  return (
+    <section id="ranking" className={`${cardClass} flex scroll-mt-20 flex-col gap-4 px-5 py-5`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-[17px] font-extrabold text-ink">이번 달 내 기록</h2>
+          <p className="mt-0.5 text-sm text-ink-3">성사된 뒤 모임 시간이 지난 3교시만 세요</p>
+        </div>
+        <Link to="/ranking" className="inline-flex shrink-0 items-center gap-1 text-sm font-bold text-accent-ink">
+          <Trophy className="size-4" aria-hidden />
+          랭킹 보기
+        </Link>
+      </div>
+      <div className="flex gap-2.5">
+        {record('연 3교시 (방장)', host)}
+        {record('탄 3교시 (출석)', attend)}
+      </div>
+      <label className="flex min-h-12 cursor-pointer items-center justify-between gap-4 border-t border-line pt-3">
+        <span className="min-w-0">
+          <span className="block text-[15px] font-semibold text-ink">랭킹에 안 나오기</span>
+          <span className="block text-[13px] leading-snug text-ink-3">켜면 남의 랭킹과 이름 옆 배지에서 빠져요. 내 기록은 나만 봐요</span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={member.rankingHidden}
+          disabled={setting.isPending}
+          onChange={(e) =>
+            setting.mutate(e.target.checked, {
+              onSuccess: (m) => toast.show(m.rankingHidden ? '랭킹에서 빠졌어요' : '랭킹에 다시 나와요', 'ok'),
+              onError: (err) => toast.show(err.message, 'error'),
+            })
+          }
+          className="size-6 shrink-0 accent-[var(--accent)]"
+        />
+      </label>
+    </section>
+  )
+}
+
 /** 대학원장·교수: 관리 화면 바로가기 + 처리할 일 */
 function StaffShortcut() {
   const stats = useAdminStats()
@@ -137,6 +354,7 @@ export function MyPage() {
   const withdraw = useWithdraw()
   const toast = useToast()
   const navigate = useNavigate()
+  const [editing, setEditing] = useState(false)
 
   if (!member) return null
   const supportEmail = config.data?.supportEmail
@@ -181,7 +399,7 @@ export function MyPage() {
           <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-accent text-xl font-black text-on-accent">
             {member.name.slice(0, 1)}
           </span>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="flex flex-wrap items-center gap-2 text-xl font-extrabold">
               {member.name}
               <SchoolBadge school={member.school} />
@@ -195,6 +413,14 @@ export function MyPage() {
             </p>
             {member.email && <p className="mt-0.5 truncate text-sm text-on-board-2">{member.email}</p>}
           </div>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 self-start rounded-xl bg-board-2 px-3 text-sm font-bold text-on-board hover:brightness-110"
+          >
+            <Pencil className="size-4" aria-hidden />
+            고치기
+          </button>
         </div>
         <ul className="flex flex-col gap-2 border-t border-board-line px-6 py-4 text-sm text-on-board-2">
           {member.role === 'OWNER' ? (
@@ -205,7 +431,7 @@ export function MyPage() {
               </li>
               <li className="flex items-center gap-2.5">
                 <Pencil className="size-4 shrink-0" aria-hidden />
-                <span>내 정보는 관리 › 원우에서 고쳐요</span>
+                <span>{profileEditRule(member.role)}</span>
               </li>
             </>
           ) : (
@@ -222,7 +448,7 @@ export function MyPage() {
               </li>
               <li className="flex items-center gap-2.5">
                 <Pencil className="size-4 shrink-0" aria-hidden />
-                <span>{member.role === 'MANAGER' ? '정보 수정은 대학원장에게 요청' : '정보 수정은 교수·대학원장에게 요청'}</span>
+                <span>{profileEditRule(member.role)}</span>
               </li>
             </>
           )}
@@ -232,10 +458,15 @@ export function MyPage() {
       {staff && <StaffShortcut />}
 
       {!member.departmentId && (
-        <p className="rounded-2xl bg-exit/25 px-5 py-4 text-[15px] font-semibold text-ink">
-          학과가 비어 있어요. 교수·대학원장에게 요청해 주세요.
-        </p>
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-exit/25 px-5 py-4">
+          <p className="text-[15px] font-semibold text-ink">학과가 비어 있어요</p>
+          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+            학과 고르기
+          </Button>
+        </div>
       )}
+
+      <RankingCard member={member} />
 
       <ThemeSettings schoolName={member.school.shortName} />
 
@@ -312,6 +543,8 @@ export function MyPage() {
       )}
 
       <MadeBy className="pb-2 text-center" />
+
+      {editing && <ProfileSheet member={member} onClose={() => setEditing(false)} />}
     </div>
   )
 }

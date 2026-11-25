@@ -14,6 +14,7 @@ import { MyPage } from './pages/MyPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { NoticeCreatePage, NoticeDetailPage, NoticeEditPage, NoticesPage } from './pages/NoticePages'
 import { EmailLoginPage, KakaoCallbackPage, PasswordPage, SignupPage } from './pages/SignupPages'
+import { RankingPage } from './pages/RankingPage'
 import { PrivacyPage, TermsGate, TermsPage } from './pages/TermsPages'
 import { WelcomePage } from './pages/WelcomePage'
 
@@ -102,6 +103,7 @@ export function App() {
         <Route path="notices/:id" element={<NoticeDetailPage />} />
         <Route path="notices/:id/edit" element={<NoticeEditPage />} />
         <Route path="my-meetups" element={<MyMeetupsPage />} />
+        <Route path="ranking" element={<RankingPage />} />
         <Route path="me" element={<MyPage />} />
         <Route
           path="admin"

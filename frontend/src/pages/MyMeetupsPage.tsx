@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Copy } from 'lucide-react'
 import { useMyMeetups } from '../api/queries'
 import type { MeetupSummary } from '../api/types'
 import { BoardHero, BoardSheet, HeroTabs } from '../components/BoardHero'
@@ -116,6 +116,16 @@ export function MyMeetupsPage() {
                     <div className={`${cardClass} overflow-hidden`}>
                       <MeetupRow meetup={m} now={now} hideTime />
                     </div>
+                    {/* 지난 3교시: 내용 그대로 다시 열기 (시간만 새로) */}
+                    {tab === 'past' && (
+                      <Link
+                        to={`/meetups/new?from=${m.id}`}
+                        className="mt-1.5 inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-accent-ink hover:bg-surface-2"
+                      >
+                        <Copy className="size-4" aria-hidden />
+                        다시 열기
+                      </Link>
+                    )}
                   </div>
                 </li>
               )

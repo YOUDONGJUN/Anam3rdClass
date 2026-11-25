@@ -103,6 +103,7 @@ class PushApiTest extends ApiTestSupport {
         registerDevice(anam, "anam-phone");
         registerDevice(horang, "horang-phone");
         long id = createMeetup(host, 3, 4, Duration.ofDays(2), Duration.ofDays(1), null);
+        pushes.clear(); // 새 3교시 알림은 따로 본다
 
         post("/api/meetups/" + id + "/join", anam, null).andExpect(status().isOk());
         PushMessage joined = last("host-phone");
@@ -196,9 +197,40 @@ class PushApiTest extends ApiTestSupport {
         assertThat(pushes.to("host-phone")).isEmpty();
         assertThat(pushes.to("horang-phone")).isEmpty();
 
-        // 우리 학교 3교시는 알리지 않는다
+        // 우리 학교 3교시는 우리 학교에만 (새 3교시 알림, 차단한 사람은 뺀다)
+        long school = createMeetup(host, null, null, Duration.ofDays(3), Duration.ofDays(2), null);
+        assertThat(pushes.to("anam-phone")).hasSize(2);
+        PushMessage schoolOpened = last("anam-phone");
+        assertThat(schoolOpened.type()).isEqualTo(PushType.SCHOOL);
+        assertThat(schoolOpened.title()).isEqualTo("새 3교시");
+        assertThat(schoolOpened.body()).isEqualTo("치맥 번개 · 3/5(목) 18:00 · 안암역 앞");
+        assertThat(schoolOpened.path()).isEqualTo("/meetups/" + school);
+        assertThat(pushes.to("sinchon-phone")).hasSize(1);
+        assertThat(pushes.to("host-phone")).isEmpty();
+        assertThat(pushes.to("horang-phone")).isEmpty();
+    }
+
+    @Test
+    void 우리_기수만_3교시는_그_기수에게만_알리고_끌_수_있다() throws Exception {
+        String host = signup("godae", "김고대", 61);
+        String anam = signup("anam", "이안암", 61);
+        String junior = signup("junior", "최후배", 62);
+        registerDevice(anam, "anam-phone");
+        registerDevice(junior, "junior-phone");
+
+        long id = createMeetup(host, null, null, Duration.ofDays(3), Duration.ofDays(2), null, "COHORT");
+        PushMessage opened = last("anam-phone");
+        assertThat(opened.type()).isEqualTo(PushType.SCHOOL);
+        assertThat(opened.title()).isEqualTo("새 61기 3교시");
+        assertThat(opened.path()).isEqualTo("/meetups/" + id);
+        assertThat(pushes.to("junior-phone")).isEmpty();
+
+        // 끄면 안 온다
+        put("/api/me/push/settings", anam, "{\"off\":[\"SCHOOL\"]}").andExpect(status().isOk());
+        pushes.clear();
         createMeetup(host, null, null, Duration.ofDays(3), Duration.ofDays(2), null);
-        assertThat(pushes.to("anam-phone")).hasSize(1);
+        assertThat(pushes.to("anam-phone")).isEmpty();
+        assertThat(pushes.to("junior-phone")).hasSize(1);
     }
 
     @Test

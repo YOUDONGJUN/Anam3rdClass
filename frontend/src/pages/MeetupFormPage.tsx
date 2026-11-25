@@ -1,7 +1,7 @@
-import { useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
-import { Check, ChevronLeft, Globe2, Lock, Minus, Plus, School, X, type LucideIcon } from 'lucide-react'
-import { useCreateMeetup, useMeetup, useUpdateMeetup } from '../api/queries'
+import { Check, ChevronDown, ChevronLeft, Globe2, Lock, Minus, Plus, School, SlidersHorizontal, X, type LucideIcon } from 'lucide-react'
+import { useCreateMeetup, useMeetup, usePopularPlaces, useUpdateMeetup } from '../api/queries'
 import type { MeetupAudience, MeetupCategory, MeetupDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { LineGauge } from '../components/LineGauge'
@@ -16,6 +16,7 @@ import {
   isReachedWith,
   type JoinedState,
   MAX_PURPOSES,
+  optionsSummary,
   PURPOSE_MAX_LENGTH,
   PURPOSE_PRESETS,
   peopleError,
@@ -23,6 +24,7 @@ import {
   toggleCategory,
   type PeopleValues,
 } from '../lib/meetup'
+import { mergePlaces } from '../lib/places'
 import { placePresets } from '../lib/schools'
 import { ceilTo10Minutes, formatDateTime, formatLeadTime, fromKstInputValue, kstAt, toKstInputValue } from '../lib/time'
 
@@ -322,7 +324,13 @@ function MeetupForm({
   const navigate = useNavigate()
   const toast = useToast()
   const { member } = useAuth()
-  const places = placePresets(member?.school.code)
+  // 장소 추천: 우리 학교에서 많이 쓴 곳 먼저, 남는 자리는 학교 근처 기본 장소
+  const popular = usePopularPlaces()
+  const presetPlaces = placePresets(member?.school.code)
+  const places = mergePlaces(popular.data ?? [], presetPlaces)
+  const placeListId = useId()
+  // 열 때는 꼭 정할 것만 보이고 나머지(인원·대상·참여 방식·선택 항목)는 접어 둔다. 고칠 때는 다 펼친다
+  const [showOptions, setShowOptions] = useState(editing)
   const audienceOf: HostTag | null =
     host ?? (member ? { schoolName: member.school.shortName, cohortLabel: member.cohortLabel } : null)
   const choices = useMemo(() => deadlineChoices(initial.leadMinutes), [initial.leadMinutes])
@@ -362,9 +370,15 @@ function MeetupForm({
       if (timeError) return setError(timeError)
     }
     const peopleProblem = peopleError(minPeople, maxPeople, current)
-    if (peopleProblem) return setError(peopleProblem)
+    if (peopleProblem) {
+      setShowOptions(true)
+      return setError(peopleProblem)
+    }
     const fee = v.hasFee ? Number(v.fee) : null
-    if (fee !== null && !(fee >= 1000 && fee <= 1_000_000)) return setError('참여비는 1,000원 ~ 100만 원으로 적어 주세요')
+    if (fee !== null && !(fee >= 1000 && fee <= 1_000_000)) {
+      setShowOptions(true)
+      return setError('참여비는 1,000원 ~ 100만 원으로 적어 주세요')
+    }
     if (!meetAt || !deadlineAt) return setError('모임 시간을 정해 주세요')
 
     try {
@@ -413,6 +427,7 @@ function MeetupForm({
       )
       navigate(`/meetups/${d.id}`, { replace: true })
     } catch (err) {
+      setShowOptions(true) // 접어 둔 칸의 문제일 수 있어서 펼쳐 보여 준다
       setError(err instanceof Error ? err.message : '저장하지 못했어요')
     }
   }
@@ -475,7 +490,10 @@ function MeetupForm({
         )}
       </fieldset>
 
-      <Field label="어디서" hint="가게 이름을 그대로 적어도 돼요">
+      <Field
+        label="어디서"
+        hint={popular.data && popular.data.length > 0 ? '우리 학교에서 자주 모인 곳부터 보여요' : '가게 이름을 그대로 적어도 돼요'}
+      >
         {({ id, describedBy }) => (
           <div className="flex flex-col gap-3">
             <input
@@ -483,10 +501,17 @@ function MeetupForm({
               aria-describedby={describedBy}
               className={inputClass}
               maxLength={60}
-              placeholder={`예: ${places[0] ?? '역'} 앞 치킨집`}
+              list={placeListId}
+              autoComplete="off"
+              placeholder={`예: ${presetPlaces[0] ?? '역'} 앞 치킨집`}
               value={v.place}
               onChange={(e) => set('place', e.target.value)}
             />
+            <datalist id={placeListId}>
+              {places.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
             <div className="flex flex-wrap gap-2">
               {places.map((p) => (
                 <Chip key={p} active={v.place === p} onClick={() => set('place', p)}>
@@ -498,195 +523,225 @@ function MeetupForm({
         )}
       </Field>
 
-      <fieldset className="flex flex-col gap-3">
-        <legend className="mb-3 text-[15px] font-semibold text-ink">몇 명이 모이면 좋을까요 (나 포함)</legend>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <Stepper
-              label="최소"
-              value={v.minPeople}
-              min={2}
-              max={current?.reached ? Math.max(2, Math.min(20, joined)) : 20}
-              disabled={v.noMinimum}
-              onChange={(n) => setPeople({ minPeople: n })}
-            />
-            <NoLimitToggle
-              checked={v.noMinimum}
-              onChange={(on) => setPeople({ noMinimum: on })}
-              label="최소 인원 없음"
-              sub="몇 명이 오든 진행해요"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <Stepper
-              label="최대"
-              value={v.maxPeople}
-              min={Math.max(2, v.noMinimum ? 2 : v.minPeople, current ? joined : 0)}
-              max={30}
-              disabled={v.unlimited}
-              onChange={(n) => setPeople({ maxPeople: n })}
-            />
-            <NoLimitToggle
-              checked={v.unlimited}
-              onChange={(on) => setPeople({ unlimited: on })}
-              label="최대 인원 없음"
-              sub="오는 사람 다 받아요"
-            />
-          </div>
-        </div>
-        <div className={`${cardClass} flex flex-col gap-2.5 px-4 py-4`}>
-          <LineGauge count={joined} min={minPeople} max={maxPeople} status={reachedNow ? 'CONFIRMED' : 'RECRUITING'} />
-          <p className="text-sm text-ink-2">
-            <b className="text-ink">{peopleRule(minPeople, maxPeople)}</b>
-            {current && <span className="tabular"> · 지금 {joined}명</span>}
-          </p>
-          {current ? (
-            current.reached ? (
-              <p className="text-sm leading-relaxed text-ink-3">이미 성사돼서 최소 인원은 {joined}명까지만 올릴 수 있어요</p>
-            ) : (
-              reachedNow && (
-                <p className="text-sm leading-relaxed text-ink-3">저장하면 바로 성사 · 참여자끼리 실명·단톡방 공개</p>
-              )
-            )
-          ) : (
-            v.noMinimum && (
-              <p className="text-sm leading-relaxed text-ink-3">열자마자 확정 · 참여자끼리 바로 실명·단톡방 공개</p>
-            )
-          )}
-        </div>
-      </fieldset>
-
-      {audienceOf && (
-        <fieldset>
-          <legend className="mb-2 text-[15px] font-semibold text-ink">누구와 함께할까요</legend>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {(
-              [
-                { value: 'SCHOOL', Icon: School, label: '우리 학교', sub: `${audienceOf.schoolName} 원우 누구나` },
-                {
-                  value: 'COHORT',
-                  Icon: Lock,
-                  label: '우리 기수만',
-                  sub: `${audienceOf.schoolName} ${audienceOf.cohortLabel}만 보여요`,
-                },
-                { value: 'ALL', Icon: Globe2, label: '연합', sub: '다섯 학교 누구나 · 연합 게시판에' },
-              ] satisfies { value: MeetupAudience; Icon: LucideIcon; label: string; sub: string }[]
-            ).map(({ value, Icon, label, sub }) => {
-              const active = v.audience === value
-              return (
-                <label
-                  key={value}
-                  className={`flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 transition-colors has-focus-visible:ring-2 has-focus-visible:ring-accent sm:flex-col sm:items-start sm:gap-1.5 ${
-                    active ? 'border-board bg-board text-on-board' : 'border-line-strong bg-surface text-ink hover:border-ink-3'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="audience"
-                    value={value}
-                    checked={active}
-                    onChange={() => set('audience', value)}
-                    className="sr-only"
-                  />
-                  <Icon className={`size-5 shrink-0 ${active ? 'text-accent' : 'text-ink-3'}`} aria-hidden />
-                  <span className="flex flex-col leading-snug">
-                    <span className="text-[15px] font-bold">{label}</span>
-                    <span className={`text-[13px] ${active ? 'text-on-board-2' : 'text-ink-3'}`}>{sub}</span>
-                  </span>
-                </label>
-              )
-            })}
-          </div>
-          {editing && <p className="mt-2 px-1 text-[13px] text-ink-3">이미 참여한 원우가 빠지게 좁힐 수는 없어요</p>}
-        </fieldset>
+      {!showOptions && (
+        <button
+          type="button"
+          onClick={() => setShowOptions(true)}
+          aria-expanded={false}
+          className={`${cardClass} flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-surface-2`}
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2">
+            <SlidersHorizontal className="size-5" aria-hidden />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-bold text-ink">옵션 더 보기</span>
+            <span className="block truncate text-[13px] text-ink-3">
+              {optionsSummary({
+                minPeople,
+                maxPeople,
+                audience: v.audience,
+                lateJoin: v.lateJoin,
+                fee: v.hasFee && v.fee ? Number(v.fee) : null,
+              })}
+            </span>
+          </span>
+          <ChevronDown className="size-5 shrink-0 text-ink-3" aria-hidden />
+        </button>
       )}
 
-      <fieldset className="flex flex-col gap-3">
-        <legend className="mb-2 text-[15px] font-semibold text-ink">참여 방식</legend>
-        <NoLimitToggle
-          checked={v.lateJoin}
-          onChange={(on) => set('lateJoin', on)}
-          label="중간 합류 OK"
-          sub="늦게 와도 돼요 · 성사 뒤에도 시작 전까지 참여"
-        />
-        <div className={`${cardClass} flex flex-col gap-3 px-4 py-4`}>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[15px] font-semibold text-ink">참여비</span>
-            <div className="flex gap-1.5" role="radiogroup" aria-label="참여비">
-              <Chip active={!v.hasFee} onClick={() => set('hasFee', false)}>
-                없음
-              </Chip>
-              <Chip active={v.hasFee} onClick={() => set('hasFee', true)}>
-                있음
-              </Chip>
-            </div>
-          </div>
-          {v.hasFee && (
-            <>
-              <div className="relative">
-                <input
-                  aria-label="참여비 금액"
-                  type="number"
-                  inputMode="numeric"
-                  min={1000}
-                  max={1000000}
-                  step={1000}
-                  className={`${inputClass} tabular pr-10 font-semibold`}
-                  placeholder="예: 10000"
-                  value={v.fee}
-                  onChange={(e) => set('fee', e.target.value)}
+      {showOptions && (
+        <>
+          <fieldset className="flex flex-col gap-3">
+            <legend className="mb-3 text-[15px] font-semibold text-ink">몇 명이 모이면 좋을까요 (나 포함)</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <Stepper
+                  label="최소"
+                  value={v.minPeople}
+                  min={2}
+                  max={current?.reached ? Math.max(2, Math.min(20, joined)) : 20}
+                  disabled={v.noMinimum}
+                  onChange={(n) => setPeople({ minPeople: n })}
                 />
-                <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-ink-3">원</span>
+                <NoLimitToggle
+                  checked={v.noMinimum}
+                  onChange={(on) => setPeople({ noMinimum: on })}
+                  label="최소 인원 없음"
+                  sub="몇 명이 오든 진행해요"
+                />
               </div>
-              <NoLimitToggle
-                checked={v.feePrepaid}
-                onChange={(on) => set('feePrepaid', on)}
-                label="선입금"
-                sub="참여할 때 미리 보내요 · 계좌는 단톡방에서"
-              />
-            </>
+              <div className="flex flex-col gap-1">
+                <Stepper
+                  label="최대"
+                  value={v.maxPeople}
+                  min={Math.max(2, v.noMinimum ? 2 : v.minPeople, current ? joined : 0)}
+                  max={30}
+                  disabled={v.unlimited}
+                  onChange={(n) => setPeople({ maxPeople: n })}
+                />
+                <NoLimitToggle
+                  checked={v.unlimited}
+                  onChange={(on) => setPeople({ unlimited: on })}
+                  label="최대 인원 없음"
+                  sub="오는 사람 다 받아요"
+                />
+              </div>
+            </div>
+            <div className={`${cardClass} flex flex-col gap-2.5 px-4 py-4`}>
+              <LineGauge count={joined} min={minPeople} max={maxPeople} status={reachedNow ? 'CONFIRMED' : 'RECRUITING'} />
+              <p className="text-sm text-ink-2">
+                <b className="text-ink">{peopleRule(minPeople, maxPeople)}</b>
+                {current && <span className="tabular"> · 지금 {joined}명</span>}
+              </p>
+              {current ? (
+                current.reached ? (
+                  <p className="text-sm leading-relaxed text-ink-3">이미 성사돼서 최소 인원은 {joined}명까지만 올릴 수 있어요</p>
+                ) : (
+                  reachedNow && (
+                    <p className="text-sm leading-relaxed text-ink-3">저장하면 바로 성사 · 참여자끼리 실명·단톡방 공개</p>
+                  )
+                )
+              ) : (
+                v.noMinimum && (
+                  <p className="text-sm leading-relaxed text-ink-3">열자마자 확정 · 참여자끼리 바로 실명·단톡방 공개</p>
+                )
+              )}
+            </div>
+          </fieldset>
+
+          {audienceOf && (
+            <fieldset>
+              <legend className="mb-2 text-[15px] font-semibold text-ink">누구와 함께할까요</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    { value: 'SCHOOL', Icon: School, label: '우리 학교', sub: `${audienceOf.schoolName} 원우 누구나` },
+                    {
+                      value: 'COHORT',
+                      Icon: Lock,
+                      label: '우리 기수만',
+                      sub: `${audienceOf.schoolName} ${audienceOf.cohortLabel}만 보여요`,
+                    },
+                    { value: 'ALL', Icon: Globe2, label: '연합', sub: '다섯 학교 누구나 · 연합 게시판에' },
+                  ] satisfies { value: MeetupAudience; Icon: LucideIcon; label: string; sub: string }[]
+                ).map(({ value, Icon, label, sub }) => {
+                  const active = v.audience === value
+                  return (
+                    <label
+                      key={value}
+                      className={`flex min-h-16 cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 transition-colors has-focus-visible:ring-2 has-focus-visible:ring-accent sm:flex-col sm:items-start sm:gap-1.5 ${
+                        active ? 'border-board bg-board text-on-board' : 'border-line-strong bg-surface text-ink hover:border-ink-3'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="audience"
+                        value={value}
+                        checked={active}
+                        onChange={() => set('audience', value)}
+                        className="sr-only"
+                      />
+                      <Icon className={`size-5 shrink-0 ${active ? 'text-accent' : 'text-ink-3'}`} aria-hidden />
+                      <span className="flex flex-col leading-snug">
+                        <span className="text-[15px] font-bold">{label}</span>
+                        <span className={`text-[13px] ${active ? 'text-on-board-2' : 'text-ink-3'}`}>{sub}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+              {editing && <p className="mt-2 px-1 text-[13px] text-ink-3">이미 참여한 원우가 빠지게 좁힐 수는 없어요</p>}
+            </fieldset>
           )}
-        </div>
-      </fieldset>
 
-      {/* 선택 항목은 아래에 모은다 */}
-      <div className="flex flex-col gap-8 border-t border-line pt-8">
-        <p className="-mb-5 text-sm font-bold text-ink-3">선택 · 비워도 돼요</p>
-        <PurposePicker value={v.purposes} onChange={(p) => set('purposes', p)} />
-
-        <Field label="한마디" optional>
-          {({ id }) => (
-            <textarea
-              id={id}
-              rows={3}
-              maxLength={500}
-              className={`${inputClass} h-auto py-3 leading-relaxed`}
-              placeholder="예: 늦게 와도 괜찮아요. 1차만 가볍게!"
-              value={v.description}
-              onChange={(e) => set('description', e.target.value)}
+          <fieldset className="flex flex-col gap-3">
+            <legend className="mb-2 text-[15px] font-semibold text-ink">참여 방식</legend>
+            <NoLimitToggle
+              checked={v.lateJoin}
+              onChange={(on) => set('lateJoin', on)}
+              label="중간 합류 OK"
+              sub="늦게 와도 돼요 · 성사 뒤에도 시작 전까지 참여"
             />
-          )}
-        </Field>
+            <div className={`${cardClass} flex flex-col gap-3 px-4 py-4`}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[15px] font-semibold text-ink">참여비</span>
+                <div className="flex gap-1.5" role="radiogroup" aria-label="참여비">
+                  <Chip active={!v.hasFee} onClick={() => set('hasFee', false)}>
+                    없음
+                  </Chip>
+                  <Chip active={v.hasFee} onClick={() => set('hasFee', true)}>
+                    있음
+                  </Chip>
+                </div>
+              </div>
+              {v.hasFee && (
+                <>
+                  <div className="relative">
+                    <input
+                      aria-label="참여비 금액"
+                      type="number"
+                      inputMode="numeric"
+                      min={1000}
+                      max={1000000}
+                      step={1000}
+                      className={`${inputClass} tabular pr-10 font-semibold`}
+                      placeholder="예: 10000"
+                      value={v.fee}
+                      onChange={(e) => set('fee', e.target.value)}
+                    />
+                    <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-ink-3">원</span>
+                  </div>
+                  <NoLimitToggle
+                    checked={v.feePrepaid}
+                    onChange={(on) => set('feePrepaid', on)}
+                    label="선입금"
+                    sub="참여할 때 미리 보내요 · 계좌는 단톡방에서"
+                  />
+                </>
+              )}
+            </div>
+          </fieldset>
 
-        <Field
-          label="카카오톡 오픈채팅 링크"
-          optional
-          hint="성사되면 참여자에게만 보여요 · 나중에 넣어도 돼요"
-        >
-          {({ id, describedBy }) => (
-            <input
-              id={id}
-              type="url"
-              inputMode="url"
-              aria-describedby={describedBy}
-              className={inputClass}
-              placeholder="https://open.kakao.com/o/…"
-              value={v.openChatUrl}
-              onChange={(e) => set('openChatUrl', e.target.value.trim())}
-            />
-          )}
-        </Field>
-      </div>
+          {/* 선택 항목은 아래에 모은다 */}
+          <div className="flex flex-col gap-8 border-t border-line pt-8">
+            <p className="-mb-5 text-sm font-bold text-ink-3">선택 · 비워도 돼요</p>
+            <PurposePicker value={v.purposes} onChange={(p) => set('purposes', p)} />
+
+            <Field label="한마디" optional>
+              {({ id }) => (
+                <textarea
+                  id={id}
+                  rows={3}
+                  maxLength={500}
+                  className={`${inputClass} h-auto py-3 leading-relaxed`}
+                  placeholder="예: 늦게 와도 괜찮아요. 1차만 가볍게!"
+                  value={v.description}
+                  onChange={(e) => set('description', e.target.value)}
+                />
+              )}
+            </Field>
+
+            <Field
+              label="카카오톡 오픈채팅 링크"
+              optional
+              hint="성사되면 참여자에게만 보여요 · 나중에 넣어도 돼요"
+            >
+              {({ id, describedBy }) => (
+                <input
+                  id={id}
+                  type="url"
+                  inputMode="url"
+                  aria-describedby={describedBy}
+                  className={inputClass}
+                  placeholder="https://open.kakao.com/o/…"
+                  value={v.openChatUrl}
+                  onChange={(e) => set('openChatUrl', e.target.value.trim())}
+                />
+              )}
+            </Field>
+          </div>
+        </>
+      )}
 
       <FormError message={error} />
 
@@ -753,6 +808,28 @@ function fromDetail(d: MeetupDetail): FormValues & { id: number; leadMinutes: nu
   }
 }
 
+/** 지난 3교시를 그대로 다시 열기: 내용은 가져오고 시간은 새로 (열 때와 같은 기본 시간) */
+function copyFrom(d: MeetupDetail, base: FormValues): FormValues {
+  return {
+    ...base,
+    title: d.title,
+    categories: d.categories,
+    purposes: d.purposes,
+    place: d.place,
+    minPeople: d.minPeople ?? 2,
+    noMinimum: d.minPeople === null,
+    maxPeople: d.maxPeople ?? Math.max(6, d.minPeople ?? 2),
+    unlimited: d.maxPeople === null,
+    description: d.description,
+    openChatUrl: d.openChatUrl ?? '',
+    audience: d.audience,
+    lateJoin: d.lateJoin,
+    hasFee: d.fee !== null,
+    fee: d.fee === null ? '' : String(d.fee),
+    feePrepaid: d.feePrepaid,
+  }
+}
+
 function Header({ title, sub }: { title: string; sub: string }) {
   const navigate = useNavigate()
   return (
@@ -773,11 +850,30 @@ function Header({ title, sub }: { title: string; sub: string }) {
 
 export function MeetupCreatePage() {
   const [params] = useSearchParams()
-  const [initial] = useState(() => defaults(params.get('audience') === 'ALL' ? 'ALL' : 'SCHOOL'))
+  const from = Number(params.get('from'))
+  if (Number.isInteger(from) && from > 0) return <CopyMeetupPage from={from} />
+  return <NewMeetupPage audience={params.get('audience') === 'ALL' ? 'ALL' : 'SCHOOL'} />
+}
+
+function NewMeetupPage({ audience }: { audience: MeetupAudience }) {
+  const [initial] = useState(() => defaults(audience))
   return (
     <div className="max-w-2xl">
       <Header title="3교시 열기" sub="안 모이면 조용히 사라져요. 부담 없이!" />
       <MeetupForm initial={initial} editing={false} />
+    </div>
+  )
+}
+
+/** 지난 3교시 다시 열기 (/meetups/new?from=12). 못 불러오면 빈 양식으로 */
+function CopyMeetupPage({ from }: { from: number }) {
+  const { data, isPending } = useMeetup(from)
+  if (isPending) return <Spinner />
+  if (!data) return <NewMeetupPage audience="SCHOOL" />
+  return (
+    <div className="max-w-2xl">
+      <Header title="다시 열기" sub="지난 3교시 내용을 가져왔어요. 시간만 정하면 돼요" />
+      <MeetupForm initial={copyFrom(data, defaults(data.audience))} editing={false} />
     </div>
   )
 }

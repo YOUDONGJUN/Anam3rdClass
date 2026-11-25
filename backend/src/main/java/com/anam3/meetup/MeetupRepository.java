@@ -104,4 +104,26 @@ public interface MeetupRepository extends JpaRepository<Meetup, Long> {
             where m.school.id = :schoolId and m.canceled = false and m.participantCount >= coalesce(m.minPeople, 2)
             """)
     long countConfirmed(@Param("schoolId") Long schoolId);
+
+    /** 랭킹(성사율): 모임 시간이 since ~ now 인 3교시 (취소 포함 — 취소도 성사 못 한 것으로 센다) */
+    @Query("""
+            select new com.anam3.ranking.RankingHosted(m.host.id, m.canceled, m.participantCount, m.minPeople)
+            from Meetup m
+            where m.meetAt < :now and m.meetAt >= :since
+            """)
+    List<com.anam3.ranking.RankingHosted> findHosted(@Param("since") Instant since, @Param("now") Instant now);
+
+    /**
+     * 장소 추천: 우리 학교 3교시에서 쓴 장소를 많이 쓴 순서로 (취소 빼고, 내가 볼 수 없는 다른 기수 전용 빼고).
+     * 같은 횟수면 최근에 쓴 것부터
+     */
+    @Query("""
+            select m.place from Meetup m
+            where m.school.id = :schoolId and m.canceled = false and m.createdAt >= :since
+              and (m.onlyCohort is null or m.onlyCohort = :cohort)
+            group by m.place
+            order by count(m) desc, max(m.createdAt) desc
+            """)
+    List<String> findPopularPlaces(@Param("schoolId") Long schoolId, @Param("cohort") int cohort,
+            @Param("since") Instant since, Pageable pageable);
 }

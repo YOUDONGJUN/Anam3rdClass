@@ -51,6 +51,10 @@ public class Notice {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /** 밤(한국 시간 0~8시)에 올려서 새 공지 알림을 아침 8시로 미뤘다 */
+    @Column(name = "announce_pending", nullable = false)
+    private boolean announcePending;
+
     protected Notice() {
     }
 
@@ -72,6 +76,15 @@ public class Notice {
         this.title = title;
         this.content = content;
         this.updatedAt = now;
+    }
+
+    /** 새 공지 알림을 아침으로 미룬다 (PushNotifier.announceHeld 가 보낸다) */
+    public void holdAnnouncement() {
+        this.announcePending = true;
+    }
+
+    public boolean isAnnouncePending() {
+        return announcePending;
     }
 
     public void pin(boolean pinned) {

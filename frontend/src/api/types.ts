@@ -56,7 +56,16 @@ export interface Member {
 }
 
 /** 앱 알림 종류 (서버 PushType) */
-export type PushType = 'JOIN' | 'REACHED' | 'DEADLINE' | 'CHANGED' | 'NOTICE' | 'FEDERATION' | 'SCHOOL' | 'SPOT'
+export type PushType =
+  | 'JOIN'
+  | 'REACHED'
+  | 'DEADLINE'
+  | 'REMINDER'
+  | 'CHANGED'
+  | 'NOTICE'
+  | 'FEDERATION'
+  | 'SCHOOL'
+  | 'SPOT'
 
 export interface Department {
   id: number

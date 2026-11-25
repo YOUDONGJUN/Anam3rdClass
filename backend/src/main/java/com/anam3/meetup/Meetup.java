@@ -109,6 +109,14 @@ public class Meetup {
     @Column(name = "deadline_reminded_at")
     private Instant deadlineRemindedAt;
 
+    /** 모임 1시간 전 알림을 보낸 시각 (모임 시간을 바꾸면 다시 비운다 → 새 시간 1시간 전에 또 알린다) */
+    @Column(name = "meet_reminded_at")
+    private Instant meetRemindedAt;
+
+    /** 밤(한국 시간 0~8시)에 열려서 새 3교시 알림을 아침 8시로 미뤘다 */
+    @Column(name = "announce_pending", nullable = false)
+    private boolean announcePending;
+
     protected Meetup() {
     }
 
@@ -289,6 +297,9 @@ public class Meetup {
         if (!deadlineAt.equals(this.deadlineAt)) {
             this.deadlineRemindedAt = null;
         }
+        if (!meetAt.equals(this.meetAt)) {
+            this.meetRemindedAt = null;
+        }
         this.meetAt = meetAt;
         this.deadlineAt = deadlineAt;
         this.updatedAt = now;
@@ -307,6 +318,15 @@ public class Meetup {
             return true;
         }
         return isOfSchool(schoolId) && (audience == MeetupAudience.SCHOOL || host.getCohort() == cohort);
+    }
+
+    /** 새 3교시 알림을 아침으로 미룬다 (PushNotifier.announceHeld 가 보낸다) */
+    public void holdAnnouncement() {
+        this.announcePending = true;
+    }
+
+    public boolean isAnnouncePending() {
+        return announcePending;
     }
 
     public void cancel(Instant now) {

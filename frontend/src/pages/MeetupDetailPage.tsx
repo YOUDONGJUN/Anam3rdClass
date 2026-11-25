@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
+  ArrowUpRight,
   Bell,
   BellOff,
   CalendarPlus,
@@ -40,6 +41,7 @@ import { buttonClass, cardClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
 import { downloadIcs, googleCalendarUrl, type CalendarEvent } from '../lib/calendar'
+import { MAP_PROVIDERS } from '../lib/map'
 import { CATEGORY, headcount, isLive, seatsCaption, seatsToAdd, sortCategories } from '../lib/meetup'
 import { isApp, shareLink } from '../lib/native'
 import { affiliation } from '../lib/person'
@@ -441,10 +443,27 @@ export function MeetupDetailPage() {
           </div>
           <h1 className="mt-3.5 text-[23px] leading-snug font-extrabold tracking-[-0.03em] text-ink sm:text-[30px]">{m.title}</h1>
           <dl className="mt-3 flex flex-col gap-2 text-[15px] text-ink-2">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-start gap-2.5">
               <dt className="sr-only">장소</dt>
-              <MapPin className="size-4 shrink-0 text-ink-3" aria-hidden />
-              <dd className="font-semibold text-ink">{m.place}</dd>
+              <MapPin className="mt-1.5 size-4 shrink-0 text-ink-3" aria-hidden />
+              <dd className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                <span className="min-w-0 font-semibold break-words text-ink">{m.place}</span>
+                <span className="flex gap-1.5">
+                  {MAP_PROVIDERS.map((p) => (
+                    <a
+                      key={p.label}
+                      href={p.url(m.place)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-7 items-center gap-0.5 rounded-lg border border-line-strong bg-surface pr-1.5 pl-2 text-[12px] font-semibold text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
+                    >
+                      {p.label}
+                      <ArrowUpRight className="size-3.5 text-ink-3" aria-hidden />
+                      <span className="sr-only">에서 장소 찾기 (새 창)</span>
+                    </a>
+                  ))}
+                </span>
+              </dd>
             </div>
             {m.purposes.length > 0 && (
               <div className="flex items-center gap-2.5">

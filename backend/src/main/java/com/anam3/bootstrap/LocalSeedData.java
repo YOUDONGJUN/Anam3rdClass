@@ -27,6 +27,8 @@ import com.anam3.meetup.MeetupAudience;
 import com.anam3.meetup.MeetupCategory;
 import com.anam3.meetup.MeetupRepository;
 import com.anam3.meetup.Participation;
+import com.anam3.meetup.MeetupWait;
+import com.anam3.meetup.MeetupWaitRepository;
 import com.anam3.meetup.ParticipationRepository;
 import com.anam3.member.Member;
 import com.anam3.member.MemberRepository;
@@ -41,6 +43,7 @@ import com.anam3.school.SchoolRepository;
 /**
  * 로컬 개발(local 프로필)에서만 화면이 비어 보이지 않도록 샘플 데이터를 넣는다.
  * 로그인 화면의 "개발용 로그인"에서 아래 계정을 골라 들어간다 (카카오·메일 없이). 이름은 모두 지어낸 것이다.
+ * 지난 3교시는 이번 달 랭킹에, 꽉 찬 "딱 셋이 와인 한 병"은 빈자리 대기에 보인다.
  * <ul>
  *   <li>고려대: 유동준(대학원장), 이안암(교수), 김고대·박호랑·최석탑(원우)</li>
  *   <li>연세대 이신촌, 성균관대 박명륜, 서강대 최노고, 한양대 정왕십 (원우)</li>
@@ -61,12 +64,13 @@ public class LocalSeedData implements ApplicationRunner {
     private final ParticipationRepository participations;
     private final NoticeRepository notices;
     private final MeetupFeedbackRepository feedbacks;
+    private final MeetupWaitRepository waits;
     private final OwnerPolicy ownerPolicy;
     private final Clock clock;
 
     public LocalSeedData(MemberRepository members, SchoolRepository schools, DepartmentRepository departments,
             MeetupRepository meetups, ParticipationRepository participations, NoticeRepository notices,
-            MeetupFeedbackRepository feedbacks, OwnerPolicy ownerPolicy, Clock clock) {
+            MeetupFeedbackRepository feedbacks, MeetupWaitRepository waits, OwnerPolicy ownerPolicy, Clock clock) {
         this.members = members;
         this.schools = schools;
         this.departments = departments;
@@ -74,6 +78,7 @@ public class LocalSeedData implements ApplicationRunner {
         this.participations = participations;
         this.notices = notices;
         this.feedbacks = feedbacks;
+        this.waits = waits;
         this.ownerPolicy = ownerPolicy;
         this.clock = clock;
     }
@@ -150,6 +155,14 @@ public class LocalSeedData implements ApplicationRunner {
                 List.of(MeetupCategory.SOJU), List.of("학업"), tonight.plus(Duration.ofHours(1)),
                 tonight.minus(Duration.ofMinutes(10)), 2, 6, null, now);
         study.applyOptions(false, 20000, true); // 참여비 2만 원 선입금
+
+        // 정원이 꽉 찬 3교시: 빈자리 대기(자리 나면 알림) · 정원 늘리기 확인용. 최석탑이 열었고 이안암이 기다린다
+        Meetup full = meetup(seoktap, MeetupAudience.SCHOOL, "딱 셋이 와인 한 병", "조용히 와인 한 병만 나눠요", "참살이길 와인바",
+                List.of(MeetupCategory.WINE), List.of("잡담"), tomorrow.plus(Duration.ofMinutes(30)),
+                tomorrow.minus(Duration.ofHours(1)), 2, 3, null, now);
+        join(full, godae, now);
+        join(full, owner, now);
+        waits.save(new MeetupWait(full, anam, now));
 
         meetup(sinchon, MeetupAudience.SCHOOL, "연세대끼리 저녁", "우리 학교 사람만 보는 3교시예요", "신촌 굴다리",
                 List.of(MeetupCategory.ANYTHING), List.of(), tonight, tonight.minus(Duration.ofMinutes(20)), 2, 5,

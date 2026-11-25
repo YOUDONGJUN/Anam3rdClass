@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from 'react-router'
-import { ChevronRight, Globe2, Megaphone, Plus, School } from 'lucide-react'
-import { useMeetups, useNotices } from '../api/queries'
+import { ChevronRight, Globe2, Megaphone, Plus, School, Trophy } from 'lucide-react'
+import { useMeetups, useNotices, useRanking } from '../api/queries'
 import type { Board, MeetupSummary } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { BoardHero, BoardSheet, HeroTabs } from '../components/BoardHero'
@@ -36,6 +36,29 @@ function PinnedNotice() {
         안내
       </span>
       <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">{pinned.title}</span>
+      <ChevronRight className="size-4 shrink-0 text-ink-3" aria-hidden />
+    </Link>
+  )
+}
+
+/** 이번 달 출석왕 한 줄 → 랭킹 (기록이 없으면 보이지 않는다) */
+function RankingTeaser() {
+  const { data } = useRanking('month', 'all')
+  const top = data?.categories.find((c) => c.category === 'ATTEND')?.top[0]
+  if (!top) return null
+  return (
+    <Link
+      to="/ranking"
+      className={`${cardClass} mb-6 flex items-center gap-3 px-3.5 py-3 transition-colors hover:bg-surface-2`}
+    >
+      <span className="flex shrink-0 items-center gap-1.5 rounded-lg bg-board px-2 py-1 text-xs font-extrabold text-on-board shadow-[inset_0_-2px_0_rgb(0_0_0/0.25)]">
+        <Trophy className="size-3.5 text-accent" aria-hidden />
+        이번 달
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[15px] text-ink">
+        출석왕 <b className="font-bold">{top.name}</b>
+        <span className="text-ink-3"> · {top.school.shortName} · {top.value}번</span>
+      </span>
       <ChevronRight className="size-4 shrink-0 text-ink-3" aria-hidden />
     </Link>
   )
@@ -88,6 +111,7 @@ export function FeedPage() {
 
       <BoardSheet>
         <PinnedNotice />
+        {scope === 'upcoming' && <RankingTeaser />}
 
         <div className="mb-3 flex items-center justify-between gap-4 px-1">
           <h2 className="text-[19px] font-extrabold tracking-[-0.02em] text-ink">

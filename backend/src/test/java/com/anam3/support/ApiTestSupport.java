@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
+import com.anam3.ranking.RankingService;
 import com.jayway.jsonpath.JsonPath;
 
 /**
@@ -60,9 +61,13 @@ public abstract class ApiTestSupport {
     private static Set<Long> seededDomains;
     private static Set<Long> seededDepartments;
 
+    @Autowired
+    protected RankingService rankingService;
+
     @BeforeEach
     void resetState() {
         clock.set(T0);
+        rankingService.clearCache();
         mailer.clear();
         pushes.clear();
         if (seededSchools == null) {
@@ -71,11 +76,12 @@ public abstract class ApiTestSupport {
             seededDepartments = ids("select id from departments");
         }
         jdbc.update("delete from push_devices");
-        jdbc.update("update members set push_off = null");
+        jdbc.update("update members set push_off = null, ranking_hidden = false, profile_changed_at = null");
         jdbc.update("delete from reports");
         jdbc.update("delete from member_blocks");
         jdbc.update("delete from email_verifications");
         jdbc.update("delete from meetup_feedbacks");
+        jdbc.update("delete from meetup_waits");
         jdbc.update("delete from participations");
         jdbc.update("delete from meetups");
         jdbc.update("delete from notices");
@@ -269,7 +275,7 @@ public abstract class ApiTestSupport {
         return request(MockMvcRequestBuilders.delete(url), token, null);
     }
 
-    private ResultActions request(MockHttpServletRequestBuilder builder, String token, String body)
+    protected ResultActions request(MockHttpServletRequestBuilder builder, String token, String body)
             throws Exception {
         if (token != null) {
             builder.header("Authorization", "Bearer " + token);

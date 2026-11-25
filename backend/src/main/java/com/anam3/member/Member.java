@@ -25,7 +25,8 @@ import com.anam3.school.School;
 
 /**
  * 회원(원우). 카카오 회원번호로 로그인하고, 가입할 때 한 번 학교 이메일을 인증한다.
- * 이름·기수·학과는 가입한 뒤 본인이 바꿀 수 없다 (교수·대학원장이 관리 화면에서 고친다).
+ * 이름은 가입한 뒤 본인이 바꿀 수 없다 (교수·대학원장이 관리 화면에서 고친다. 대학원장은 본인 이름도 고친다).
+ * 학과·기수는 내 정보에서 고친다 — 원우는 30일에 한 번, 교수·대학원장은 제한 없이 (AccountService).
  * 탈퇴하면 이름·이메일·카카오 연결을 지우고 "탈퇴한 원우"로만 남는다 (3교시 기록의 짝을 맞추려고 행은 남긴다).
  */
 @Entity
@@ -112,6 +113,14 @@ public class Member {
     @Column(name = "token_version", nullable = false)
     private int tokenVersion;
 
+    /** 내 정보에서 학과·기수를 마지막으로 고친 시각 (원우는 30일에 한 번). 관리 화면에서 고치면 바뀌지 않는다 */
+    @Column(name = "profile_changed_at")
+    private Instant profileChangedAt;
+
+    /** 랭킹에 안 나오기 */
+    @Column(name = "ranking_hidden", nullable = false)
+    private boolean rankingHidden;
+
     protected Member() {
     }
 
@@ -189,11 +198,42 @@ public class Member {
         return status == MemberStatus.ACTIVE;
     }
 
-    /** 교수·대학원장만 호출한다 (AdminService). 본인은 바꿀 수 없다 */
+    /** 관리 화면에서 고친다 (AdminService). 본인이 고칠 때는 changeOwnProfile */
     public void updateProfile(String name, int cohort, Department department) {
         this.name = name;
         this.cohort = cohort;
         this.department = department;
+    }
+
+    /** 내 정보에서 본인이 고친다 (이름은 대학원장만 바뀐다 — AccountService 가 먼저 본다). 고친 시각을 남긴다 */
+    public void changeOwnProfile(String name, int cohort, Department department, Instant now) {
+        boolean affiliationChanged = this.cohort != cohort || !sameDepartment(department);
+        this.name = name;
+        this.cohort = cohort;
+        this.department = department;
+        if (affiliationChanged) {
+            this.profileChangedAt = now;
+        }
+    }
+
+    /** 이 학과와 지금 학과가 같은지 (둘 다 비어 있어도 같다) */
+    public boolean sameDepartment(Department other) {
+        if (department == null || other == null) {
+            return department == other;
+        }
+        return department.getId().equals(other.getId());
+    }
+
+    public Instant getProfileChangedAt() {
+        return profileChangedAt;
+    }
+
+    public boolean isRankingHidden() {
+        return rankingHidden;
+    }
+
+    public void changeRankingHidden(boolean hidden) {
+        this.rankingHidden = hidden;
     }
 
     public void agreeTerms(Instant now) {

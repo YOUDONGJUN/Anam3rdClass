@@ -21,6 +21,9 @@ import type {
   NoticeInput,
   NoticeSummary,
   PushType,
+  RankingPeriod,
+  RankingScope,
+  RankingView,
   Report,
   ReportInput,
   Role,
@@ -40,6 +43,8 @@ export const keys = {
   authConfig: ['auth-config'] as const,
   devMembers: ['dev-members'] as const,
   feedbackPending: ['feedback-pending'] as const,
+  places: ['places'] as const,
+  ranking: (period: RankingPeriod, scope: RankingScope) => ['ranking', period, scope] as const,
 }
 
 // ---------------- 로그인 · 가입 (로그인 없이 호출) ----------------
@@ -99,6 +104,7 @@ function afterMeetupChange(qc: QueryClient, detail: MeetupDetail) {
   qc.invalidateQueries({ queryKey: ['meetups'] })
   qc.invalidateQueries({ queryKey: keys.myMeetups })
   qc.invalidateQueries({ queryKey: keys.admin })
+  qc.invalidateQueries({ queryKey: keys.places })
 }
 
 export function useCreateMeetup() {
@@ -117,17 +123,41 @@ export function useUpdateMeetup(id: number) {
   })
 }
 
+export type MeetupActionKind = 'join' | 'leave' | 'cancel' | 'confirm' | 'wait' | 'unwait'
+
 export function useMeetupAction() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, action }: { id: number; action: 'join' | 'leave' | 'cancel' | 'confirm' }) => {
+    mutationFn: ({ id, action }: { id: number; action: MeetupActionKind }) => {
       if (action === 'join') return api<MeetupDetail>(`/api/meetups/${id}/join`, { method: 'POST' })
       if (action === 'leave') return api<MeetupDetail>(`/api/meetups/${id}/join`, { method: 'DELETE' })
+      // 빈자리 대기 (자리 나면 알림) 신청 · 취소
+      if (action === 'wait') return api<MeetupDetail>(`/api/meetups/${id}/wait`, { method: 'POST' })
+      if (action === 'unwait') return api<MeetupDetail>(`/api/meetups/${id}/wait`, { method: 'DELETE' })
       // 지금 인원으로 확정 (무산된 3교시도 모임 전이면 되살린다)
       if (action === 'confirm') return api<MeetupDetail>(`/api/meetups/${id}/confirm`, { method: 'POST' })
       return api<MeetupDetail>(`/api/meetups/${id}/cancel`, { method: 'POST' })
     },
     onSuccess: (d) => afterMeetupChange(qc, d),
+  })
+}
+
+/** 정원 늘리기 (빈자리를 기다리는 사람을 태우려고) */
+export function useAddSeats() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, maxPeople }: { id: number; maxPeople: number }) =>
+      api<MeetupDetail>(`/api/meetups/${id}/seats`, { method: 'PUT', body: { maxPeople } }),
+    onSuccess: (d) => afterMeetupChange(qc, d),
+  })
+}
+
+/** 3교시 열기 화면의 장소 추천 (우리 학교 3교시에서 많이 쓴 장소) */
+export function usePopularPlaces() {
+  return useQuery({
+    queryKey: keys.places,
+    queryFn: () => api<string[]>('/api/meetups/places'),
+    staleTime: 5 * 60_000,
   })
 }
 
@@ -273,6 +303,50 @@ export function usePushSettings() {
   })
 }
 
+/** 내 학과·기수 고치기 (대학원장은 이름도) → 바뀐 내 정보 */
+export function useUpdateMyProfile() {
+  const qc = useQueryClient()
+  const { updateMember } = useAuth()
+  return useMutation({
+    mutationFn: (input: { name?: string; cohort: number; departmentId: number }) =>
+      api<Member>('/api/me/profile', { method: 'PUT', body: input }),
+    onSuccess: (m) => {
+      updateMember(m)
+      // 3교시·공지·랭킹에 붙는 내 기수·학과가 바뀐다
+      qc.invalidateQueries({ queryKey: ['meetups'] })
+      qc.invalidateQueries({ queryKey: ['meetup'] })
+      qc.invalidateQueries({ queryKey: keys.myMeetups })
+      qc.invalidateQueries({ queryKey: keys.notices })
+      qc.invalidateQueries({ queryKey: ['ranking'] })
+      qc.invalidateQueries({ queryKey: keys.admin })
+    },
+  })
+}
+
+/** 랭킹에 안 나오기 → 바뀐 내 정보 */
+export function useRankingSetting() {
+  const qc = useQueryClient()
+  const { updateMember } = useAuth()
+  return useMutation({
+    mutationFn: (hidden: boolean) => api<Member>('/api/me/ranking', { method: 'PUT', body: { hidden } }),
+    onSuccess: (m) => {
+      updateMember(m)
+      qc.invalidateQueries({ queryKey: ['ranking'] })
+      qc.invalidateQueries({ queryKey: ['meetup'] })
+    },
+  })
+}
+
+// ---------------- 랭킹 ----------------
+
+export function useRanking(period: RankingPeriod, scope: RankingScope) {
+  return useQuery({
+    queryKey: keys.ranking(period, scope),
+    queryFn: () => api<RankingView>(`/api/rankings?period=${period}&scope=${scope}`),
+    staleTime: 60_000,
+  })
+}
+
 /** 탈퇴 — 되돌릴 수 없다 */
 export function useWithdraw() {
   return useMutation({ mutationFn: () => api<void>('/api/me', { method: 'DELETE' }) })
@@ -396,7 +470,7 @@ export function useAdminMemberAction() {
   })
 }
 
-/** 원우의 이름·기수·학과 고치기 (본인은 못 바꾸고 요청한다) */
+/** 원우의 이름·기수·학과 고치기 (원우 이름은 본인이 못 바꾸고 요청한다) */
 export function useUpdateMemberProfile() {
   const refresh = useRefreshAfterAdminEdit()
   return useMutation({

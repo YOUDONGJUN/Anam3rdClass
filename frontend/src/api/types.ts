@@ -49,10 +49,14 @@ export interface Member {
   hasPassword: boolean
   /** 끈 앱 알림 종류 */
   pushOff: PushType[]
+  /** 원우가 학과·기수를 다시 고칠 수 있는 때 (30일에 한 번). null 이거나 지났으면 지금 고칠 수 있다 */
+  profileEditableAt: string | null
+  /** 랭킹에 안 나오기 */
+  rankingHidden: boolean
 }
 
 /** 앱 알림 종류 (서버 PushType) */
-export type PushType = 'JOIN' | 'REACHED' | 'DEADLINE' | 'CHANGED' | 'NOTICE' | 'FEDERATION'
+export type PushType = 'JOIN' | 'REACHED' | 'DEADLINE' | 'CHANGED' | 'NOTICE' | 'FEDERATION' | 'SCHOOL' | 'SPOT'
 
 export interface Department {
   id: number
@@ -145,6 +149,8 @@ export interface PersonView {
   masked: boolean
   /** 상세 화면 참여자에게만: 이 3교시 안의 참여 번호 (신고·차단할 때 쓴다) */
   ref: number | null
+  /** 이번 달 방장왕·출석왕 1등 배지 */
+  crowns: RankingCategory[]
 }
 
 export interface MeetupSummary {
@@ -197,6 +203,63 @@ export interface MeetupDetail extends MeetupSummary {
   canConfirm: boolean
   /** 3교시 후기: 성사된 3교시 다음 날부터 7일 동안 함께한 사람에게만. 그 밖엔 null */
   feedback: FeedbackPrompt | null
+  /** 내가 빈자리 대기 중 (자리 나면 알림) */
+  waiting: boolean
+  /** 빈자리 대기 신청: 정원이 찼고 아직 참여를 받는 3교시 */
+  canWait: boolean
+  /** 기다리는 사람 수: 연 사람·대학원장에게만 (그 밖엔 null) */
+  waitCount: number | null
+  /** 정원 늘리기: 연 사람·대학원장, 최대 인원이 30명 아래일 때 */
+  canAddSeats: boolean
+}
+
+// ---------------- 랭킹 ----------------
+
+/** 방장왕 · 출석왕 · 성사율 · 연합왕 (화면 이름은 lib/ranking.ts) */
+export type RankingCategory = 'HOST' | 'ATTEND' | 'RATE' | 'FEDERATION'
+export type RankingPeriod = 'month' | 'all'
+export type RankingScope = 'all' | 'school'
+
+/** 랭킹 한 사람. 이름은 가려서 (내 이름·대학원장 이름만 그대로). rank 가 null 이면 랭킹에 안 나오는 중(내 기록만) */
+export interface RankingEntry {
+  rank: number | null
+  name: string
+  masked: boolean
+  me: boolean
+  owner: boolean
+  school: SchoolTag
+  departmentLabel: string | null
+  /** 횟수. 성사율은 성사된 수 */
+  value: number
+  /** 성사율만: 연 수 */
+  of: number | null
+}
+
+export interface RankingCategoryView {
+  category: RankingCategory
+  /** 상위 10명 */
+  top: RankingEntry[]
+  /** 내 기록 (없으면 null) */
+  mine: RankingEntry | null
+}
+
+/** 학교 대항: 참여율 = active ÷ members */
+export interface RankingSchoolRow {
+  rank: number
+  school: SchoolTag
+  members: number
+  active: number
+  meetups: number
+  mine: boolean
+}
+
+export interface RankingView {
+  period: RankingPeriod
+  scope: RankingScope
+  /** 이번 달이면 1일 0시, 전체면 null */
+  since: string | null
+  categories: RankingCategoryView[]
+  schools: RankingSchoolRow[]
 }
 
 // ---------------- 3교시 후기 ----------------

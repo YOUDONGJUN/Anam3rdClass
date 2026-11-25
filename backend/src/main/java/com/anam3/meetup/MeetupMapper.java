@@ -12,6 +12,7 @@ import com.anam3.meetup.MeetupDtos.MeetupDetail;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
 import com.anam3.meetup.MeetupDtos.PersonView;
 import com.anam3.member.Member;
+import com.anam3.ranking.RankingService;
 import com.anam3.school.SchoolDtos.SchoolTag;
 
 /**
@@ -40,6 +41,18 @@ import com.anam3.school.SchoolDtos.SchoolTag;
 @Component
 public class MeetupMapper {
 
+    private final RankingService ranking;
+
+    public MeetupMapper(RankingService ranking) {
+        this.ranking = ranking;
+    }
+
+    /** 빈자리 대기: 나는 대기 중인지, 몇 명이 기다리는지 */
+    public record WaitInfo(boolean waiting, long count) {
+
+        public static final WaitInfo NONE = new WaitInfo(false, 0);
+    }
+
     public static boolean canSeeRealNames(Meetup meetup, LoginMember viewer, boolean joined) {
         if (viewer.isOwner()) {
             return true;
@@ -65,9 +78,10 @@ public class MeetupMapper {
     /**
      * @param blocked 나와 연 사람 사이에 차단이 있으면 true — 참여 버튼을 감춘다
      * @param feedback 후기를 받는 동안 함께한 사람에게만 (아니면 null)
+     * @param wait 빈자리 대기
      */
     public MeetupDetail toDetail(Meetup m, List<Participation> participations, LoginMember viewer, boolean blocked,
-            FeedbackPrompt feedback, Instant now) {
+            FeedbackPrompt feedback, WaitInfo wait, Instant now) {
         boolean joined = participations.stream().anyMatch(p -> p.getMember().getId().equals(viewer.id()));
         boolean hosting = m.isHostedBy(viewer.id());
         boolean revealed = canSeeRealNames(m, viewer, joined);
@@ -78,6 +92,10 @@ public class MeetupMapper {
         boolean joinable = joinableBy(m, viewer, now) && !blocked;
         boolean hasOpenChat = m.getOpenChatUrl() != null && !m.getOpenChatUrl().isBlank();
         boolean canSeeOpenChat = viewer.isOwner() || hosting || revealed;
+        boolean manages = hosting || viewer.isOwner();
+        // 정원이 차서 지금은 못 타지만, 자리가 나면 탈 수 있는 사람
+        boolean canWait = !joined && !hosting && !blocked && m.isFull() && m.isTakingJoinsAt(now)
+                && m.isOpenTo(viewer.schoolId(), viewer.cohort());
 
         List<PersonView> people = participations.stream()
                 .map(p -> person(p.getMember(), viewer, revealed, m.isHostedBy(p.getMember().getId()), p.getId()))
@@ -104,8 +122,12 @@ public class MeetupMapper {
                 m.getFee(),
                 m.isFeePrepaid(),
                 canDelete,
-                (hosting || viewer.isOwner()) && m.isConfirmableAt(now),
-                feedback);
+                manages && m.isConfirmableAt(now),
+                feedback,
+                wait.waiting() && canWait,
+                canWait,
+                manages ? (int) wait.count() : null,
+                manages && open && m.getMaxPeople() != null && m.getMaxPeople() < MeetupService.MAX_SEATS);
     }
 
     private PersonView person(Member member, LoginMember viewer, boolean revealed, boolean host, Long ref) {
@@ -115,6 +137,7 @@ public class MeetupMapper {
         boolean showReal = revealed || me || owner || member.isWithdrawn();
         String name = showReal ? member.getName() : NameMasker.mask(member.getName());
         return new PersonView(name, member.cohortLabel(), member.departmentShortLabel(),
-                SchoolTag.from(member.getSchool()), me, host, owner, !showReal, ref);
+                SchoolTag.from(member.getSchool()), me, host, owner, !showReal, ref,
+                ranking.crowns().getOrDefault(member.getId(), List.of()));
     }
 }

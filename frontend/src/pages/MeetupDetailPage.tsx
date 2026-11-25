@@ -1,8 +1,12 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
+  Bell,
+  BellOff,
+  CalendarPlus,
   CheckCheck,
   ChevronLeft,
+  Copy,
   EyeOff,
   Flag,
   Globe2,
@@ -20,7 +24,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { ApiError } from '../api/client'
-import { useDeleteMeetup, useMeetup, useMeetupAction } from '../api/queries'
+import { type MeetupActionKind, useAddSeats, useDeleteMeetup, useMeetup, useMeetupAction } from '../api/queries'
 import type { MeetupDetail } from '../api/types'
 import { CategoryBadges } from '../components/CategoryBadge'
 import { FeedbackCard } from '../components/FeedbackCard'
@@ -35,8 +39,9 @@ import { Button, ErrorState, Spinner } from '../components/ui'
 import { buttonClass, cardClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
-import { CATEGORY, headcount, isLive, seatsCaption, sortCategories } from '../lib/meetup'
-import { shareLink } from '../lib/native'
+import { downloadIcs, googleCalendarUrl, type CalendarEvent } from '../lib/calendar'
+import { CATEGORY, headcount, isLive, seatsCaption, seatsToAdd, sortCategories } from '../lib/meetup'
+import { isApp, shareLink } from '../lib/native'
 import { affiliation } from '../lib/person'
 import { formatDate, formatDateTime, formatDayLabel, formatRemaining, formatTime } from '../lib/time'
 import { DepartureBoard } from '../components/DepartureBoard'
@@ -108,7 +113,11 @@ function StateNote({ m }: { m: MeetupDetail }) {
           : '이제 서로 실명이 보여요. 단톡방 링크는 곧 올라와요'
         : m.canJoin
           ? '지금 참여하면 바로 실명·단톡방이 열려요'
-          : '모집이 끝났어요.'
+          : m.canWait
+            ? m.waiting
+              ? '자리가 나면 바로 알려 드릴게요. 먼저 참여하는 원우가 타요'
+              : '정원이 다 찼어요. 자리 나면 알림을 받아 보세요'
+            : '모집이 끝났어요.'
       break
     case 'FAILED':
       tone = 'muted'
@@ -156,6 +165,94 @@ function StateNote({ m }: { m: MeetupDetail }) {
   )
 }
 
+/** 캘린더에 넣기: 웹은 구글 캘린더 · 캘린더 파일(1시간 전 알림), 앱은 구글 캘린더 */
+function CalendarCard({ m }: { m: MeetupDetail }) {
+  const event: CalendarEvent = {
+    id: m.id,
+    title: m.title,
+    place: m.place,
+    meetAt: m.meetAt,
+    url: `${window.location.origin}/meetups/${m.id}`,
+  }
+  return (
+    <section className={`${cardClass} flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4`}>
+      <span className="flex min-w-[13rem] flex-1 items-center gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2">
+          <CalendarPlus className="size-5" aria-hidden />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[15px] font-bold text-ink">캘린더에 넣어 두기</span>
+          <span className="block text-[13px] text-ink-3">
+            {isApp ? '구글 캘린더로 열려요' : '파일로 넣으면 1시간 전에 알려 줘요'}
+          </span>
+        </span>
+      </span>
+      {/* 좁은 화면에서는 버튼이 다음 줄로 내려가 한 줄을 나눠 쓴다 */}
+      <span className="flex w-full gap-2 sm:w-auto">
+        <a
+          href={googleCalendarUrl(event)}
+          target="_blank"
+          rel="noreferrer"
+          className={buttonClass('secondary', 'sm', 'flex-1 sm:flex-none')}
+        >
+          구글 캘린더
+        </a>
+        {!isApp && (
+          <Button variant="secondary" size="sm" className="flex-1 sm:flex-none" onClick={() => downloadIcs(event)}>
+            캘린더 파일
+          </Button>
+        )}
+      </span>
+    </section>
+  )
+}
+
+/** 연 사람(·대학원장): 빈자리를 기다리는 사람 수와 정원 늘리기. 누구인지는 보이지 않고, 거절은 없다 */
+function WaitlistCard({ m }: { m: MeetupDetail }) {
+  const addSeats = useAddSeats()
+  const toast = useToast()
+  const count = m.waitCount ?? 0
+  // 자리가 남아 있으면 보이지 않는다 (기다리던 원우에게 이미 알림이 갔다)
+  if (count === 0 || m.maxPeople === null || !isLive(m.status) || m.participantCount < m.maxPeople) return null
+  const add = m.canAddSeats ? seatsToAdd(m.maxPeople, count) : 0
+  function expand() {
+    if (m.maxPeople === null || add === 0) return
+    const next = m.maxPeople + add
+    if (!window.confirm(`정원을 ${m.maxPeople}명에서 ${next}명으로 늘릴까요?\n\n기다리는 ${count}명에게 바로 알림이 가요. 먼저 참여하는 원우가 타요.`))
+      return
+    addSeats.mutate(
+      { id: m.id, maxPeople: next },
+      {
+        onSuccess: () => toast.show(`정원을 ${next}명으로 늘렸어요`, 'ok'),
+        onError: (e) => toast.show(e.message, 'error'),
+      },
+    )
+  }
+  return (
+    <section className={`${cardClass} flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4`}>
+      <span className="flex min-w-[13rem] flex-1 items-center gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-ink">
+          <Bell className="size-5" aria-hidden />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[15px] font-bold text-ink">
+            빈자리 대기 <span className="tabular text-accent-ink">{count}명</span>
+          </span>
+          <span className="block text-[13px] text-ink-3">
+            {add > 0 ? '정원을 늘리면 기다리던 원우에게 알림이 가요' : '정원은 30명까지예요'}
+          </span>
+        </span>
+      </span>
+      {add > 0 && (
+        <Button size="sm" className="w-full shrink-0 sm:w-auto" loading={addSeats.isPending} onClick={expand}>
+          <UserPlus className="size-4" aria-hidden />
+          정원 +{add}
+        </Button>
+      )}
+    </section>
+  )
+}
+
 /** 단톡방에 공유: 앱·폰은 공유 창, PC 는 링크 복사. 링크를 누르면 앱이 있으면 앱으로 열린다 */
 async function share(m: MeetupDetail, onCopied: () => void) {
   const url = `${window.location.origin}/meetups/${m.id}`
@@ -198,7 +295,10 @@ export function MeetupDetailPage() {
   }
 
   const live = isLive(m.status)
-  const hasActions = m.canJoin || Boolean(m.joined && m.revealed && m.openChatUrl) || live || m.canLeave || m.canConfirm
+  const hasActions =
+    m.canJoin || m.canWait || Boolean(m.joined && m.revealed && m.openChatUrl) || live || m.canLeave || m.canConfirm
+  /** 지난 3교시를 그대로 다시 열기 (연 사람·함께한 사람) */
+  const canReopen = m.joined && !live && !m.canConfirm
   /** 무산된 3교시를 되살리는 확정인지 */
   const reviving = m.status === 'FAILED'
 
@@ -213,7 +313,7 @@ export function MeetupDetailPage() {
     })
   }
 
-  function run(kind: 'join' | 'leave' | 'cancel' | 'confirm') {
+  function run(kind: MeetupActionKind) {
     if (kind === 'cancel' && !window.confirm('3교시를 취소할까요? 참여자들에게는 "취소됨"으로 보여요.')) return
     if (kind === 'leave' && !window.confirm('참여를 취소할까요?')) return
     const count = m?.participantCount ?? 0
@@ -242,6 +342,10 @@ export function MeetupDetailPage() {
             )
           } else if (kind === 'leave') {
             toast.show('참여를 취소했어요')
+          } else if (kind === 'wait') {
+            toast.show('자리가 나면 알려 드릴게요', 'ok')
+          } else if (kind === 'unwait') {
+            toast.show('빈자리 알림을 껐어요')
           } else {
             toast.show('3교시를 취소했어요')
           }
@@ -258,6 +362,18 @@ export function MeetupDetailPage() {
           나도 콜
         </Button>
       )}
+      {m.canWait &&
+        (m.waiting ? (
+          <Button size="lg" variant="secondary" loading={action.isPending} onClick={() => run('unwait')} className="w-full">
+            <BellOff className="size-5" aria-hidden />
+            빈자리 알림 대기 중 · 끄기
+          </Button>
+        ) : (
+          <Button size="lg" loading={action.isPending} onClick={() => run('wait')} className="w-full">
+            <Bell className="size-5" aria-hidden />
+            자리 나면 알림 받기
+          </Button>
+        ))}
       {m.canConfirm && (
         <Button size="lg" loading={action.isPending} onClick={() => run('confirm')} className="w-full">
           <CheckCheck className="size-5" aria-hidden />
@@ -406,6 +522,10 @@ export function MeetupDetailPage() {
         <div className="flex flex-col gap-6">
           <StateNote m={m} />
 
+          <WaitlistCard m={m} />
+
+          {m.joined && live && <CalendarCard m={m} />}
+
           <FeedbackCard m={m} now={now} />
 
           {m.description && (
@@ -473,6 +593,11 @@ export function MeetupDetailPage() {
               <Flag className="size-4" aria-hidden />
               이 3교시 신고하기
             </button>
+          )}
+          {canReopen && (
+            <Link to={`/meetups/new?from=${m.id}`} className={buttonClass('secondary', 'md')}>
+              <Copy className="size-4" aria-hidden />이 3교시 다시 열기
+            </Link>
           )}
           {/* 수정: 연 사람·대학원장 / 취소: 연 사람·그 학교 교수·대학원장 */}
           {(m.canEdit || m.canCancel) && (

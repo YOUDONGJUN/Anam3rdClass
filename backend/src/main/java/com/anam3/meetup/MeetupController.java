@@ -22,6 +22,7 @@ import com.anam3.meetup.MeetupDtos.MeetupCreateRequest;
 import com.anam3.meetup.MeetupDtos.MeetupDetail;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
 import com.anam3.meetup.MeetupDtos.MeetupUpdateRequest;
+import com.anam3.meetup.MeetupDtos.SeatsRequest;
 
 @RestController
 @RequestMapping("/api/meetups")
@@ -84,5 +85,29 @@ public class MeetupController {
     @DeleteMapping("/{id}/join")
     public MeetupDetail leave(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
         return meetupService.leave(me, id);
+    }
+
+    /** 빈자리 대기: 정원이 찬 3교시에 "자리 나면 알림" */
+    @PostMapping("/{id}/wait")
+    public MeetupDetail waitForSeat(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
+        return meetupService.waitForSeat(me, id);
+    }
+
+    @DeleteMapping("/{id}/wait")
+    public MeetupDetail cancelWait(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
+        return meetupService.cancelWait(me, id);
+    }
+
+    /** 정원 늘리기 (연 사람 · 대학원장) */
+    @PutMapping("/{id}/seats")
+    public MeetupDetail addSeats(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @Valid @RequestBody SeatsRequest req) {
+        return meetupService.addSeats(me, id, req.maxPeople());
+    }
+
+    /** 3교시 열기 화면의 장소 추천: 우리 학교 3교시에서 많이 쓴 장소 */
+    @GetMapping("/places")
+    public List<String> places(@AuthenticationPrincipal LoginMember me) {
+        return meetupService.popularPlaces(me);
     }
 }

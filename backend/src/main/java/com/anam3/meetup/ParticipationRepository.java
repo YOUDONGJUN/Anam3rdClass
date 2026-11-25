@@ -59,4 +59,15 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
             """)
     List<Meetup> findPastMeetupsOf(@Param("memberId") Long memberId, @Param("since") java.time.Instant since,
             @Param("now") java.time.Instant now);
+
+    /** 랭킹: 성사된 뒤 모임 시간이 지난 3교시(모임 시간이 since ~ now)에 탄 기록. MeetupRepository.countConfirmed 와 같은 성사 기준 */
+    @Query("""
+            select new com.anam3.ranking.RankingRide(p.member.id, m.id, m.host.id, m.federated, p.member.school.id,
+                   m.school.id)
+            from Participation p join p.meetup m
+            where m.canceled = false and m.meetAt < :now and m.meetAt >= :since
+              and m.participantCount >= coalesce(m.minPeople, 2)
+            """)
+    List<com.anam3.ranking.RankingRide> findRides(@Param("since") java.time.Instant since,
+            @Param("now") java.time.Instant now);
 }

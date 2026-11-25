@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, Link } from 'react-router'
-import { CircleUser, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, Ticket, TrainFront, type LucideIcon } from 'lucide-react'
+import { CircleUser, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, Ticket, TrainFront, Trophy, type LucideIcon } from 'lucide-react'
 import { useAdminStats } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from './toastContext'
@@ -7,7 +7,7 @@ import { useSlowServer } from '../lib/hooks'
 import { affiliation, isStaff } from '../lib/person'
 import { Brand } from './Brand'
 import { FeedbackPrompter } from './FeedbackSheet'
-import { MadeBy } from './MadeBy'
+import { ByCompany } from './MadeBy'
 import { RoleTag } from './PersonName'
 import { SchoolBadge } from './SchoolBadge'
 import { buttonClass } from './styles'
@@ -61,17 +61,18 @@ export function AppShell() {
   const feed: NavItem = { to: '/', label: '3교시', Icon: TrainFront, end: true }
   const mine: NavItem = { to: '/my-meetups', label: '내 3교시', Icon: Ticket }
   const notices: NavItem = { to: '/notices', label: '공지', Icon: Megaphone }
-  // 모바일 하단 메뉴에는 관리 칸이 없다 — 교수·대학원장은 내 정보 › 관리 화면, 처리할 신고 수는 내 정보에 붙는다
-  const me: NavItem = { to: '/me', label: '내 정보', Icon: CircleUser, badge: openReports }
+  const ranking: NavItem = { to: '/ranking', label: '랭킹', Icon: Trophy }
+  const me: NavItem = { to: '/me', label: '내 정보', Icon: CircleUser }
+  const admin: NavItem = { to: '/admin', label: '관리', Icon: ShieldCheck, badge: openReports }
   /** 데스크톱 왼쪽 레일: 관리까지 다 */
-  const railItems: NavItem[] = [feed, mine, notices, { ...me, badge: undefined }]
-  if (staff) railItems.push({ to: '/admin', label: '관리', Icon: ShieldCheck, badge: openReports })
+  const railItems: NavItem[] = [feed, mine, notices, ranking, me]
+  if (staff) railItems.push(admin)
   // 관리 화면은 표·카드가 많아 더 넓게
   const wide = pathname.startsWith('/admin')
   // 3교시 상세: 하단 메뉴 대신 그 3교시의 행동 버튼(나도 콜 …)만 바닥에 둔다
   const detail = /^\/meetups\/\d+$/.test(pathname)
   // 안내판이 머리에서 이어지는 화면은 머리 아래 띠를 빼서 한 장으로 보이게
-  const continuesBoard = pathname === '/' || pathname === '/my-meetups' || detail
+  const continuesBoard = pathname === '/' || pathname === '/my-meetups' || pathname === '/ranking' || detail
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -127,25 +128,21 @@ export function AppShell() {
               <LogOut className="size-4" aria-hidden />
               로그아웃
             </button>
-            <MadeBy onBoard className="mt-4" />
+            <ByCompany onBoard className="mt-4" />
           </div>
         )}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* 모바일: 상단 안내판 + 6호선 띠 */}
+        {/* 모바일: 상단 안내판 + 6호선 띠. 오른쪽은 랭킹 · (교수·대학원장) 관리 — 로그아웃은 잘못 누르기 쉬워 내 정보에만 */}
         <header className="sticky top-0 z-30 bg-board pt-[env(safe-area-inset-top)] lg:hidden">
           <div className="flex h-14 items-center justify-between gap-3 px-4">
             <Brand />
             {member && (
-              <button
-                type="button"
-                onClick={logout}
-                className="-mr-2 inline-flex h-10 shrink-0 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-on-board-2 hover:text-on-board"
-              >
-                <LogOut className="size-4" aria-hidden />
-                로그아웃
-              </button>
+              <nav aria-label="바로가기" className="-mr-2 flex shrink-0 items-center gap-0.5">
+                <HeaderLink item={ranking} />
+                {staff && <HeaderLink item={admin} />}
+              </nav>
             )}
           </div>
           {!continuesBoard && <div className="h-1 bg-accent" aria-hidden />}
@@ -189,6 +186,28 @@ export function AppShell() {
         </nav>
       )}
     </div>
+  )
+}
+
+/** 모바일 상단 오른쪽 아이콘 바로가기 (이름은 아래에 작게) */
+function HeaderLink({ item: { to, label, Icon, badge } }: { item: NavItem }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `relative flex h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-lg px-1.5 text-[10px] font-bold ${
+          isActive ? 'text-on-board' : 'text-on-board-2 hover:text-on-board'
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <Icon className={`size-5 ${isActive ? 'text-accent' : ''}`} aria-hidden />
+          {label}
+          {!!badge && <NavBadge count={badge} className="absolute -top-0.5 right-0" />}
+        </>
+      )}
+    </NavLink>
   )
 }
 

@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import com.anam3.feedback.FeedbackDtos.FeedbackPrompt;
+import com.anam3.ranking.RankingCategory;
 import com.anam3.school.SchoolDtos.SchoolTag;
 
 public final class MeetupDtos {
@@ -29,9 +30,10 @@ public final class MeetupDtos {
      * (교수는 3교시에서 일반 원우와 똑같이 보인다)
      * school 은 학교 배지 (연합 3교시에서 어느 학교 사람인지 보인다).
      * ref 는 상세 화면 참여자에게만 붙는 이 3교시 안의 참여 번호 — 신고·차단할 때 쓴다 (회원 번호는 내보내지 않는다).
+     * crowns 는 이번 달 방장왕·출석왕 1등 배지 (RankingService.crowns). 없으면 빈 목록.
      */
     public record PersonView(String name, String cohortLabel, String departmentLabel, SchoolTag school, boolean me,
-            boolean host, boolean owner, boolean masked, Long ref) {
+            boolean host, boolean owner, boolean masked, Long ref, List<RankingCategory> crowns) {
     }
 
     public record MeetupSummary(
@@ -113,7 +115,23 @@ public final class MeetupDtos {
             /** 지금 인원으로 확정 (무산된 3교시도 모임 전이면 되살리기): 연 사람 · 대학원장, 2명 이상일 때 */
             boolean canConfirm,
             /** 3교시 후기: 성사된 3교시 다음 날부터 7일 동안 함께한 사람에게만. 그 밖엔 null */
-            FeedbackPrompt feedback) {
+            FeedbackPrompt feedback,
+            /** 내가 빈자리 대기 중 (자리 나면 알림) */
+            boolean waiting,
+            /** 빈자리 대기 신청: 정원이 찼고 아직 참여를 받는 3교시, 참여할 수 있는 사람만 */
+            boolean canWait,
+            /** 대기 중인 사람 수: 연 사람·대학원장에게만 (그 밖엔 null). 누구인지는 보이지 않는다 */
+            Integer waitCount,
+            /** 정원 늘리기: 연 사람·대학원장, 열려 있고 최대 인원이 30명 아래일 때 */
+            boolean canAddSeats) {
+    }
+
+    /** 정원 늘리기 (빈자리 대기자를 태우려고). 지금 최대 인원보다 커야 한다 */
+    public record SeatsRequest(
+            @NotNull(message = "최대 인원을 정해 주세요")
+            @Min(value = 2, message = "최대 인원은 2명 이상이에요")
+            @Max(value = 30, message = "최대 인원은 30명까지예요. 더 많으면 3교시 수정에서 '최대 인원 없음'으로 바꿔 주세요")
+            Integer maxPeople) {
     }
 
     public record MeetupCreateRequest(

@@ -2,7 +2,7 @@
 // 종류 색은 서울 지하철 노선 색에서 가져왔다 (소주=2호선 초록, 맥주=3호선 주황 …).
 // 여러 종류를 고르면 환승역 표지판처럼 노선 배지가 나란히 붙는다.
 import { Beer, Coffee, GlassWater, Martini, Milk, Sparkles, Wine, type LucideIcon } from 'lucide-react'
-import type { MeetupCategory, MeetupStatus, MeetupSummary } from '../api/types'
+import type { MeetupAudience, MeetupCategory, MeetupStatus, MeetupSummary } from '../api/types'
 
 export interface CategoryMeta {
   label: string
@@ -176,4 +176,35 @@ export function formatFee(fee: number): string {
 /** "참여비 1만 원 · 선입금" */
 export function feeLabel(fee: number, prepaid: boolean): string {
   return `참여비 ${formatFee(fee)}${prepaid ? ' · 선입금' : ''}`
+}
+
+/** 최대 인원 상한 (서버 MeetupService.MAX_SEATS) */
+export const MAX_SEATS = 30
+
+/** 정원 늘리기: 기다리는 사람 수만큼 (적어도 1명, 최대 30명까지). 더 늘릴 수 없으면 0 */
+export function seatsToAdd(max: number, waitCount: number): number {
+  return Math.max(0, Math.min(MAX_SEATS - max, Math.max(1, waitCount)))
+}
+
+export const AUDIENCE_LABEL: Record<MeetupAudience, string> = {
+  SCHOOL: '우리 학교',
+  COHORT: '우리 기수만',
+  ALL: '연합',
+}
+
+/** 3교시 열기에서 접어 둔 옵션 한 줄: "3~6명 · 우리 학교 · 참여비 없음" */
+export function optionsSummary(o: {
+  minPeople: number | null
+  maxPeople: number | null
+  audience: MeetupAudience
+  lateJoin: boolean
+  fee: number | null
+}): string {
+  const { minPeople: min, maxPeople: max } = o
+  const people =
+    min === null ? (max === null ? '인원 무관' : `최대 ${max}명`) : max === null ? `${min}명부터` : min === max ? `${min}명` : `${min}~${max}명`
+  const parts = [people, AUDIENCE_LABEL[o.audience]]
+  if (o.lateJoin) parts.push('중간 합류 OK')
+  parts.push(o.fee === null ? '참여비 없음' : `참여비 ${o.fee.toLocaleString('ko-KR')}원`)
+  return parts.join(' · ')
 }

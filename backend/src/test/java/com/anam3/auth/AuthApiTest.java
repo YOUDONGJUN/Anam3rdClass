@@ -302,12 +302,13 @@ class AuthApiTest extends ApiTestSupport {
     }
 
     @Test
-    void 가입한_뒤에는_이름_기수_학과를_스스로_바꿀_수_없다() throws Exception {
+    void 가입한_뒤에는_이름을_스스로_바꿀_수_없다() throws Exception {
         String token = signup("godae", "김고대", 61);
 
-        put("/api/me/profile", token, "{\"name\":\"김고대\",\"cohort\":62,\"departmentId\":1}")
-                .andExpect(status().is4xxClientError());
-        get("/api/me", token).andExpect(jsonPath("$.cohort").value(61));
+        put("/api/me/profile", token, "{\"name\":\"김바꿈\",\"cohort\":61,\"departmentId\":"
+                + departmentId("KU", "인융") + "}")
+                .andExpect(status().isForbidden());
+        get("/api/me", token).andExpect(jsonPath("$.name").value("김고대"));
     }
 
     @Test

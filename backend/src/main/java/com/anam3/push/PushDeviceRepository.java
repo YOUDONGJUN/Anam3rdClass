@@ -36,6 +36,15 @@ public interface PushDeviceRepository extends JpaRepository<PushDevice, Long> {
             """)
     List<PushTarget> findSchoolTargets(@Param("schoolId") Long schoolId, @Param("active") MemberStatus active);
 
+    /** 한 학교 한 기수 원우의 기기 (활동 중인 회원만) — 우리 기수만 3교시 */
+    @Query("""
+            select new com.anam3.push.PushTarget(m.id, m.pushOff, d.token)
+            from PushDevice d join d.member m
+            where m.school.id = :schoolId and m.cohort = :cohort and m.status = :active
+            """)
+    List<PushTarget> findCohortTargets(@Param("schoolId") Long schoolId, @Param("cohort") int cohort,
+            @Param("active") MemberStatus active);
+
     /** 다섯 학교 원우 모두의 기기 (활동 중인 회원만) */
     @Query("""
             select new com.anam3.push.PushTarget(m.id, m.pushOff, d.token)

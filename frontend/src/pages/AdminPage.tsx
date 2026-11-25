@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import {
   ArrowDown,
@@ -914,6 +914,21 @@ function Members() {
   )
 }
 
+/** 다른 탭(신고)에서 원우 한 명을 바로 연다. 관리할 수 없는 원우(교수에게 다른 학교 등)면 알려 주고 닫는다 */
+function MemberDialogById({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data, isPending } = useAdminMembers()
+  const toast = useToast()
+  const found = data?.find((m) => m.id === id)
+  const missing = !isPending && !found
+  useEffect(() => {
+    if (!missing) return
+    toast.show('원우 목록에 없는 사람이에요', 'error')
+    onClose()
+  }, [missing, toast, onClose])
+  if (!found) return null
+  return <MemberDialog key={found.id} member={found} onClose={onClose} />
+}
+
 // ---------------- 3교시 ----------------
 
 function Meetups() {
@@ -946,7 +961,7 @@ function Meetups() {
 
 const TARGET_LABEL: Record<Report['targetType'], string> = { MEETUP: '3교시', NOTICE: '공지', MEMBER: '사람' }
 
-function ReportCard({ r }: { r: Report }) {
+function ReportCard({ r, onOpenMember }: { r: Report; onOpenMember: (memberId: number) => void }) {
   const resolve = useResolveReport()
   const action = useAdminMemberAction()
   const toast = useToast()
@@ -1000,7 +1015,18 @@ function ReportCard({ r }: { r: Report }) {
         {r.memberName && (
           <p>
             {r.targetType === 'MEMBER' ? '신고된 사람' : r.targetType === 'MEETUP' ? '연 사람' : '쓴 사람'}{' '}
-            <b className="text-ink">{r.memberName}</b>
+            {r.memberId ? (
+              // 이름을 누르면 원우 탭에서 찾지 않고 바로 원우 관리 창
+              <button
+                type="button"
+                onClick={() => onOpenMember(r.memberId!)}
+                className="font-bold text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
+              >
+                {r.memberName}
+              </button>
+            ) : (
+              <b className="text-ink">{r.memberName}</b>
+            )}
             {r.memberAffiliation && ` · ${r.memberAffiliation}`}
             {r.memberBanned && ' · 차단됨'}
           </p>
@@ -1078,7 +1104,15 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
  * 신고 목록. 대학원장은 "후기에서" 온 신고만 모아 볼 수 있다 (통계의 "신고 탭에서 보기"로 오면 그렇게 열린다).
  * 교수에게는 후기에서 온 신고라는 표시가 내려오지 않는다.
  */
-function Reports({ feedbackOnly, onFeedbackOnly }: { feedbackOnly: boolean; onFeedbackOnly: (on: boolean) => void }) {
+function Reports({
+  feedbackOnly,
+  onFeedbackOnly,
+  onOpenMember,
+}: {
+  feedbackOnly: boolean
+  onFeedbackOnly: (on: boolean) => void
+  onOpenMember: (memberId: number) => void
+}) {
   const { data, isPending, error, refetch } = useAdminReports()
   const isOwner = useIsOwner()
   if (isPending) return <Spinner />
@@ -1110,7 +1144,7 @@ function Reports({ feedbackOnly, onFeedbackOnly }: { feedbackOnly: boolean; onFe
       ) : (
         <ul className={`${cardClass} divide-y divide-line overflow-hidden`}>
           {list.map((r) => (
-            <ReportCard key={r.id} r={r} />
+            <ReportCard key={r.id} r={r} onOpenMember={onOpenMember} />
           ))}
         </ul>
       )}
@@ -1546,6 +1580,9 @@ export function AdminPage() {
   const [tab, setTab] = useState<Tab>('home')
   /** 신고 탭에서 후기에서 온 신고만 보기 (대학원장) */
   const [feedbackOnly, setFeedbackOnly] = useState(false)
+  /** 신고 카드에서 이름을 눌러 연 원우 */
+  const [openMemberId, setOpenMemberId] = useState<number | null>(null)
+  const closeMember = useCallback(() => setOpenMemberId(null), [])
   const stats = useAdminStats()
   const open = stats.data?.openReports ?? 0
   const owner = member?.role === 'OWNER'
@@ -1582,7 +1619,9 @@ export function AdminPage() {
       </div>
       {tab === 'home' && <AdminHome onGo={go} />}
       {tab === 'members' && <Members />}
-      {tab === 'reports' && <Reports feedbackOnly={feedbackOnly} onFeedbackOnly={setFeedbackOnly} />}
+      {tab === 'reports' && (
+        <Reports feedbackOnly={feedbackOnly} onFeedbackOnly={setFeedbackOnly} onOpenMember={setOpenMemberId} />
+      )}
       {tab === 'meetups' && <Meetups />}
       {tab === 'schools' && <Schools />}
       {tab === 'stats' && owner && (
@@ -1593,6 +1632,7 @@ export function AdminPage() {
           }}
         />
       )}
+      {openMemberId !== null && <MemberDialogById id={openMemberId} onClose={closeMember} />}
     </div>
   )
 }

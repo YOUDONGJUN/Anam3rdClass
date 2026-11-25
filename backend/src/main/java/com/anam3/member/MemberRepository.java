@@ -49,4 +49,12 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
     long countByStatusNot(MemberStatus status);
 
     long countBySchoolIdAndStatusNot(Long schoolId, MemberStatus status);
+
+    /** 랭킹: 활동 중인 원우 모두 (학교·학과까지 한 번에) */
+    @Query("select m from Member m join fetch m.school left join fetch m.department where m.status = :active")
+    List<Member> findAllActiveWithSchool(@Param("active") MemberStatus active);
+
+    /** 랭킹 배지: 이 중 랭킹에 나오는 사람 (활동 중 + 랭킹에 안 나오기를 켜지 않음) */
+    @Query("select m.id from Member m where m.id in :ids and m.status = :active and m.rankingHidden = false")
+    List<Long> findRankedIds(@Param("ids") java.util.Collection<Long> ids, @Param("active") MemberStatus active);
 }

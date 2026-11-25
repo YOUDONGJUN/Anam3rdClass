@@ -195,6 +195,72 @@ export interface MeetupDetail extends MeetupSummary {
   canDelete: boolean
   /** 지금 인원으로 확정 (무산된 3교시도 모임 전이면 되살리기): 연 사람 · 대학원장, 2명 이상일 때 */
   canConfirm: boolean
+  /** 3교시 후기: 성사된 3교시 다음 날부터 7일 동안 함께한 사람에게만. 그 밖엔 null */
+  feedback: FeedbackPrompt | null
+}
+
+// ---------------- 3교시 후기 ----------------
+
+/** 좋았어요 · 괜찮았어요 · 아쉬웠어요 */
+export type FeedbackRating = 'GOOD' | 'OK' | 'BAD'
+
+/** 앱을 열면 물어볼 3교시 (가장 최근 것부터) */
+export interface FeedbackPending {
+  meetupId: number
+  title: string
+  place: string
+  categories: MeetupCategory[]
+  meetAt: string
+  participantCount: number
+  /** 이때까지만 묻는다 */
+  until: string
+}
+
+/** met=false 면 rating 은 보내지 않는다. skip=true 면 답하지 않고 닫기 */
+export interface FeedbackInput {
+  met?: boolean
+  rating?: FeedbackRating
+  skip?: boolean
+}
+
+/** 상세 화면 후기 칸: until 까지. answered 면 이미 남겼다 */
+export interface FeedbackPrompt {
+  until: string
+  answered: boolean
+}
+
+/** 대학원장 통계 묶음 하나 (학교, 또는 federation=true 면 연합). enough=false 면 모임·만족도 숫자는 null */
+export interface FeedbackStatsGroup {
+  school: SchoolTag | null
+  federation: boolean
+  /** 모임 시간이 지난 3교시 (취소 포함) */
+  meetups: number
+  reached: number
+  /** 성사된 3교시 참여자 수 */
+  participants: number
+  /** 답한 후기 수 */
+  answers: number
+  enough: boolean
+  /** 후기가 하나라도 있는 성사 3교시 */
+  metKnown: number | null
+  /** 그중 '모였어요'가 더 많거나 같은 것 */
+  metMeetups: number | null
+  good: number | null
+  ok: number | null
+  bad: number | null
+}
+
+export interface FeedbackStats {
+  /** null 이면 전체 기간 */
+  days: number | null
+  /** 묶음마다 답이 이만큼은 있어야 숫자를 보여준다 */
+  minAnswers: number
+  total: FeedbackStatsGroup
+  groups: FeedbackStatsGroup[]
+  /** 후기에서 '아쉬웠어요' 뒤 한 신고 수 */
+  feedbackReports: number
+  /** 답이 적어 감춘 칸이 있어서 total 의 모임·만족도에서 뺐다 */
+  partial: boolean
 }
 
 export interface MeetupCreateInput {
@@ -320,6 +386,8 @@ export interface ReportInput {
   targetId: number
   reason: ReportReason
   detail: string
+  /** 3교시 후기에서 '아쉬웠어요' 뒤 사람 신고 (서버가 정말 그렇게 답했는지 확인하고 표시한다) */
+  fromFeedback?: boolean
 }
 
 /** 관리 화면 신고 한 줄. 신고한 사람은 보이지 않는다 */
@@ -344,6 +412,8 @@ export interface Report {
   memberRole: Role | null
   memberBanned: boolean
   school: SchoolTag | null
+  /** 3교시 후기에서 한 신고 — 대학원장에게만 true 로 온다 */
+  fromFeedback: boolean
 }
 
 /** 내가 차단한 사람 (이름은 가려서) */

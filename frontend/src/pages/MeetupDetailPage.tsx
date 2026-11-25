@@ -23,6 +23,7 @@ import { ApiError } from '../api/client'
 import { useDeleteMeetup, useMeetup, useMeetupAction } from '../api/queries'
 import type { MeetupDetail } from '../api/types'
 import { CategoryBadges } from '../components/CategoryBadge'
+import { FeedbackCard } from '../components/FeedbackCard'
 import { MeetupOptionTags } from '../components/MeetupOptionTags'
 import { AudienceBadge } from '../components/CohortBadge'
 import { ParticipantRoute } from '../components/LineGauge'
@@ -405,6 +406,8 @@ export function MeetupDetailPage() {
         <div className="flex flex-col gap-6">
           <StateNote m={m} />
 
+          <FeedbackCard m={m} now={now} />
+
           {m.description && (
             <section className={`${cardClass} px-5 py-5`}>
               <h2 className="text-sm font-bold text-ink-3">한마디</h2>
@@ -442,6 +445,8 @@ export function MeetupDetailPage() {
                   type: 'MEMBER',
                   id: p.ref,
                   label: `${p.name} · ${affiliation(p.cohortLabel, p.departmentLabel)} · ${p.school.shortName}`,
+                  // 후기를 받는 동안의 사람 신고: '아쉬웠어요'라고 답했으면 서버가 "후기에서" 표시를 붙인다
+                  fromFeedback: m.feedback !== null,
                 })
               }
             />

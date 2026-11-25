@@ -12,6 +12,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import com.anam3.feedback.FeedbackDtos.FeedbackPrompt;
 import com.anam3.school.SchoolDtos.SchoolTag;
 
 public final class MeetupDtos {
@@ -110,7 +111,9 @@ public final class MeetupDtos {
             /** 지우기: 연 사람 · 그 학교 교수 · 대학원장 */
             boolean canDelete,
             /** 지금 인원으로 확정 (무산된 3교시도 모임 전이면 되살리기): 연 사람 · 대학원장, 2명 이상일 때 */
-            boolean canConfirm) {
+            boolean canConfirm,
+            /** 3교시 후기: 성사된 3교시 다음 날부터 7일 동안 함께한 사람에게만. 그 밖엔 null */
+            FeedbackPrompt feedback) {
     }
 
     public record MeetupCreateRequest(

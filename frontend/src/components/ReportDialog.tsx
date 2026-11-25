@@ -13,12 +13,23 @@ export interface ReportTargetInfo {
   id: number
   /** 창 제목에 보일 이름: "3교시 ‘치맥 번개’", "김*대 · 61기 · 인융" */
   label: string
+  /** 3교시 후기에서 '아쉬웠어요' 뒤에 하는 사람 신고 (서버가 정말 그렇게 답했는지 확인하고 표시한다) */
+  fromFeedback?: boolean
 }
 
 /**
  * 신고하기 (+ 사람이면 차단하기). 신고는 그 학교 교수·대학원장에게 가고, 신고한 사람은 보이지 않는다.
  */
-export function ReportDialog({ target, onClose }: { target: ReportTargetInfo; onClose: () => void }) {
+export function ReportDialog({
+  target,
+  onClose,
+  onReported,
+}: {
+  target: ReportTargetInfo
+  onClose: () => void
+  /** 신고나 차단을 마쳤을 때 (닫기만 했을 때는 부르지 않는다) */
+  onReported?: () => void
+}) {
   const ref = useRef<HTMLDialogElement>(null)
   const report = useReport()
   const block = useBlock()
@@ -42,10 +53,11 @@ export function ReportDialog({ target, onClose }: { target: ReportTargetInfo; on
     if (!reason) return setError('신고 이유를 골라 주세요')
     setError(null)
     report.mutate(
-      { targetType: target.type, targetId: target.id, reason, detail: detail.trim() },
+      { targetType: target.type, targetId: target.id, reason, detail: detail.trim(), fromFeedback: target.fromFeedback },
       {
         onSuccess: () => {
           toast.show('신고했어요. 교수·대학원장이 확인할게요', 'ok')
+          onReported?.()
           close()
         },
         onError: (err) => setError(err.message),
@@ -59,6 +71,7 @@ export function ReportDialog({ target, onClose }: { target: ReportTargetInfo; on
     block.mutate(target.id, {
       onSuccess: () => {
         toast.show('차단했어요. 내 정보에서 풀 수 있어요', 'ok')
+        onReported?.()
         close()
       },
       onError: (err) => setError(err.message),

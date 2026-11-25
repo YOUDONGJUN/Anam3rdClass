@@ -40,6 +40,9 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
 
     long countByStatus(Report.Status status);
 
+    /** 대학원장 후기 통계: 후기에서 '아쉬웠어요' 뒤 한 신고 수 */
+    long countByFromFeedbackTrueAndCreatedAtGreaterThanEqual(Instant since);
+
     /** 교수 현황: 자기 학교의, 일반 원우가 대상인 처리 안 된 신고 수 */
     @Query("""
             select count(r) from Report r left join r.member target

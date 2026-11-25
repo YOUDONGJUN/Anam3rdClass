@@ -9,6 +9,9 @@ import type {
   Block,
   Board,
   DevMember,
+  FeedbackInput,
+  FeedbackPending,
+  FeedbackStats,
   Member,
   MeetupCreateInput,
   MeetupDetail,
@@ -36,6 +39,7 @@ export const keys = {
   signupOptions: ['signup-options'] as const,
   authConfig: ['auth-config'] as const,
   devMembers: ['dev-members'] as const,
+  feedbackPending: ['feedback-pending'] as const,
 }
 
 // ---------------- 로그인 · 가입 (로그인 없이 호출) ----------------
@@ -185,6 +189,39 @@ export function usePinNotice() {
     mutationFn: ({ id, pinned }: { id: number; pinned: boolean }) =>
       api<NoticeDetail>(`/api/admin/notices/${id}/pin`, { method: 'PUT', body: { pinned } }),
     onSuccess: (d) => afterNoticeChange(qc, d),
+  })
+}
+
+// ---------------- 3교시 후기 ----------------
+
+/** 앱을 열면 물어볼 3교시. 화면이 열릴 때 한 번만 읽으면 된다 */
+export function usePendingFeedback(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.feedbackPending,
+    queryFn: () => api<FeedbackPending[]>('/api/feedback/pending'),
+    enabled,
+    staleTime: Infinity,
+  })
+}
+
+/** 후기 남기기 · 닫기 */
+export function useSubmitFeedback() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: FeedbackInput }) =>
+      api<void>(`/api/meetups/${id}/feedback`, { method: 'POST', body: input }),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: keys.feedbackPending })
+      qc.invalidateQueries({ queryKey: keys.meetup(id) })
+    },
+  })
+}
+
+/** 대학원장 통계. days 가 null 이면 전체 기간 */
+export function useFeedbackStats(days: number | null) {
+  return useQuery({
+    queryKey: [...keys.admin, 'feedback-stats', days],
+    queryFn: () => api<FeedbackStats>(days === null ? '/api/admin/feedback-stats' : `/api/admin/feedback-stats?days=${days}`),
   })
 }
 

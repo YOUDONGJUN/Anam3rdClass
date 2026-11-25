@@ -6,6 +6,7 @@ import { useToast } from './toastContext'
 import { useSlowServer } from '../lib/hooks'
 import { affiliation, isStaff } from '../lib/person'
 import { Brand } from './Brand'
+import { FeedbackPrompter } from './FeedbackSheet'
 import { MadeBy } from './MadeBy'
 import { RoleTag } from './PersonName'
 import { SchoolBadge } from './SchoolBadge'
@@ -159,6 +160,9 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* 앱을 열면 어제(최근) 성사된 3교시 후기를 한 번 묻는다 */}
+      <FeedbackPrompter />
 
       {/* 모바일: 하단 메뉴 5칸 — 3교시 · 내 3교시 · (열기) · 공지 · 내 정보 */}
       {!detail && (

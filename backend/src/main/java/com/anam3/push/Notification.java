@@ -64,8 +64,9 @@ public class Notification {
         refresh(message, now);
     }
 
-    /** 같은 묶음의 새 알림: 내용을 바꾸고 맨 위로 올린다 */
+    /** 같은 묶음의 새 알림: 내용을 바꾸고 안 읽음으로 맨 위에 올린다 */
     public void refresh(PushMessage message, Instant now) {
+        this.readAt = null;
         this.type = message.type();
         this.title = cut(message.title(), 100);
         this.body = cut(message.body(), 300);

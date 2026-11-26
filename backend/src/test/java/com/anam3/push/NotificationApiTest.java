@@ -49,7 +49,7 @@ class NotificationApiTest extends ApiTestSupport {
     }
 
     @Test
-    void 같은_3교시의_참여_알림은_안_읽은_동안_한_줄로_합친다() throws Exception {
+    void 같은_3교시의_참여_알림은_한_줄로_합치고_최신_내용으로_바꾼다() throws Exception {
         String host = signup("godae", "김고대", 61);
         String anam = signup("anam", "이안암", 61);
         String horang = signup("horang", "박호랑", 61);
@@ -64,13 +64,34 @@ class NotificationApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].body").value("한 명이 참여했어요 · 성사까지 2명"));
 
-        // 읽은 뒤에 온 알림은 새 줄로
+        // 읽은 뒤에 온 알림도 같은 줄을 최신 내용으로 바꿔 다시 안 읽음으로 올린다 (지난 숫자가 남지 않게)
         post("/api/me/notifications/read-all", host, null).andExpect(status().isNoContent());
         post("/api/meetups/" + id + "/join", seoktap, null).andExpect(status().isOk());
         get(LIST, host)
                 .andExpect(jsonPath("$.unreadCount").value(1))
-                .andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].body").value("한 명이 참여했어요 · 성사까지 1명"))
+                .andExpect(jsonPath("$.items[0].read").value(false));
+    }
+
+    @Test
+    void 알림함을_불러온_뒤에_온_알림은_읽음으로_바꾸지_않는다() throws Exception {
+        String host = signup("godae", "김고대", 61);
+        String anam = signup("anam", "이안암", 61);
+        String horang = signup("horang", "박호랑", 61);
+        long first = createMeetup(host, 4, 6, Duration.ofDays(2), Duration.ofDays(1), null);
+        long second = createMeetup(host, 4, 6, Duration.ofDays(3), Duration.ofDays(2), null);
+
+        post("/api/meetups/" + first + "/join", anam, null).andExpect(status().isOk());
+        String seenUpTo = read(get(LIST, host), "$.items[0].createdAt");
+        // 목록을 받은 뒤, 읽음 요청이 닿기 전에 새 알림이 온다
+        clock.advance(Duration.ofSeconds(1));
+        post("/api/meetups/" + second + "/join", horang, null).andExpect(status().isOk());
+
+        post("/api/me/notifications/read-all?upTo=" + seenUpTo, host, null).andExpect(status().isNoContent());
+        get(UNREAD, host).andExpect(jsonPath("$.count").value(1));
+        get(LIST, host)
+                .andExpect(jsonPath("$.items[0].path").value("/meetups/" + second))
                 .andExpect(jsonPath("$.items[0].read").value(false))
                 .andExpect(jsonPath("$.items[1].read").value(true));
     }
@@ -97,13 +118,13 @@ class NotificationApiTest extends ApiTestSupport {
         post("/api/meetups/" + id + "/join", anam, null).andExpect(status().isOk());
         get(LIST, host).andExpect(jsonPath("$.items", hasSize(1)));
 
-        // 지우면: 연 사람의 참여 알림은 사라지고, 참여자에게는 취소 알림이 내 정보로 간다
+        // 지우면: 연 사람의 참여 알림은 사라지고, 참여자에게는 취소 알림이 3교시 목록으로 간다
         delete("/api/meetups/" + id, host).andExpect(status().isNoContent());
         get(LIST, host).andExpect(jsonPath("$.items", hasSize(0)));
         get(LIST, anam)
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].type").value("CHANGED"))
-                .andExpect(jsonPath("$.items[0].path").value("/me"));
+                .andExpect(jsonPath("$.items[0].path").value("/"));
 
         long anamId = memberId("anam");
         delete("/api/me", anam).andExpect(status().isNoContent());

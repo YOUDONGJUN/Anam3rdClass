@@ -46,6 +46,40 @@ class EmailAuthApiTest extends ApiTestSupport {
                 """.formatted(email, password));
     }
 
+    private ResultActions emailLoginFrom(String ip, String email, String password) throws Exception {
+        return postFrom(ip, "/api/auth/email/login", """
+                {"email":"%s","password":"%s"}
+                """.formatted(email, password));
+    }
+
+    @Test
+    void 남이_내_이메일로_일부러_틀려도_나는_내_자리에서_로그인된다() throws Exception {
+        emailSignup("victim", "최피해", PASSWORD);
+        for (int i = 0; i < AuthService.HOURLY_LOGIN_FAILURES; i++) {
+            emailLoginFrom("203.0.113.7", "victim@korea.ac.kr", "wrong" + i + "abc")
+                    .andExpect(jsonPath("$.code").value("LOGIN_FAILED"));
+        }
+        emailLoginFrom("203.0.113.7", "victim@korea.ac.kr", PASSWORD).andExpect(status().isTooManyRequests());
+        emailLoginFrom("198.51.100.20", "victim@korea.ac.kr", PASSWORD).andExpect(jsonPath("$.step").value("DONE"));
+    }
+
+    @Test
+    void 한_IP에서_몰아치는_로그인_시도는_10분_동안_막는다() throws Exception {
+        for (int i = 0; i < AuthService.LOGIN_ATTEMPTS_PER_IP; i++) {
+            emailLoginFrom("203.0.113.9", "nobody" + i + "@korea.ac.kr", "whatever1")
+                    .andExpect(jsonPath("$.code").value("LOGIN_FAILED"));
+        }
+        emailLoginFrom("203.0.113.9", "nobody@korea.ac.kr", "whatever1")
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("TOO_MANY"));
+        // 다른 곳의 원우는 그대로
+        emailLoginFrom("198.51.100.20", "nobody@korea.ac.kr", "whatever1")
+                .andExpect(jsonPath("$.code").value("LOGIN_FAILED"));
+        clock.advance(Duration.ofMinutes(10));
+        emailLoginFrom("203.0.113.9", "nobody@korea.ac.kr", "whatever1")
+                .andExpect(jsonPath("$.code").value("LOGIN_FAILED"));
+    }
+
     private int memberCount() {
         Integer n = jdbc.queryForObject("select count(*) from members", Integer.class);
         return n == null ? 0 : n;

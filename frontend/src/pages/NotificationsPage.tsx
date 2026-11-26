@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import {
   AlarmClock,
@@ -14,7 +14,7 @@ import {
   Armchair,
   type LucideIcon,
 } from 'lucide-react'
-import { useNotifications, useReadAllNotifications } from '../api/queries'
+import { useNotifications, useReadAllNotifications, useUnreadNotifications } from '../api/queries'
 import type { PushType } from '../api/types'
 import { EmptyState, ErrorState, Spinner } from '../components/ui'
 import { cardClass } from '../components/styles'
@@ -39,17 +39,26 @@ const ICON: Record<PushType, LucideIcon> = {
  * 이번에 처음 본 알림은 보는 동안 강조해 둔다. 한 줄을 누르면 바로 그 화면으로
  */
 export function NotificationsPage() {
-  const { data, isPending, isError, error, refetch, dataUpdatedAt } = useNotifications()
+  const { data, isPending, isError, error, refetch, dataUpdatedAt, isFetching } = useNotifications()
   const { mutate: readAll } = useReadAllNotifications()
+  const { data: unread = 0 } = useUnreadNotifications(true)
   const now = useNow(60_000)
   const marked = useRef(0)
+  /** 읽음 처리가 끝난 목록 (그 뒤에 종 숫자가 생기면 새로 온 알림이다) */
+  const [readUpTo, setReadUpTo] = useState(0)
 
-  // 불러올 때마다(앱에서 새 알림이 와서 다시 불러와도) 안 읽은 게 있으면 모두 읽음
+  // 불러올 때마다(새 알림이 와서 다시 불러와도) 안 읽은 게 있으면, 받은 목록의 가장 최근 알림까지만 읽음
   useEffect(() => {
-    if (!data || data.unreadCount === 0 || marked.current === dataUpdatedAt) return
+    if (!data || data.unreadCount === 0 || data.items.length === 0 || marked.current === dataUpdatedAt) return
     marked.current = dataUpdatedAt
-    readAll()
+    readAll(data.items[0].createdAt, { onSuccess: () => setReadUpTo(dataUpdatedAt) })
   }, [data, dataUpdatedAt, readAll])
+
+  // 보고 있는 동안 새 알림이 오면(종 숫자가 다시 생기면) 목록을 다시 불러와 맨 위에 보여 준다
+  useEffect(() => {
+    const settled = data && (data.unreadCount === 0 || readUpTo === dataUpdatedAt)
+    if (unread > 0 && settled && !isFetching) void refetch()
+  }, [unread, data, readUpTo, dataUpdatedAt, isFetching, refetch])
 
   return (
     <div>
@@ -93,6 +102,7 @@ export function NotificationsPage() {
                     <h2 className="min-w-0 flex-1 truncate text-[15px] font-bold text-ink">
                       <Link
                         to={n.path}
+                        state={{ backLabel: '알림' }}
                         className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
                       >
                         {fresh && <span className="sr-only">새 알림, </span>}

@@ -1,6 +1,19 @@
-import { useId, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
-import { Check, ChevronDown, ChevronLeft, Globe2, Lock, Minus, Plus, School, SlidersHorizontal, X, type LucideIcon } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  CircleAlert,
+  Globe2,
+  Lock,
+  Minus,
+  Plus,
+  School,
+  SlidersHorizontal,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import { useCreateMeetup, useMeetup, usePopularPlaces, useUpdateMeetup } from '../api/queries'
 import type { MeetupAudience, MeetupCategory, MeetupDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -338,6 +351,9 @@ function MeetupForm({
   const update = useUpdateMeetup(initial.id ?? 0)
   const [v, setV] = useState<FormValues>(initial)
   const [error, setError] = useState<string | null>(null)
+  /** 오류가 난 칸: 그 칸 아래에 알려 주고 그 칸으로 데려간다 (없으면 제출 버튼 위에) */
+  const [errorField, setErrorField] = useState<ErrorField | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const now = useMemo(() => new Date(), [])
   const presets = useMemo(() => timePresets(now), [now])
 
@@ -356,30 +372,45 @@ function MeetupForm({
   const joined = current?.joined ?? 1
   const reachedNow = isReachedWith(minPeople, joined)
 
+  /** 틀린 칸으로 화면을 옮기고 그 칸에 커서를 둔다 (접혀 있던 옵션은 먼저 펼친다) */
+  function fail(message: string, field: ErrorField) {
+    setError(message)
+    setErrorField(field)
+    requestAnimationFrame(() => {
+      const box = formRef.current?.querySelector<HTMLElement>(`[data-field="${field}"]`)
+      if (!box) return
+      box.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      box
+        .querySelector<HTMLElement>('input:not([type="hidden"]):not(:disabled), textarea, button:not(:disabled)')
+        ?.focus({ preventScroll: true })
+    })
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!v.title.trim()) return setError('제목을 입력해 주세요')
-    if (v.categories.length === 0) return setError('무엇을 마실지 하나 이상 골라 주세요')
-    if (!v.place.trim()) return setError('장소를 입력해 주세요')
+    setErrorField(null)
+    if (!v.title.trim()) return fail('제목을 입력해 주세요', 'title')
+    if (v.categories.length === 0) return fail('무엇을 마실지 하나 이상 골라 주세요', 'categories')
 
     // 수정에서는 시간을 바꿨을 때만 검사한다 (마감이 지난 성사 3교시도 다른 칸은 고칠 수 있게)
     const scheduleChanged = !editing || v.meetAt !== initial.meetAt || v.deadline !== initial.deadline
     if (scheduleChanged) {
       const timeError = validateTimes(meetAt, deadlineAt)
-      if (timeError) return setError(timeError)
+      if (timeError) return fail(timeError, 'time')
     }
+    if (!meetAt || !deadlineAt) return fail('모임 시간을 정해 주세요', 'time')
+    if (!v.place.trim()) return fail('장소를 입력해 주세요', 'place')
     const peopleProblem = peopleError(minPeople, maxPeople, current)
     if (peopleProblem) {
       setShowOptions(true)
-      return setError(peopleProblem)
+      return fail(peopleProblem, 'people')
     }
     const fee = v.hasFee ? Number(v.fee) : null
     if (fee !== null && !(fee >= 1000 && fee <= 1_000_000)) {
       setShowOptions(true)
-      return setError('참여비는 1,000원 ~ 100만 원으로 적어 주세요')
+      return fail('참여비는 1,000원 ~ 100만 원으로 적어 주세요', 'fee')
     }
-    if (!meetAt || !deadlineAt) return setError('모임 시간을 정해 주세요')
 
     try {
       if (editing && initial.id) {
@@ -433,23 +464,30 @@ function MeetupForm({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-8" noValidate>
-      <Field label="제목">
-        {({ id }) => (
-          <input
-            id={id}
-            className={inputClass}
-            maxLength={40}
-            placeholder="예: 수업 끝나고 치맥 한잔?"
-            value={v.title}
-            onChange={(e) => set('title', e.target.value)}
-          />
-        )}
-      </Field>
+    <form ref={formRef} onSubmit={submit} className="flex flex-col gap-8" noValidate>
+      <div data-field="title">
+        <Field label="제목" error={errorField === 'title' ? error : null}>
+          {({ id, describedBy, invalid }) => (
+            <input
+              id={id}
+              aria-describedby={describedBy}
+              aria-invalid={invalid || undefined}
+              className={inputClass}
+              maxLength={40}
+              placeholder="예: 수업 끝나고 치맥 한잔?"
+              value={v.title}
+              onChange={(e) => set('title', e.target.value)}
+            />
+          )}
+        </Field>
+      </div>
 
-      <CategoryPicker value={v.categories} onChange={(c) => set('categories', c)} />
+      <div data-field="categories" className="flex flex-col gap-2">
+        <CategoryPicker value={v.categories} onChange={(c) => set('categories', c)} />
+        {errorField === 'categories' && <FieldAlert message={error} />}
+      </div>
 
-      <fieldset className="flex flex-col gap-3">
+      <fieldset data-field="time" className="flex flex-col gap-3">
         <legend className="mb-3 text-[15px] font-semibold text-ink">언제 모일까요</legend>
         <div className="flex flex-wrap gap-2">
           {presets.map((p) => {
@@ -488,40 +526,45 @@ function MeetupForm({
             {reachedNow ? '에 모집 마감' : '까지 안 모이면 조용히 사라져요'}
           </p>
         )}
+        {errorField === 'time' && <FieldAlert message={error} />}
       </fieldset>
 
-      <Field
-        label="어디서"
-        hint={popular.data && popular.data.length > 0 ? '우리 학교에서 자주 모인 곳부터 보여요' : '가게 이름을 그대로 적어도 돼요'}
-      >
-        {({ id, describedBy }) => (
-          <div className="flex flex-col gap-3">
-            <input
-              id={id}
-              aria-describedby={describedBy}
-              className={inputClass}
-              maxLength={60}
-              list={placeListId}
-              autoComplete="off"
-              placeholder={`예: ${presetPlaces[0] ?? '역'} 앞 치킨집`}
-              value={v.place}
-              onChange={(e) => set('place', e.target.value)}
-            />
-            <datalist id={placeListId}>
-              {places.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
-            <div className="flex flex-wrap gap-2">
-              {places.map((p) => (
-                <Chip key={p} active={v.place === p} onClick={() => set('place', p)}>
-                  {p}
-                </Chip>
-              ))}
+      <div data-field="place">
+        <Field
+          label="어디서"
+          hint={popular.data && popular.data.length > 0 ? '우리 학교에서 자주 모인 곳부터 보여요' : '가게 이름을 그대로 적어도 돼요'}
+          error={errorField === 'place' ? error : null}
+        >
+          {({ id, describedBy, invalid }) => (
+            <div className="flex flex-col gap-3">
+              <input
+                id={id}
+                aria-describedby={describedBy}
+                aria-invalid={invalid || undefined}
+                className={inputClass}
+                maxLength={60}
+                list={placeListId}
+                autoComplete="off"
+                placeholder={`예: ${presetPlaces[0] ?? '역'} 앞 치킨집`}
+                value={v.place}
+                onChange={(e) => set('place', e.target.value)}
+              />
+              <datalist id={placeListId}>
+                {places.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
+              <div className="flex flex-wrap gap-2">
+                {places.map((p) => (
+                  <Chip key={p} active={v.place === p} onClick={() => set('place', p)}>
+                    {p}
+                  </Chip>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </Field>
+          )}
+        </Field>
+      </div>
 
       {!showOptions && (
         <button
@@ -551,7 +594,7 @@ function MeetupForm({
 
       {showOptions && (
         <>
-          <fieldset className="flex flex-col gap-3">
+          <fieldset data-field="people" className="flex flex-col gap-3">
             <legend className="mb-3 text-[15px] font-semibold text-ink">몇 명이 모이면 좋을까요 (나 포함)</legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1">
@@ -607,6 +650,7 @@ function MeetupForm({
                 )
               )}
             </div>
+            {errorField === 'people' && <FieldAlert message={error} />}
           </fieldset>
 
           {audienceOf && (
@@ -654,7 +698,7 @@ function MeetupForm({
             </fieldset>
           )}
 
-          <fieldset className="flex flex-col gap-3">
+          <fieldset data-field="fee" className="flex flex-col gap-3">
             <legend className="mb-2 text-[15px] font-semibold text-ink">참여 방식</legend>
             <NoLimitToggle
               checked={v.lateJoin}
@@ -700,6 +744,7 @@ function MeetupForm({
                 </>
               )}
             </div>
+            {errorField === 'fee' && <FieldAlert message={error} />}
           </fieldset>
 
           {/* 선택 항목은 아래에 모은다 */}
@@ -743,7 +788,8 @@ function MeetupForm({
         </>
       )}
 
-      <FormError message={error} />
+      {/* 칸에 딸린 오류는 그 칸에서 보여 준다. 여기에는 서버에서 온 오류만 */}
+      <FormError message={errorField ? null : error} />
 
       <div className="flex gap-2.5">
         <Button variant="secondary" size="lg" onClick={() => navigate(-1)} className="flex-1 sm:flex-none">
@@ -754,6 +800,19 @@ function MeetupForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+type ErrorField = 'title' | 'categories' | 'time' | 'place' | 'people' | 'fee'
+
+/** 칸 바로 아래의 오류 한 줄 */
+function FieldAlert({ message }: { message: string | null }) {
+  if (!message) return null
+  return (
+    <p role="alert" className="flex items-start gap-1.5 text-sm leading-relaxed font-semibold text-danger-ink">
+      <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+      {message}
+    </p>
   )
 }
 

@@ -146,6 +146,19 @@ class FeedbackApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 최소_인원_없이_열어_혼자_끝난_3교시는_후기도_정산도_묻지_않는다() throws Exception {
+        long alone = createMeetup(host, null, 6, IN_2H, IN_1H, null); // 열자마자 성사, 아무도 안 옴
+
+        clock.set(NEXT_DAY);
+        get("/api/meetups/" + alone, host)
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.feedback").isEmpty())
+                .andExpect(jsonPath("$.canSettle").value(false));
+        get("/api/feedback/pending", host).andExpect(jsonPath("$", hasSize(0)));
+        post("/api/meetups/" + alone + "/feedback", host, GOOD).andExpect(status().isBadRequest());
+    }
+
+    @Test
     void 아쉬웠어요_뒤_신고는_대학원장에게만_후기에서_표시가_보인다() throws Exception {
         long id = reachedMeetup(anam, horang);
         long horangRef = participantRef(anam, id, 2);

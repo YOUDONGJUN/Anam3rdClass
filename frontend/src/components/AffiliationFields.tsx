@@ -10,10 +10,19 @@ interface Props {
   departmentId: number | null
   onCohortChange: (value: string) => void
   onDepartmentChange: (value: number) => void
+  /** 기수를 직접 고칠 수 없다 (원우는 가입한 날만 — 내 정보) */
+  cohortLocked?: boolean
 }
 
 /** 기수(최신 → 1기)와 학과 선택. 가입 화면과 관리 화면(원우 프로필 고치기)에서 같이 쓴다 */
-export function AffiliationFields({ schoolId, cohort, departmentId, onCohortChange, onDepartmentChange }: Props) {
+export function AffiliationFields({
+  schoolId,
+  cohort,
+  departmentId,
+  onCohortChange,
+  onDepartmentChange,
+  cohortLocked = false,
+}: Props) {
   const { data, isPending, isError } = useSignupOptions()
   const school = data?.schools.find((s) => s.id === schoolId)
   const latest = school?.latestCohort ?? 0
@@ -27,14 +36,21 @@ export function AffiliationFields({ schoolId, cohort, departmentId, onCohortChan
       <Field
         label="기수"
         error={isError ? '기수 목록을 불러오지 못했어요. 새로고침해 주세요' : null}
-        hint={school ? `${school.shortName}는 1기부터 ${latest}기까지 있어요` : undefined}
+        hint={
+          cohortLocked
+            ? '기수는 가입한 날에만 직접 고칠 수 있어요. 바꾸려면 교수\u2060·\u2060대학원장에게 요청해 주세요'
+            : school
+              ? `${school.shortName}는 1기부터 ${latest}기까지 있어요`
+              : undefined
+        }
       >
-        {({ id }) => (
+        {({ id, describedBy }) => (
           <select
             id={id}
+            aria-describedby={describedBy}
             className={inputClass}
             value={cohort}
-            disabled={isPending}
+            disabled={isPending || cohortLocked}
             onChange={(e) => onCohortChange(e.target.value)}
           >
             <option value="" disabled>

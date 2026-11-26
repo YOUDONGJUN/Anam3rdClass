@@ -168,7 +168,26 @@ class PushApiTest extends ApiTestSupport {
         delete("/api/meetups/" + id, host).andExpect(status().isNoContent());
         PushMessage gone = last("anam-phone");
         assertThat(gone.type()).isEqualTo(PushType.CHANGED);
-        assertThat(gone.path()).isEqualTo("/me"); // 지운 3교시는 열 수 없으니 내 정보로
+        assertThat(gone.path()).isEqualTo("/"); // 지운 3교시는 열 수 없으니 3교시 목록으로
+    }
+
+    @Test
+    void 새_3교시_알림은_한_사람이_하루에_세_번까지만_보낸다() throws Exception {
+        String host = signup("godae", "김고대", 61);
+        String anam = signup("anam", "이안암", 61);
+        registerDevice(anam, "anam-phone");
+
+        // 연합 3교시를 열고 지우기를 되풀이해도 알림은 하루 세 번까지
+        for (int i = 0; i < 4; i++) {
+            long id = createMeetup(host, null, null, Duration.ofDays(2), Duration.ofDays(1), null, "ALL");
+            delete("/api/meetups/" + id, host).andExpect(status().isNoContent());
+        }
+        assertThat(pushes.to("anam-phone")).hasSize(3);
+
+        clock.advance(Duration.ofDays(1));
+        post("/api/meetups", host, meetupJson("치맥 번개", null, null, clock.instant().plus(Duration.ofDays(2)),
+                clock.instant().plus(Duration.ofDays(1)), null, "ALL")).andExpect(status().isCreated());
+        assertThat(pushes.to("anam-phone")).hasSize(4);
     }
 
     @Test

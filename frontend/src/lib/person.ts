@@ -38,9 +38,18 @@ export function profileLockedUntil(member: Pick<Member, 'profileEditableAt'>, no
   return at.getTime() > now.getTime() ? at : null
 }
 
-/** 내 정보 카드의 고치기 안내 한 줄 */
+/** 원우가 기수를 직접 고칠 수 없는지 — 가입하고 하루가 지나면 교수·대학원장에게 요청한다 (교수·대학원장은 언제나) */
+export function cohortLocked(member: Pick<Member, 'cohortEditableUntil'>, now: Date = new Date()): boolean {
+  if (!member.cohortEditableUntil) return false
+  return new Date(member.cohortEditableUntil).getTime() <= now.getTime()
+}
+
+/**
+ * 내 정보 카드의 고치기 안내 한 줄. '교수·대학원장'처럼 '·'로 붙은 말은 '·' 앞뒤에 단어 잇기 문자를 넣어 끊기지 않게,
+ * 문장 사이 ' · '는 앞을 붙는 공백으로 해서 줄 첫머리에 오지 않게 한다
+ */
 export function profileEditRule(role: Role): string {
-  if (role === 'OWNER') return '이름·학과·기수를 언제든 고쳐요'
-  if (role === 'MANAGER') return '학과·기수는 언제든 · 이름은 대학원장에게 요청'
-  return '학과·기수는 30일에 한 번 · 이름은 교수·대학원장에게 요청'
+  if (role === 'OWNER') return '이름\u2060·\u2060학과\u2060·\u2060기수를 언제든 고쳐요'
+  if (role === 'MANAGER') return '학과\u2060·\u2060기수는 언제든\u00a0· 이름은 대학원장에게 요청'
+  return '학과는 30일에 한 번\u00a0· 기수\u2060·\u2060이름은 교수\u2060·\u2060대학원장에게 요청'
 }

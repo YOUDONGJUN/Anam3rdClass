@@ -159,6 +159,9 @@ interface ShellHandlers {
   onPushReceived: () => void
 }
 
+/** 앱을 연 공유 링크는 한 번만 연다 (화면이 다시 그려져도 그 링크로 되돌아가지 않게) */
+let launchUrlHandled = false
+
 /** 앱이 켜질 때 한 번. 정리 함수를 돌려준다 */
 export function startAppShell({ navigate, onPushReceived }: ShellHandlers): () => void {
   if (!isApp) return () => {}
@@ -207,9 +210,12 @@ export function startAppShell({ navigate, onPushReceived }: ShellHandlers): () =
     const path = url ? appPathFromUrl(url) : null
     if (path && path !== window.location.pathname + window.location.search) navigate(path)
   }
-  void App.getLaunchUrl()
-    .then((launch) => openUrl(launch?.url))
-    .catch(() => {})
+  if (!launchUrlHandled) {
+    launchUrlHandled = true
+    void App.getLaunchUrl()
+      .then((launch) => openUrl(launch?.url))
+      .catch(() => {})
+  }
   listen(App.addListener('appUrlOpen', ({ url }) => openUrl(url)))
 
   // 알림을 누르면 그 화면으로

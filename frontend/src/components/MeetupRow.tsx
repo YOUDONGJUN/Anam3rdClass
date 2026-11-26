@@ -74,15 +74,19 @@ export function MeetupRow({
   meetup,
   showDate = false,
   hideTime = false,
+  backLabel,
   now,
 }: {
   meetup: MeetupSummary
   showDate?: boolean
   hideTime?: boolean
+  /** 상세의 뒤로 버튼 이름 (이 목록 이름) */
+  backLabel?: string
   now: Date
 }) {
   const live = isLive(meetup.status)
-  const recruiting = live && new Date(meetup.deadlineAt) > now
+  // 정원이 차서 못 들어가면 마감까지 남은 시간은 보이지 않는다 ('만석'과 부딪히지 않게)
+  const recruiting = live && meetup.joinable && new Date(meetup.deadlineAt) > now
   return (
     <article className="group relative flex gap-3.5 px-4 py-4 transition-colors focus-within:bg-surface-2 hover:bg-surface-2/70 sm:gap-5 sm:px-5">
       {!hideTime && (
@@ -102,6 +106,7 @@ export function MeetupRow({
           <h3 className="min-w-0 flex-1 pt-0.5 text-base leading-snug font-bold text-ink">
             <Link
               to={`/meetups/${meetup.id}`}
+              state={backLabel ? { backLabel } : undefined}
               className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
             >
               {meetup.title}
@@ -138,17 +143,24 @@ export function MeetupRow({
           </div>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-3">
+        {/* 한 줄로 흐르는 글: '·' 앞은 붙는 공백이라 줄이 바뀌어도 '·'가 줄 첫머리에 오지 않는다 */}
+        <p className="mt-2 text-[13px] text-ink-3">
           <span className={meetup.status === 'RECRUITING' ? 'font-semibold text-accent-ink' : ''}>
             {seatsCaption(meetup)}
           </span>
-          {recruiting && <span>· 마감 {formatRemaining(meetup.deadlineAt, now)} 전</span>}
+          {recruiting && (
+            <>
+              {'\u00a0· '}
+              <span className="whitespace-nowrap">마감 {formatRemaining(meetup.deadlineAt, now)} 전</span>
+            </>
+          )}
           {meetup.audience !== 'ALL' && (
-            <span className="hidden min-w-0 items-center gap-1 sm:flex">
-              · <PersonName person={meetup.host} showMe={false} />
+            <span className="hidden sm:inline">
+              {'\u00a0· '}
+              <PersonName person={meetup.host} showMe={false} />
             </span>
           )}
-        </div>
+        </p>
         {meetup.audience === 'ALL' && (
           // 연합: 어느 학교 사람이 열었는지 늘 보여준다 (모바일에서도)
           <p className="mt-1 flex min-w-0 items-center gap-1 text-[13px] text-ink-3">

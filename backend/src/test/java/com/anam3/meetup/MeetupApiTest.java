@@ -251,6 +251,27 @@ class MeetupApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 성사된_3교시에서_30일에_세_번_나가면_한동안_이미_성사된_3교시에는_참여할_수_없다() throws Exception {
+        for (int i = 0; i < 3; i++) {
+            long id = createMeetup(host, null, 6, IN_2H, IN_1H, null); // 열자마자 성사 — 참여하면 실명이 보인다
+            post("/api/meetups/" + id + "/join", horang, null).andExpect(jsonPath("$.revealed").value(true));
+            delete("/api/meetups/" + id + "/join", horang).andExpect(status().isOk());
+        }
+        long reached = createMeetup(host, null, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + reached + "/join", horang, null)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("LEAVE_LIMIT"));
+        // 아직 성사 전인 3교시에는 참여할 수 있다 (실명이 바로 보이지 않는다)
+        long recruiting = createMeetup(host, 3, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + recruiting + "/join", horang, null).andExpect(status().isOk());
+
+        clock.advance(Duration.ofDays(30));
+        String laterJson = meetupJson("치맥 번개", null, 6, clock.instant().plus(IN_2H), clock.instant().plus(IN_1H), null);
+        Number later = read(post("/api/meetups", host, laterJson).andExpect(status().isCreated()), "$.id");
+        post("/api/meetups/" + later + "/join", horang, null).andExpect(status().isOk());
+    }
+
+    @Test
     void 마감까지_미달이면_무산되고_목록에서_조용히_사라진다() throws Exception {
         long id = createMeetup(host, 3, 6, IN_2H, IN_1H, null);
         post("/api/meetups/" + id + "/join", anam, null);

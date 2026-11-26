@@ -1,5 +1,6 @@
 package com.anam3.auth;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
@@ -22,6 +23,7 @@ import com.anam3.auth.AuthDtos.LegacyClaimRequest;
 import com.anam3.auth.AuthDtos.PasswordSetRequest;
 import com.anam3.auth.AuthDtos.SignupOptions;
 import com.anam3.auth.AuthDtos.SignupRequest;
+import com.anam3.common.ClientIp;
 
 /** 로그인 없이 부르는 API. 순서는 AuthService 주석 참고 */
 @RestController
@@ -65,13 +67,13 @@ public class AuthController {
 
     /** 학교 이메일 + 비밀번호로 로그인 */
     @PostMapping("/email/login")
-    public AuthStep emailLogin(@Valid @RequestBody EmailLoginRequest req) {
-        return authService.emailLogin(req);
+    public AuthStep emailLogin(@Valid @RequestBody EmailLoginRequest req, HttpServletRequest http) {
+        return authService.emailLogin(req, ClientIp.of(http));
     }
 
     @PostMapping("/email/code")
-    public EmailCodeSent emailCode(@Valid @RequestBody EmailCodeRequest req) {
-        return authService.sendEmailCode(req);
+    public EmailCodeSent emailCode(@Valid @RequestBody EmailCodeRequest req, HttpServletRequest http) {
+        return authService.sendEmailCode(req, ClientIp.of(http));
     }
 
     @PostMapping("/email/verify")

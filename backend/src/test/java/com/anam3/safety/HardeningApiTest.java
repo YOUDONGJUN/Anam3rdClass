@@ -156,6 +156,26 @@ class HardeningApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 이메일로_시작한_인증코드는_한_IP에서_한_시간에_스무_번까지라_모두의_메일_한도를_못_쓴다() throws Exception {
+        for (int i = 0; i < 20; i++) {
+            postFrom("203.0.113.5", "/api/auth/email/code", codeJson(emailStart(), "guess" + i + "@korea.ac.kr"))
+                    .andExpect(status().isOk());
+        }
+        postFrom("203.0.113.5", "/api/auth/email/code", codeJson(emailStart(), "guess99@korea.ac.kr"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("TOO_MANY"));
+        // 다른 곳의 원우는 그대로 받는다
+        postFrom("198.51.100.20", "/api/auth/email/code", codeJson(emailStart(), email("godae")))
+                .andExpect(status().isOk());
+    }
+
+    private static String codeJson(String signupToken, String email) {
+        return """
+                {"signupToken":"%s","email":"%s"}
+                """.formatted(signupToken, email);
+    }
+
+    @Test
     void 이메일로_시작한_요청은_따로_세서_카카오_가입을_막지_못한다() throws Exception {
         // 남이 "이메일로 시작"을 여러 번 해서 내 메일로 코드를 보내도 (이메일 하나에 시간당 5번까지)
         for (int i = 0; i < 5; i++) {

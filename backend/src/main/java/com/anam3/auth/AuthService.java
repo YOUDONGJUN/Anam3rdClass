@@ -5,12 +5,8 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Deque;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -46,6 +42,8 @@ import com.anam3.auth.kakao.KakaoClient;
 import com.anam3.common.ApiException;
 import com.anam3.common.AppProperties;
 import com.anam3.common.Emails;
+import com.anam3.common.RateLimiter;
+import com.anam3.common.RateLimits;
 import com.anam3.member.Member;
 import com.anam3.member.MemberRepository;
 import com.anam3.member.MemberResponse;
@@ -84,8 +82,19 @@ public class AuthService {
     static final int DAILY_FAILED_LIMIT_PER_EMAIL = 20;
     /** 예전 아이디·비밀번호 확인: 카카오 계정마다 1시간에 틀릴 수 있는 횟수 */
     static final int HOURLY_LEGACY_FAILURES = 10;
-    /** 이메일 로그인: 이메일마다 1시간에 틀릴 수 있는 횟수 */
+    /** 예전 아이디 하나를 하루에 틀릴 수 있는 횟수 (여러 카카오 계정으로 나눠 맞혀 보는 것을 막는다) */
+    static final int DAILY_LEGACY_FAILURES_PER_ID = 20;
+    /**
+     * 이메일 로그인: 같은 이메일을 같은 IP 에서 1시간에 틀릴 수 있는 횟수.
+     * IP 마다 따로 세서, 남이 내 이메일로 일부러 틀려도 내 로그인은 막히지 않는다
+     */
     static final int HOURLY_LOGIN_FAILURES = 10;
+    /** 이메일 로그인: 한 이메일을 여러 IP 에서 합쳐 1시간에 틀릴 수 있는 횟수 (여기저기서 나눠 맞혀 보는 것을 막는다) */
+    static final int HOURLY_LOGIN_FAILURES_PER_EMAIL = 50;
+    /** 이메일 로그인 시도: 같은 IP 에서 10분에 (비밀번호 확인이 무거워서 한 곳에서 몰아치면 다른 원우가 못 들어온다) */
+    static final int LOGIN_ATTEMPTS_PER_IP = 60;
+    /** "이메일로 시작"한 인증코드 요청: 같은 IP 에서 1시간에 (한 곳에서 모두의 하루 메일 한도를 다 쓰지 못하게) */
+    static final int HOURLY_EMAIL_START_CODES_PER_IP = 20;
     /**
      * "이메일로 시작"(카카오 없이 누구나 할 수 있다)한 인증코드 요청 한도. 메일 발송 한도(Gmail 하루 500통)를 다 쓰거나
      * 남의 메일함을 채우지 못하게 따로 센다. 카카오로 시작한 요청은 이 수에 들지 않아서 막히지 않는다
@@ -116,16 +125,21 @@ public class AuthService {
     private final Clock clock;
     /** 카카오 서버·메일 서버를 기다리는 동안에는 DB 연결을 잡지 않으려고 트랜잭션을 직접 나눈다 */
     private final TransactionTemplate tx;
-    /** 예전 아이디·비밀번호를 틀린 시각 (카카오 계정마다). 서버가 한 대라 메모리로 충분하다 */
-    private final Map<Long, Deque<Instant>> legacyFailures = new ConcurrentHashMap<>();
-    /** 이메일 로그인 비밀번호를 틀린 시각 (이메일마다) */
-    private final Map<String, Deque<Instant>> loginFailures = new ConcurrentHashMap<>();
+    /** 예전 아이디·비밀번호를 틀린 기록 (카카오 계정마다 · 예전 아이디마다) */
+    private final RateLimiter legacyFailures;
+    private final RateLimiter legacyFailuresPerId;
+    /** 이메일 로그인: 틀린 기록 (이메일+IP 마다 · 이메일마다), 시도 수 (IP 마다) */
+    private final RateLimiter loginFailures;
+    private final RateLimiter loginFailuresPerEmail;
+    private final RateLimiter loginAttemptsPerIp;
+    /** "이메일로 시작"한 인증코드 요청 수 (IP 마다) */
+    private final RateLimiter emailStartCodesPerIp;
     private final SecureRandom random = new SecureRandom();
 
     public AuthService(MemberRepository members, KakaoClient kakao, JwtService jwtService,
             EmailVerificationRepository verifications, VerificationCodes codes, VerificationMailer mailer,
             SchoolService schoolService, OwnerPolicy ownerPolicy, AppProperties props, Environment env, Clock clock,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager, RateLimits limits) {
         this.members = members;
         this.kakao = kakao;
         this.jwtService = jwtService;
@@ -138,6 +152,12 @@ public class AuthService {
         this.env = env;
         this.clock = clock;
         this.tx = new TransactionTemplate(transactionManager);
+        this.legacyFailures = limits.create(HOURLY_LEGACY_FAILURES, Duration.ofHours(1));
+        this.legacyFailuresPerId = limits.create(DAILY_LEGACY_FAILURES_PER_ID, Duration.ofDays(1));
+        this.loginFailures = limits.create(HOURLY_LOGIN_FAILURES, Duration.ofHours(1));
+        this.loginFailuresPerEmail = limits.create(HOURLY_LOGIN_FAILURES_PER_EMAIL, Duration.ofHours(1));
+        this.loginAttemptsPerIp = limits.create(LOGIN_ATTEMPTS_PER_IP, Duration.ofMinutes(10));
+        this.emailStartCodesPerIp = limits.create(HOURLY_EMAIL_START_CODES_PER_IP, Duration.ofHours(1));
     }
 
     @Transactional(readOnly = true)
@@ -178,30 +198,32 @@ public class AuthService {
 
     /**
      * 학교 이메일 + 비밀번호. 없는 이메일·비밀번호 없는 계정·틀린 비밀번호는 모두 같은 말로 답한다.
-     * 비밀번호 확인(BCrypt)은 DB 커넥션을 잡지 않고 하고, 동시에 몇 개만 돌린다
+     * 비밀번호 확인(BCrypt)은 DB 커넥션을 잡지 않고 하고, 동시에 몇 개만 돌린다.
+     * 한 IP 에서 몰아치는 시도와 같은 이메일을 계속 틀리는 것을 막는다 (틀린 횟수는 IP 마다 따로 센다)
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public AuthStep emailLogin(EmailLoginRequest req) {
+    public AuthStep emailLogin(EmailLoginRequest req, String ip) {
         String email = Emails.normalize(req.email());
         Instant now = clock.instant();
-        Instant hourAgo = now.minus(Duration.ofHours(1));
-        Deque<Instant> failures = loginFailures.get(email);
-        if (failures != null) {
-            failures.removeIf(at -> at.isBefore(hourAgo));
-            if (failures.size() >= HOURLY_LOGIN_FAILURES) {
-                throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
-                        "비밀번호를 너무 많이 틀렸어요. 1시간 뒤에 다시 하거나 비밀번호 찾기를 해 주세요");
-            }
+        if (!loginAttemptsPerIp.tryAcquire(ip, now)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
+                    "로그인 시도가 너무 많아요. 10분 뒤에 다시 해 주세요");
+        }
+        String failureKey = email + "|" + ip;
+        if (loginFailures.isLimited(failureKey, now) || loginFailuresPerEmail.isLimited(email, now)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
+                    "비밀번호를 너무 많이 틀렸어요. 1시간 뒤에 다시 하거나 비밀번호 찾기를 해 주세요");
         }
         Optional<String> found = tx.execute(status -> members.findByEmail(email)
                 .filter(Member::hasEmailPassword)
                 .map(Member::getEmailPasswordHash));
         boolean matched = checkPassword(req.password(), found == null ? null : found.orElse(null));
         if (!matched || found == null || found.isEmpty()) {
-            recordLoginFailure(email, now, hourAgo);
+            loginFailures.record(failureKey, now);
+            loginFailuresPerEmail.record(email, now);
             throw ApiException.badRequest("LOGIN_FAILED", "이메일이나 비밀번호가 맞지 않아요");
         }
-        loginFailures.remove(email);
+        loginFailures.reset(failureKey);
         return tx.execute(status -> done(members.findByEmail(email).orElseThrow()));
     }
 
@@ -225,17 +247,6 @@ public class AuthService {
         }
     }
 
-    /** 틀린 기록은 틀렸을 때만 남기고, 너무 많아지면 1시간 지난 기록을 치운다 (아무 이메일로 마구 틀려도 메모리가 늘지 않게) */
-    private void recordLoginFailure(String email, Instant now, Instant hourAgo) {
-        if (loginFailures.size() > 5_000) {
-            loginFailures.entrySet().removeIf(e -> {
-                e.getValue().removeIf(at -> at.isBefore(hourAgo));
-                return e.getValue().isEmpty();
-            });
-        }
-        loginFailures.computeIfAbsent(email, k -> new ConcurrentLinkedDeque<>()).add(now);
-    }
-
     /** 새 비밀번호 (BCrypt 는 72바이트까지라 그보다 길면 받지 않는다) */
     private static String encodePassword(String raw) {
         if (raw.getBytes(StandardCharsets.UTF_8).length > PASSWORD_MAX_BYTES) {
@@ -248,14 +259,22 @@ public class AuthService {
 
     /** 코드를 저장(커밋)한 뒤 메일을 보낸다. 메일이 실패하면 저장한 코드를 지운다 */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public EmailCodeSent sendEmailCode(EmailCodeRequest req) {
+    public EmailCodeSent sendEmailCode(EmailCodeRequest req, String ip) {
         SignupClaims claims = signupClaims(req.signupToken());
         String email = Emails.normalize(req.email());
         if (Emails.hasAlias(email)) {
             throw ApiException.badRequest("EMAIL_ALIAS", "학교 이메일을 + 없이 그대로 입력해 주세요");
         }
+        // 누구나 할 수 있는 "이메일로 시작"은 한 곳(IP)에서 몰아 보내 모두의 하루 메일 한도를 다 쓰지 못하게 한다
+        if (!claims.kakao() && emailStartCodesPerIp.isLimited(ip, clock.instant())) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
+                    "인증코드를 너무 많이 요청했어요. 1시간 뒤에 다시 시도하거나 카카오로 시작해 주세요");
+        }
         String code = codes.newCode();
         SavedCode saved = tx.execute(status -> saveCode(claims, email, code));
+        if (!claims.kakao()) {
+            emailStartCodesPerIp.record(ip, clock.instant());
+        }
         try {
             mailer.sendCode(email, code);
         } catch (RuntimeException e) {
@@ -415,7 +434,7 @@ public class AuthService {
         }
         member.setEmailPassword(encodePassword(req.password()));
         ownerPolicy.apply(member);
-        loginFailures.remove(email);
+        loginFailuresPerEmail.reset(email); // 비밀번호를 새로 정했으니 잠금을 푼다
         return done(member);
     }
 
@@ -455,14 +474,24 @@ public class AuthService {
             throw ApiException.conflict("DUPLICATE_EMAIL", "이미 가입된 학교 이메일이에요");
         }
         Instant now = clock.instant();
-        checkLegacyLimit(claims.kakaoId(), now);
+        String kakaoKey = String.valueOf(claims.kakaoId());
+        String loginId = req.loginId().strip().toLowerCase(Locale.ROOT);
+        if (legacyFailures.isLimited(kakaoKey, now)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
+                    "너무 많이 틀렸어요. 1시간 뒤에 다시 시도해 주세요");
+        }
+        if (legacyFailuresPerId.isLimited(loginId, now)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
+                    "이 아이디는 오늘 너무 많이 틀렸어요. 내일 다시 시도하거나 관리자에게 문의해 주세요");
+        }
         School school = schoolService.requireForEmail(email);
-        Member member = members.findByLoginId(req.loginId().strip().toLowerCase(Locale.ROOT))
+        Member member = members.findByLoginId(loginId)
                 .filter(Member::isUnclaimedLegacy)
                 .filter(m -> m.isSameSchool(school.getId())) // 예전 계정과 같은 학교 이메일로만 잇는다
                 .filter(m -> PASSWORDS.matches(req.password(), m.getLegacyPasswordHash()))
                 .orElseThrow(() -> {
-                    legacyFailures.computeIfAbsent(claims.kakaoId(), k -> new ConcurrentLinkedDeque<>()).add(now);
+                    legacyFailures.record(kakaoKey, now);
+                    legacyFailuresPerId.record(loginId, now);
                     return ApiException.badRequest("LEGACY_LOGIN_FAILED", "예전 아이디나 비밀번호가 맞지 않아요");
                 });
         if (!member.isActive()) {
@@ -471,21 +500,13 @@ public class AuthService {
         member.assignEmail(email, school);
         member.linkKakao(claims.kakaoId());
         member.clearLegacyLogin();
+        // 예전 시스템의 관리 직책은 잇지 않는다 (예전 비밀번호만 맞히면 관리자가 되지 않게). 필요하면 대학원장이 다시 맡긴다
+        if (member.getRole() != MemberRole.USER) {
+            member.changeRole(MemberRole.USER);
+        }
         ownerPolicy.apply(member);
-        legacyFailures.remove(claims.kakaoId());
+        legacyFailures.reset(kakaoKey);
         return done(member);
-    }
-
-    private void checkLegacyLimit(Long kakaoId, Instant now) {
-        Deque<Instant> failures = legacyFailures.get(kakaoId);
-        if (failures == null) {
-            return;
-        }
-        failures.removeIf(at -> at.isBefore(now.minus(Duration.ofHours(1))));
-        if (failures.size() >= HOURLY_LEGACY_FAILURES) {
-            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
-                    "너무 많이 틀렸어요. 1시간 뒤에 다시 시도해 주세요");
-        }
     }
 
     AuthStep done(Member member) {

@@ -16,7 +16,8 @@ const variants: Record<ButtonVariant, string> = {
 }
 
 const sizes: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-sm',
+  // 작은 버튼도 손가락으로 누르는 영역은 44px (.hit)
+  sm: 'hit h-9 px-3 text-sm',
   md: 'h-11 px-4 text-[15px]',
   lg: 'h-13 px-5 text-base',
 }

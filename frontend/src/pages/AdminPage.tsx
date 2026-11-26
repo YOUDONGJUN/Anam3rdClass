@@ -48,6 +48,7 @@ import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, EmptyState, ErrorState, Field, FormError, Segmented, Spinner } from '../components/ui'
 import { cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
+import { serviceName } from '../lib/credit'
 import { FeedbackStatsPanel } from './AdminFeedbackStats'
 import { useNow } from '../lib/hooks'
 import {
@@ -1289,11 +1290,13 @@ function SchoolInfoForm({ school }: { school: School }) {
   const [shortName, setShortName] = useState(school.shortName)
   const [graduateSchool, setGraduateSchool] = useState(school.graduateSchool ?? '')
   const [latestCohort, setLatestCohort] = useState(String(school.latestCohort))
+  const [place, setPlace] = useState(school.place ?? '')
   const changed =
     name !== school.name ||
     shortName !== school.shortName ||
     graduateSchool !== (school.graduateSchool ?? '') ||
-    Number(latestCohort) !== school.latestCohort
+    Number(latestCohort) !== school.latestCohort ||
+    place.trim() !== (school.place ?? '')
 
   return (
     <form
@@ -1302,7 +1305,14 @@ function SchoolInfoForm({ school }: { school: School }) {
       onSubmit={(e) => {
         e.preventDefault()
         updateSchool.mutate(
-          { id: school.id, name: name.trim(), shortName: shortName.trim(), graduateSchool: graduateSchool.trim(), latestCohort: Number(latestCohort) },
+          {
+            id: school.id,
+            name: name.trim(),
+            shortName: shortName.trim(),
+            graduateSchool: graduateSchool.trim(),
+            latestCohort: Number(latestCohort),
+            place: place.trim(),
+          },
           { onSuccess: () => toast.show('학교 정보를 바꿨어요', 'ok'), onError: (err) => toast.show(err.message, 'error') },
         )
       }}
@@ -1343,6 +1353,19 @@ function SchoolInfoForm({ school }: { school: School }) {
             />
             <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-ink-3">기</span>
           </div>
+        )}
+      </Field>
+      <Field label="동네 이름 (화면 이름)" optional hint={`이 학교 원우에게 ‘${serviceName({ place })}’로 보여요. 비우면 공식 이름`}>
+        {({ id, describedBy }) => (
+          <input
+            id={id}
+            className={inputClass}
+            maxLength={6}
+            placeholder="예: 신촌"
+            aria-describedby={describedBy}
+            value={place}
+            onChange={(e) => setPlace(e.target.value)}
+          />
         )}
       </Field>
       <div className="sm:col-span-2">
@@ -1632,7 +1655,8 @@ function AddSchoolForm() {
     e.preventDefault()
     setError(null)
     addSchool.mutate(
-      { name: name.trim(), shortName: shortName.trim(), graduateSchool: '', latestCohort: PLACEHOLDER_COHORT, emailDomain: domain.trim() }, // 기수를 정하기 전 — 홈의 할 일에 잡힌다
+      // 기수를 정하기 전 — 홈의 할 일에 잡힌다. 동네 이름은 학교 정보에서 넣는다 (그전에는 공식 이름)
+      { name: name.trim(), shortName: shortName.trim(), graduateSchool: '', latestCohort: PLACEHOLDER_COHORT, place: '', emailDomain: domain.trim() },
       {
         onSuccess: () => {
           setName('')

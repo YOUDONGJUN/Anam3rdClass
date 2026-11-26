@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom'
 import { Copy, Mail, X } from 'lucide-react'
 import { useAbout } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
-import { COMPANY, MADE_BY, SERVICE } from '../lib/credit'
+import { COMPANY, MADE_BY } from '../lib/credit'
 import { affiliation } from '../lib/person'
+import { useServiceName } from '../lib/useServiceName'
 import { SchoolBadge } from './SchoolBadge'
 import { useToast } from './toastContext'
 
@@ -18,6 +19,7 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
   const { data, isPending } = useAbout(Boolean(member))
   const toast = useToast()
   const op = data?.operator
+  const name = useServiceName()
 
   useEffect(() => {
     const dialog = ref.current
@@ -43,7 +45,7 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
     >
       <div className="flex items-start justify-between gap-3 px-6 pt-6">
         <div>
-          <p className="text-[13px] font-semibold text-ink-3">{SERVICE}를 만든 곳</p>
+          <p className="text-[13px] font-semibold text-ink-3">{name}를 만든 곳</p>
           <h2 id="about-title" className="mt-0.5 text-2xl font-extrabold tracking-[-0.02em]">
             {COMPANY}
           </h2>
@@ -143,9 +145,10 @@ function CompanyButton({ className = '' }: { className?: string }) {
 
 /** "안암3교시 · by 써클" — 첫 화면 · PC 메뉴 아래. onBoard: 어두운 안내판 위 */
 export function ByCompany({ onBoard = false, className = '' }: { onBoard?: boolean; className?: string }) {
+  const name = useServiceName()
   return (
     <p className={`text-xs leading-relaxed ${onBoard ? 'text-on-board-2' : 'text-ink-3'} ${className}`}>
-      {SERVICE} · by <CompanyButton className={onBoard ? 'text-on-board' : 'text-ink-2'} />
+      {name} · by <CompanyButton className={onBoard ? 'text-on-board' : 'text-ink-2'} />
     </p>
   )
 }

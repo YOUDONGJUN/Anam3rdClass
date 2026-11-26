@@ -587,6 +587,8 @@ export interface SchoolInput {
   shortName: string
   graduateSchool: string
   latestCohort: number
+  /** 화면 이름의 동네 (빈칸이면 공식 이름) */
+  place: string
 }
 
 export interface DepartmentInput {

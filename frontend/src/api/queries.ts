@@ -33,6 +33,7 @@ import type {
   SettlementInput,
   SignupOptions,
 } from './types'
+import { askPushOnce } from '../lib/native'
 
 export const keys = {
   meetups: (scope: 'upcoming' | 'past', board: Board) => ['meetups', scope, board] as const,
@@ -157,7 +158,10 @@ export function useCreateMeetup() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: MeetupCreateInput) => api<MeetupDetail>('/api/meetups', { method: 'POST', body: input }),
-    onSuccess: (d) => afterMeetupChange(qc, d),
+    onSuccess: (d) => {
+      afterMeetupChange(qc, d)
+      askPushOnce()
+    },
   })
 }
 
@@ -184,7 +188,12 @@ export function useMeetupAction() {
       if (action === 'confirm') return api<MeetupDetail>(`/api/meetups/${id}/confirm`, { method: 'POST' })
       return api<MeetupDetail>(`/api/meetups/${id}/cancel`, { method: 'POST' })
     },
-    onSuccess: (d) => afterMeetupChange(qc, d),
+    // 30초 자동 새로고침이 가는 중이면 멈춘다 — 옛 응답이 방금 참여한 상태를 덮어쓰지 않게
+    onMutate: ({ id }) => qc.cancelQueries({ queryKey: keys.meetup(id) }),
+    onSuccess: (d, { action }) => {
+      afterMeetupChange(qc, d)
+      if (action === 'join' || action === 'wait') askPushOnce()
+    },
   })
 }
 
@@ -277,6 +286,9 @@ export function useDeleteMeetup() {
       qc.invalidateQueries({ queryKey: ['meetups'] })
       qc.invalidateQueries({ queryKey: keys.myMeetups })
       qc.invalidateQueries({ queryKey: keys.admin })
+      // 지운 3교시의 정산·후기가 '내 3교시' 배지·후기 창에 남지 않게
+      qc.invalidateQueries({ queryKey: keys.mySettlements })
+      qc.invalidateQueries({ queryKey: keys.feedbackPending })
     },
   })
 }

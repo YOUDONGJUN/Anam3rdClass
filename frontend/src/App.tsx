@@ -1,5 +1,5 @@
 import { type ReactNode, useLayoutEffect } from 'react'
-import { Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router'
+import { Navigate, Route, Routes, useLocation, useNavigationType, useParams } from 'react-router'
 import { useAuth } from './auth/AuthContext'
 import { AppShell } from './components/AppShell'
 import { Button, Spinner } from './components/ui'
@@ -56,6 +56,12 @@ function GuestOnly({ children }: { children: ReactNode }) {
   if (status === 'loading') return <BootSplash />
   if (status === 'authed') return <Navigate to="/" replace />
   return children
+}
+
+/** 상세에서 다른 상세로 바로 가면 앞 화면의 상태(도장·후기·신고 창)를 버린다 */
+function MeetupDetailRoute() {
+  const { id } = useParams()
+  return <MeetupDetailPage key={id} />
 }
 
 /** 교수·대학원장만 */
@@ -123,7 +129,7 @@ export function App() {
         >
           <Route index element={<FeedPage />} />
           <Route path="meetups/new" element={<MeetupCreatePage />} />
-          <Route path="meetups/:id" element={<MeetupDetailPage />} />
+          <Route path="meetups/:id" element={<MeetupDetailRoute />} />
           <Route path="meetups/:id/edit" element={<MeetupEditPage />} />
           <Route path="notices" element={<NoticesPage />} />
           <Route path="notices/new" element={<NoticeCreatePage />} />

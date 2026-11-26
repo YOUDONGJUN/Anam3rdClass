@@ -34,7 +34,8 @@ export function NativeBridge() {
   const termsAgreed = member?.termsAgreed ?? false
   useEffect(() => {
     if (!isApp || status !== 'authed' || memberId === null || !termsAgreed) return
-    void enablePush(sendPushToken).catch(() => {})
+    // 이미 허락했으면 등록만 한다. 처음 묻는 것은 첫 참여·열기 뒤 (askPushOnce)
+    void enablePush(sendPushToken, { ask: false }).catch(() => {})
   }, [status, memberId, termsAgreed])
 
   return null

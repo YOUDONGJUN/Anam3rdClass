@@ -12,6 +12,10 @@ public interface SettlementShareRepository extends JpaRepository<SettlementShare
     @Query("select sh from SettlementShare sh join fetch sh.member where sh.settlement.id = :settlementId order by sh.id")
     List<SettlementShare> findWithMember(@Param("settlementId") Long settlementId);
 
+    /** 보낼 사람 모두 */
+    @Query("select sh.member.id from SettlementShare sh where sh.settlement.id = :settlementId")
+    List<Long> findMemberIds(@Param("settlementId") Long settlementId);
+
     /** 아직 안 보낸 사람 */
     @Query("select sh.member.id from SettlementShare sh where sh.settlement.id = :settlementId and sh.sentAt is null")
     List<Long> findUnsentMemberIds(@Param("settlementId") Long settlementId);

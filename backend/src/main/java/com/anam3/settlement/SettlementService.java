@@ -185,6 +185,8 @@ public class SettlementService {
     /** 취소: 계산한 사람 (보낸 원우가 있어도 된다 — 다시 만들려고) */
     public void cancel(LoginMember viewer, Long meetupId) {
         Settlement settlement = lockOwn(viewer, meetupId, "계산한 원우만 취소할 수 있어요");
+        List<Long> debtors = shares.findMemberIds(settlement.getId()); // 이미 보낸 원우도 취소를 알아야 한다
+        notifier.settlementCanceled(settlement, debtors);
         shares.deleteBySettlementId(settlement.getId());
         settlements.delete(settlement);
     }

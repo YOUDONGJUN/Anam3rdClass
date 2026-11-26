@@ -91,6 +91,13 @@ public class SchoolService {
                 "IT연합회 학교 이메일만 쓸 수 있어요 (" + String.join(", ", domainList()) + ")"));
     }
 
+    /** 가입할 때 고를 학과(숨기지 않은)가 있는지 */
+    @Transactional(readOnly = true)
+    public boolean hasActiveDepartment(School school) {
+        return departments.findAllByOrderBySortOrderAscIdAsc().stream()
+                .anyMatch(d -> d.isActive() && d.getSchool().getId().equals(school.getId()));
+    }
+
     @Transactional(readOnly = true)
     public School require(Long schoolId) {
         return schools.findById(schoolId).orElseThrow(() -> ApiException.notFound("학교를 찾을 수 없어요"));

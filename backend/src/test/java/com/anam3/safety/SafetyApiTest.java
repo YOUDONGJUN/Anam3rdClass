@@ -57,7 +57,7 @@ class SafetyApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$[0].memberAffiliation").value("고려대 · 61기 · 인융"))
                 .andExpect(jsonPath("$[0].memberRole").value("USER"))
                 // 신고 당시 제목·내용 (나중에 고치거나 지워도 남는다)
-                .andExpect(jsonPath("$[0].targetSnapshot").value("치맥 번개\n수업 끝나고 한잔"))
+                .andExpect(jsonPath("$[0].targetSnapshot").value("치맥 번개\n수업 끝나고 한잔\n장소: 안암역 앞"))
                 .andExpect(jsonPath("$[0].reporter").doesNotExist()), "$[0].id")).longValue();
         get("/api/admin/reports", yonseiManager).andExpect(jsonPath("$", hasSize(0)));
         get("/api/admin/reports", ownerToken()).andExpect(jsonPath("$", hasSize(1)));

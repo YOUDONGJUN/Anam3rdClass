@@ -145,6 +145,7 @@ export function ReportDialog({
         <p className="text-[13px] leading-relaxed text-ink-3">
           교수·대학원장만 봐요. 누가 신고했는지는 아무도 몰라요.
         </p>
+        <FormError message={error} />
         <Button type="submit" variant="danger" loading={report.isPending}>
           <Flag className="size-4" aria-hidden />
           신고하기
@@ -162,8 +163,6 @@ export function ReportDialog({
             </Button>
           </div>
         )}
-
-        <FormError message={error} />
       </form>
     </dialog>
   )

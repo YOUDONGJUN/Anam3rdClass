@@ -52,7 +52,10 @@ export function PersonName({
       {person.owner && <RoleTag />}
       {person.masked && <EyeOff className="size-3.5 shrink-0 opacity-60" aria-label="이름 가려짐" />}
       {person.crowns?.map((c) => <CrownTag key={c} category={c} />)}
-      <span className="shrink-0 whitespace-nowrap opacity-70">· {affiliation(person.cohortLabel, person.departmentLabel)}</span>
+      <span className="shrink-0 whitespace-nowrap opacity-70">
+        {wrap ? '' : '· '}
+        {affiliation(person.cohortLabel, person.departmentLabel)}
+      </span>
       {showSchool && <SchoolBadge school={person.school} />}
       {showMe && person.me && (
         <span className="shrink-0 rounded bg-board px-1.5 py-0.5 text-[11px] font-bold text-on-board">나</span>

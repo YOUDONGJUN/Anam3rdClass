@@ -266,6 +266,7 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
               onCohortChange={setCohort}
               onDepartmentChange={setDepartmentId}
               cohortLocked={cohortFixed}
+              currentDepartmentLabel={member.departmentLabel}
             />
             {member.role === 'USER' && (
               <p className="-mt-2 text-sm text-balance text-ink-3">{affiliationRule}</p>
@@ -471,7 +472,7 @@ export function MyPage() {
             }`}
           >
             {member.role === 'OWNER' ? <Crown className="size-4" aria-hidden /> : <ShieldCheck className="size-4" aria-hidden />}
-            {member.role === 'OWNER' ? '대학원장 · IT연합회 다섯 학교 관리' : `교수 · ${member.school.shortName} 관리`}
+            {member.role === 'OWNER' ? '대학원장 · IT연합회 전체 관리' : `교수 · ${member.school.shortName} 관리`}
           </div>
         )}
         {/* 이름 줄 옆에만 고치기 버튼을 두고, 소속·학교·이메일은 아래 줄에 넓게 쓴다 (좁은 폰에서 '61기 ·'만 남고 끊기지 않게) */}

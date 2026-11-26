@@ -1,6 +1,7 @@
 import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { CircleAlert, LoaderCircle, RefreshCw } from 'lucide-react'
 import { buttonClass, type ButtonSize, type ButtonVariant } from './styles'
+import { tabKeys } from '../lib/tabKeys'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
@@ -106,10 +107,12 @@ interface SegmentedProps<T extends string> {
 
 export function Segmented<T extends string>({ value, onChange, options, label }: SegmentedProps<T>) {
   return (
+    // 탭이 많으면(관리 6개 + 신고 수) 좁은 폰에서 가로로 밀어 본다
     <div
       role="tablist"
       aria-label={label}
-      className="inline-flex rounded-xl bg-surface-2 p-1 pb-1.5 shadow-[inset_0_1px_2px_rgb(0_0_0/0.1)]"
+      onKeyDown={(e) => tabKeys(e, options.map((o) => o.value), value, onChange)}
+      className="inline-flex max-w-full overflow-x-auto rounded-xl bg-surface-2 p-1 pb-1.5 shadow-[inset_0_1px_2px_rgb(0_0_0/0.1)]"
     >
       {options.map((o) => {
         const active = o.value === value
@@ -119,8 +122,9 @@ export function Segmented<T extends string>({ value, onChange, options, label }:
             type="button"
             role="tab"
             aria-selected={active}
+            tabIndex={active ? 0 : -1}
             onClick={() => onChange(o.value)}
-            className={`hit h-9 rounded-lg px-3.5 text-sm font-semibold transition-colors ${
+            className={`hit h-9 shrink-0 rounded-lg px-3.5 text-sm font-semibold transition-colors ${
               active ? 'bg-surface font-bold text-ink shadow-[0_2px_0_var(--line-strong)]' : 'text-ink-3 hover:text-ink'
             }`}
           >

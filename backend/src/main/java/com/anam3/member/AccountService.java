@@ -170,13 +170,18 @@ public class AccountService {
         }
         for (Long meetupId : participations.findOpenJoinedMeetupIds(member.getId(), now)) {
             Meetup locked = meetups.findByIdForUpdate(meetupId).orElseThrow();
-            if (!locked.isRecruitingAt(now)) {
-                continue; // 이미 성사·마감된 3교시에는 그대로 남는다
+            if (locked.isCanceled() || !now.isBefore(locked.getMeetAt())) {
+                continue; // 이미 모였거나 취소된 3교시의 기록은 그대로 둔다
             }
+            // 모이기 전이면 성사·마감 뒤라도 자리를 비운다 (못 올 사람이 정원을 차지하지 않게)
+            boolean closed = !locked.isRecruitingAt(now);
             participations.findByMeetupIdAndMemberId(meetupId, member.getId()).ifPresent(p -> {
                 boolean wasFull = locked.isFull();
                 participations.delete(p);
                 locked.removeParticipant();
+                if (closed) {
+                    notifier.left(locked); // 성사 뒤 빠졌으니 연 사람이 알아야 한다
+                }
                 if (wasFull && locked.isJoinableAt(now)) {
                     notifier.spotOpened(locked, waits.findMemberIds(meetupId));
                 }

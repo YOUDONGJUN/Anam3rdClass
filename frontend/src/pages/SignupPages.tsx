@@ -13,7 +13,7 @@ import { Button, Field, FormError, Spinner } from '../components/ui'
 import { buttonClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { TermsCheckbox } from './TermsPages'
-import { useNow } from '../lib/hooks'
+import { useNow, useSlowServer } from '../lib/hooks'
 import { PASSWORD_RULE, passwordProblem } from '../lib/password'
 import { withEmailDomain } from '../lib/schools'
 import {
@@ -43,6 +43,13 @@ async function startEmailFlow(purpose: 'signup' | 'password', presetEmail: strin
   return progress
 }
 
+/** 무료 서버가 잠들어 있으면 깨우는 데 1분까지 걸린다 — 로딩만 보이지 않게 */
+function SlowNote() {
+  const slow = useSlowServer()
+  if (!slow) return null
+  return <p className="mb-4 rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2">서버를 깨우는 중이에요. 최대 1분 걸릴 수 있어요</p>
+}
+
 function AuthFrame({ children, step, secondStep = '이름·기수·학과' }: { children: ReactNode; step?: 1 | 2; secondStep?: string }) {
   return (
     <div className="min-h-dvh bg-bg">
@@ -53,6 +60,7 @@ function AuthFrame({ children, step, secondStep = '이름·기수·학과' }: { 
         <div className="h-1 bg-accent" aria-hidden />
       </header>
       <main className="mx-auto max-w-md px-4 py-8">
+        <SlowNote />
         {step && (
           <ol className="mb-5 flex items-center gap-2 text-sm font-semibold" aria-label="가입 단계">
             <StepDot n={1} label="학교 이메일 인증" active={step === 1} done={step > 1} />
@@ -268,7 +276,7 @@ export function SignupPage() {
     return (
       <AuthFrame>
         <p className="mb-4 text-[15px] text-ink-2">가입 정보가 없거나 시간이 지났어요.</p>
-        <RestartLink />
+        <RestartLink via="email" />
       </AuthFrame>
     )
   }

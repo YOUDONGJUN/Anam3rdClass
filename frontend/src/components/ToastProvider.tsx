@@ -15,7 +15,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const show = useCallback<ToastApi['show']>((message, tone = 'default') => {
     const id = nextId.current++
     setToasts((list) => [...list.slice(-2), { id, message, tone }])
-    window.setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), 3200)
+    window.setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), tone === 'error' ? 5500 : 3200)
   }, [])
 
   const api = useMemo(() => ({ show }), [show])

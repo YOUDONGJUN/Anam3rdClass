@@ -273,7 +273,7 @@ function SettlementBody({ m, s, onEdit }: { m: MeetupDetail; s: SettlementView; 
               type="button"
               onClick={cancel}
               disabled={action.isPending}
-              className="inline-flex h-9 items-center rounded-xl px-3 text-sm font-semibold text-danger-ink transition-colors hover:bg-danger-soft disabled:opacity-50"
+              className="hit inline-flex h-9 items-center rounded-xl px-3 text-sm font-semibold text-danger-ink transition-colors hover:bg-danger-soft disabled:opacity-50"
             >
               정산 취소
             </button>

@@ -208,6 +208,11 @@ public class PushNotifier {
                 + won(settlement.getPerPerson())));
     }
 
+    /** 정산 취소: 보낼 원우 모두에게 (이미 보낸 원우는 다시 만들면 새로 요청받는다) */
+    public void settlementCanceled(Settlement settlement, List<Long> to) {
+        push.send(to, settleMessage(settlement, "정산이 취소됐어요. 다시 요청이 오면 그때 보내 주세요"));
+    }
+
     /** 다시 알리기: 아직 안 보낸 원우에게. 밤이면 아침 8시로 미룬다 */
     public void settlementReminded(Settlement settlement, List<Long> unsent) {
         if (QuietHours.contains(clock.instant())) {

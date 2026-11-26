@@ -147,10 +147,12 @@ export function ParticipantRoute({
   const fill = lineColor(status, reached)
   const unlimited = max === null
 
-  // 빈자리: 성사 지점까지 + 2칸만 보여주고 나머지는 접는다 (제한 없음이면 성사 지점까지 + 1칸)
+  // 빈자리: 성사 지점까지 + 2칸만 보여주고 나머지는 접는다 (제한 없음이면 성사 지점까지 + 1칸).
+  // 끝나거나 무산·취소된 3교시는 더 탈 수 없으니 빈자리를 그리지 않는다
+  const open = status === 'RECRUITING' || status === 'CONFIRMED'
   const toMin = Math.max(target - count, 0)
-  const visibleEmpty = unlimited ? toMin + 1 : Math.max(0, Math.min(max - count, toMin + 2))
-  const hiddenEmpty = unlimited ? 0 : max - count - visibleEmpty
+  const visibleEmpty = !open ? 0 : unlimited ? toMin + 1 : Math.max(0, Math.min(max - count, toMin + 2))
+  const hiddenEmpty = !open || unlimited ? 0 : max - count - visibleEmpty
   const stops = count + visibleEmpty
 
   return (
@@ -198,7 +200,7 @@ export function ParticipantRoute({
                       type="button"
                       aria-label={`${person.name} 신고·차단`}
                       onClick={() => onPersonMenu(person)}
-                      className="-my-2 ml-auto flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink"
+                      className="hit -my-2 ml-auto flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink"
                     >
                       <Ellipsis className="size-4" aria-hidden />
                     </button>
@@ -220,7 +222,7 @@ export function ParticipantRoute({
           </li>
         )
       })}
-      {unlimited && (
+      {unlimited && open && (
         <li className="relative flex min-h-12 items-center gap-4 pl-1">
           <span className="flex h-12 w-8 shrink-0 justify-center">
             <OpenEnd vertical />

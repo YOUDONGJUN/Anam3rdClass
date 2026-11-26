@@ -179,7 +179,7 @@ export function RankingPage() {
       <BoardSheet>
         <div className="mb-4 flex items-center justify-between gap-4 px-1">
           <h2 className="text-[19px] font-extrabold tracking-[-0.02em] text-ink">
-            {tab === 'schools' ? '학교 대항' : tab === 'school' ? `${schoolName} 원우끼리` : '다섯 학교 전체'}
+            {tab === 'schools' ? '학교 대항' : tab === 'school' ? `${schoolName} 원우끼리` : '전체 학교'}
           </h2>
           <Segmented<RankingPeriod>
             label="기간"

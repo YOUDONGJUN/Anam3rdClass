@@ -473,6 +473,13 @@ export function MeetupDetailPage() {
             공유
           </Button>
         )}
+        {/* 연 사람: 맨 아래까지 내리지 않아도 고칠 수 있게 */}
+        {m.hosting && m.canEdit && (
+          <Link to={`/meetups/${m.id}/edit`} className={`${buttonClass('secondary', 'md', 'flex-1')} lg:hidden`}>
+            <Pencil className="size-4" aria-hidden />
+            수정
+          </Link>
+        )}
         {m.canLeave && (
           <Button variant="secondary" className="flex-1" loading={action.isPending} onClick={() => run('leave')}>
             참여 취소
@@ -560,7 +567,7 @@ export function MeetupDetailPage() {
                   <AudienceBadge meetup={m} />
                   <span className="text-sm text-ink-3">
                     {m.audience === 'ALL'
-                      ? 'IT연합회 다섯 학교 누구나 참여해요'
+                      ? 'IT연합회 학교 누구나 참여해요'
                       : `${m.school.shortName} 다른 기수에게는 보이지 않아요`}
                   </span>
                 </dd>

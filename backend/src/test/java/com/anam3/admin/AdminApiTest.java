@@ -268,6 +268,11 @@ class AdminApiTest extends ApiTestSupport {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("DUPLICATE_DOMAIN"));
 
+        // 학과가 없으면 가입하다 막히니 코드를 보내기 전에 알린다
+        requestCode(signupToken, "student@kookmin.ac.kr").andExpect(jsonPath("$.code").value("SCHOOL_NOT_READY"));
+        long kookmin = jdbc.queryForObject("select id from schools where name = '국민대학교'", Long.class);
+        post("/api/admin/schools/" + kookmin + "/departments", owner, "{\"name\":\"소프트웨어융합대학원\",\"shortName\":\"소융\"}")
+                .andExpect(status().isCreated());
         requestCode(signupToken, "student@kookmin.ac.kr")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.schoolName").value("국민대학교"));

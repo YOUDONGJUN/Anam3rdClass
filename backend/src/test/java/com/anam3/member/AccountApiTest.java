@@ -57,18 +57,22 @@ class AccountApiTest extends ApiTestSupport {
     }
 
     @Test
-    void 성사된_3교시에는_탈퇴한_원우로_남는다() throws Exception {
+    void 모인_3교시에는_탈퇴한_원우로_남고_모이기_전이면_자리를_비운다() throws Exception {
         String godae = signup("godae", "김고대", 61);
         String horang = signup("horang", "박호랑", 61);
-        long id = createMeetup(horang, 2, 6, Duration.ofHours(2), Duration.ofHours(1), null);
-        post("/api/meetups/" + id + "/join", godae, null).andExpect(jsonPath("$.status").value("CONFIRMED"));
-        clock.advance(Duration.ofMinutes(90)); // 모집 마감 뒤
+        long gathered = createMeetup(horang, 2, 6, Duration.ofHours(2), Duration.ofHours(1), null);
+        long upcoming = createMeetup(horang, 2, 6, Duration.ofHours(5), Duration.ofHours(1), null);
+        post("/api/meetups/" + gathered + "/join", godae, null).andExpect(jsonPath("$.status").value("CONFIRMED"));
+        post("/api/meetups/" + upcoming + "/join", godae, null).andExpect(jsonPath("$.status").value("CONFIRMED"));
+        clock.advance(Duration.ofMinutes(150)); // 앞의 3교시는 모였고, 뒤의 3교시는 마감 뒤 · 모이기 전
 
         delete("/api/me", godae).andExpect(status().isNoContent());
-        get("/api/meetups/" + id, horang)
+        get("/api/meetups/" + gathered, horang)
                 .andExpect(jsonPath("$.participantCount").value(2))
                 .andExpect(jsonPath("$.participants[*].name", contains("박호랑", "탈퇴한 원우")))
                 .andExpect(jsonPath("$.participants[1].masked").value(false));
+        // 못 올 사람이 정원을 차지하지 않게 뺀다
+        get("/api/meetups/" + upcoming, horang).andExpect(jsonPath("$.participantCount").value(1));
     }
 
     @Test

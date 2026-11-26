@@ -770,7 +770,7 @@ class MeetupApiTest extends ApiTestSupport {
         get("/api/admin/reports", ownerToken())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].meetupId").isEmpty())
-                .andExpect(jsonPath("$[0].targetSnapshot").value("치맥 번개\n수업 끝나고 한잔"));
+                .andExpect(jsonPath("$[0].targetSnapshot").value("치맥 번개\n수업 끝나고 한잔\n장소: 안암역 앞"));
 
         // 교수는 우리 학교 3교시만, 대학원장은 모두
         long other = createMeetup(host, 2, 6, IN_2H, IN_1H, null);

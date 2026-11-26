@@ -28,6 +28,7 @@ export function OverlapNote({
         {link ? (
           <Link
             to={`/meetups/${meetup.id}`}
+            state={{ backLabel: '뒤로' }}
             className="font-semibold text-ink-2 underline decoration-line-strong underline-offset-2 hover:text-ink"
           >
             {what}

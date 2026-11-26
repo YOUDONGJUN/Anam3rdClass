@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
+import { tabKeys } from '../lib/tabKeys'
 
 /**
  * 화면 맨 위 안내판 — 모바일에서는 위쪽 안내판 머리와 이어지고, 그 아래 내용(BoardSheet)이 살짝 겹쳐 올라온다.
@@ -57,6 +58,7 @@ export function HeroTabs<T extends string>({
     <div
       role="tablist"
       aria-label={label}
+      onKeyDown={(e) => tabKeys(e, tabs.map((t) => t.value), value, onChange)}
       className="mt-5 grid gap-1 rounded-2xl bg-black/20 p-1 pb-1.5 shadow-[inset_0_2px_3px_rgb(0_0_0/0.25)]"
       style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
     >
@@ -68,6 +70,7 @@ export function HeroTabs<T extends string>({
             type="button"
             role="tab"
             aria-selected={active}
+            tabIndex={active ? 0 : -1}
             onClick={() => onChange(v)}
             className={`flex h-11 items-center justify-center gap-2 rounded-xl text-[15px] font-bold transition-colors ${
               active ? 'bg-on-board text-board shadow-[0_3px_0_rgb(0_0_0/0.28)]' : 'text-on-board/85 hover:text-on-board'

@@ -379,12 +379,26 @@ public class MeetupService {
         meetup.changePeople(min, max, now);
     }
 
-    /** 취소·삭제할 수 있는지: 개설자, 대학원장, 그 학교 교수 (대학원장이 연 3교시는 대학원장만) */
+    /** 취소할 수 있는지: 개설자, 대학원장, 그 학교 교수 (대학원장이 연 3교시는 대학원장만) */
     public static boolean canModerate(Meetup meetup, LoginMember viewer) {
-        if (meetup.isHostedBy(viewer.id()) || viewer.isOwner()) {
+        return meetup.isHostedBy(viewer.id()) || moderatesAsStaff(meetup, viewer);
+    }
+
+    /** 관리하는 사람으로서 다룰 수 있는지: 대학원장, 그 학교 교수 (대학원장이 연 3교시는 대학원장만) */
+    private static boolean moderatesAsStaff(Meetup meetup, LoginMember viewer) {
+        return viewer.isOwner() || (!meetup.getHost().isOwner() && viewer.manages(meetup.getSchool().getId()));
+    }
+
+    /**
+     * 지울 수 있는지. 교수·대학원장은 언제나 (신고 처리).
+     * 연 사람은 아무도 참여하지 않은 다가오는 3교시만 지운다. 다른 원우의 참여·정산·후기 기록이 함께 사라지거나,
+     * 무산·취소를 지워 성사율을 올리지 못하게. 그 밖에는 취소한다 (취소는 기록에 남는다)
+     */
+    public static boolean canDelete(Meetup meetup, LoginMember viewer, Instant now) {
+        if (moderatesAsStaff(meetup, viewer)) {
             return true;
         }
-        return !meetup.getHost().isOwner() && viewer.manages(meetup.getSchool().getId());
+        return meetup.isHostedBy(viewer.id()) && meetup.getParticipantCount() <= 1 && meetup.getMeetAt().isAfter(now);
     }
 
     /** 취소는 개설자, 그 학교 교수, 대학원장 */
@@ -400,13 +414,17 @@ public class MeetupService {
     }
 
     /**
-     * 지우기는 개설자, 그 학교 교수, 대학원장 (취소와 달리 목록·기록에서 아예 사라진다).
+     * 지우기 (취소와 달리 목록·기록에서 아예 사라진다). 누가 지울 수 있는지는 canDelete.
      * 참여 기록도 함께 지우고, 신고는 남긴다 (신고 당시 제목·내용이 신고에 보관돼 있다).
      */
     public void delete(LoginMember viewer, Long id) {
         Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
         if (!canModerate(meetup, viewer)) {
             throw ApiException.forbidden("3교시를 연 사람만 지울 수 있어요");
+        }
+        if (!canDelete(meetup, viewer, clock.instant())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "DELETE_LOCKED",
+                    "다른 원우가 참여했거나 지난 3교시는 지울 수 없어요. 열려 있으면 취소해 주세요");
         }
         // 아직 열려 있던 3교시면 참여자에게 취소를 알린다 (지우면 참여 기록이 사라지니 먼저 읽어 둔다)
         List<Long> people = meetup.isOpenAt(clock.instant()) ? participations.findMemberIds(id) : List.of();

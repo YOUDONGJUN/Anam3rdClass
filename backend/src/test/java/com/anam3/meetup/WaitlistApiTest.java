@@ -172,7 +172,7 @@ class WaitlistApiTest extends ApiTestSupport {
         long other = fullMeetup(host, anam);
         post("/api/meetups/" + other + "/wait", horang, null).andExpect(status().isOk());
 
-        delete("/api/meetups/" + id, host).andExpect(status().isNoContent());
+        delete("/api/meetups/" + id, ownerToken()).andExpect(status().isNoContent());
         delete("/api/me", horang).andExpect(status().isNoContent());
         get("/api/meetups/" + other, host).andExpect(jsonPath("$.waitCount").value(0));
     }

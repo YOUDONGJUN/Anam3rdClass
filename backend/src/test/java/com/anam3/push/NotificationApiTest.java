@@ -118,9 +118,11 @@ class NotificationApiTest extends ApiTestSupport {
         post("/api/meetups/" + id + "/join", anam, null).andExpect(status().isOk());
         get(LIST, host).andExpect(jsonPath("$.items", hasSize(1)));
 
-        // 지우면: 연 사람의 참여 알림은 사라지고, 참여자에게는 취소 알림이 3교시 목록으로 간다
-        delete("/api/meetups/" + id, host).andExpect(status().isNoContent());
-        get(LIST, host).andExpect(jsonPath("$.items", hasSize(0)));
+        // 지우면(대학원장): 연 사람의 참여 알림은 사라지고, 참여자에게는 취소 알림이 3교시 목록으로 간다
+        delete("/api/meetups/" + id, ownerToken()).andExpect(status().isNoContent());
+        get(LIST, host) // 참여 알림은 지우고, 대학원장이 지웠다는 취소 알림만 남는다
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].type").value("CHANGED"));
         get(LIST, anam)
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].type").value("CHANGED"))

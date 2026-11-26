@@ -712,7 +712,45 @@ class MeetupApiTest extends ApiTestSupport {
     }
 
     @Test
-    void 지우기는_개설자_그_학교_교수_대학원장만_하고_신고는_남는다() throws Exception {
+    void 연_사람은_아무도_참여하지_않은_다가오는_3교시만_지운다() throws Exception {
+        long alone = createMeetup(host, 2, 6, IN_2H, IN_1H, null);
+        get("/api/meetups/" + alone, host).andExpect(jsonPath("$.canDelete").value(true));
+        delete("/api/meetups/" + alone, host).andExpect(status().isNoContent());
+
+        // 다른 원우가 참여했으면 그 사람의 기록이 사라지니 지우지 못하고 취소한다
+        long joined = createMeetup(host, 2, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + joined + "/join", horang, null).andExpect(status().isOk());
+        get("/api/meetups/" + joined, host).andExpect(jsonPath("$.canDelete").value(false));
+        delete("/api/meetups/" + joined, host)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("DELETE_LOCKED"));
+
+        // 혼자였어도 모임 시간이 지나면 지우지 못한다 (무산을 지워 성사율을 올리지 못하게)
+        long past = createMeetup(host, 3, 6, IN_2H, IN_1H, null);
+        clock.advance(Duration.ofHours(3));
+        get("/api/meetups/" + past, host).andExpect(jsonPath("$.canDelete").value(false));
+        delete("/api/meetups/" + past, host).andExpect(jsonPath("$.code").value("DELETE_LOCKED"));
+        delete("/api/meetups/" + past, ownerToken()).andExpect(status().isNoContent()); // 대학원장은 언제나
+    }
+
+    @Test
+    void 단톡방_링크는_카카오톡_오픈채팅_주소만_받는다() throws Exception {
+        post("/api/meetups", host, meetupJson("치맥 번개", 2, 6, clock.instant().plus(IN_2H), clock.instant().plus(IN_1H),
+                "https://open-kakao.phish.example/o/abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("open.kakao.com")));
+        post("/api/meetups", host, meetupJson("치맥 번개", 2, 6, clock.instant().plus(IN_2H), clock.instant().plus(IN_1H),
+                "https://open.kakao.com.evil.example/o/abc"))
+                .andExpect(status().isBadRequest());
+        long id = createMeetup(host, 2, 6, IN_2H, IN_1H, CHAT);
+        put("/api/meetups/" + id, host, """
+                {"title":"치맥 번개","description":"","place":"안암","categories":["BEER"],"purposes":[],
+                 "openChatUrl":"https://bit.ly/abc"}
+                """).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 지우기는_그_학교_교수_대학원장도_하고_신고는_남는다() throws Exception {
         long id = createMeetup(host, 2, 6, IN_2H, IN_1H, null);
         post("/api/meetups/" + id + "/join", horang, null).andExpect(status().isOk());
         post("/api/reports", horang, """
@@ -720,9 +758,8 @@ class MeetupApiTest extends ApiTestSupport {
                 """.formatted(id)).andExpect(status().isNoContent());
 
         get("/api/meetups/" + id, horang).andExpect(jsonPath("$.canDelete").value(false));
-        get("/api/meetups/" + id, host).andExpect(jsonPath("$.canDelete").value(true));
         delete("/api/meetups/" + id, horang).andExpect(status().isForbidden());
-        delete("/api/meetups/" + id, host).andExpect(status().isNoContent());
+        delete("/api/meetups/" + id, ownerToken()).andExpect(status().isNoContent());
         get("/api/meetups/" + id, host).andExpect(status().isNotFound());
         get("/api/me/meetups", horang).andExpect(jsonPath("$", hasSize(0)));
 

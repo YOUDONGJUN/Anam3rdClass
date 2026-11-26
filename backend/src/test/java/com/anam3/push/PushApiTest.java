@@ -165,7 +165,7 @@ class PushApiTest extends ApiTestSupport {
         long id = createMeetup(host, 3, null, Duration.ofDays(2), Duration.ofDays(1), null);
         post("/api/meetups/" + id + "/join", anam, null).andExpect(status().isOk());
 
-        delete("/api/meetups/" + id, host).andExpect(status().isNoContent());
+        delete("/api/meetups/" + id, ownerToken()).andExpect(status().isNoContent());
         PushMessage gone = last("anam-phone");
         assertThat(gone.type()).isEqualTo(PushType.CHANGED);
         assertThat(gone.path()).isEqualTo("/"); // 지운 3교시는 열 수 없으니 3교시 목록으로

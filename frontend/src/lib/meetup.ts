@@ -205,6 +205,24 @@ export function showsLateJoin(m: Pick<MeetupSummary, 'lateJoin' | 'status'>) {
   return m.lateJoin && isLive(m.status)
 }
 
+/**
+ * 단톡방 링크는 카카오톡 오픈채팅 주소만 (서버 MeetupDtos.OPEN_CHAT_PATTERN). 비우면 없음.
+ * 성사되면 실명과 함께 보여서, 아무 주소나 받으면 피싱 링크가 될 수 있다
+ */
+export function openChatError(url: string): string | null {
+  if (url === '' || /^https:\/\/open\.kakao\.com\/\S+$/.test(url)) return null
+  return '카카오톡 오픈채팅 주소(https://open.kakao.com/…)만 넣을 수 있어요'
+}
+
+/**
+ * 마감이 지난 3교시(중간 합류)에 참여하면 취소할 수 없다 (서버: 나가기는 마감 전까지만).
+ * 실수로 누르지 않게 확인받을 문구. 마감 전이면 null
+ */
+export function lateJoinConfirm(m: Pick<MeetupSummary, 'deadlineAt'>, now: Date = new Date()): string | null {
+  if (new Date(m.deadlineAt).getTime() > now.getTime()) return null
+  return '마감이 지난 3교시예요. 참여하면 취소할 수 없어요.\n\n• 못 가게 되면 단톡방에서 직접 알려 주세요\n\n참여할까요?'
+}
+
 /** 내가 참여한 3교시 표시: 모이는 중이면 "참여 중", 모였으면 "참여함", 무산·취소면 붙이지 않는다 */
 export function joinedLabel(status: MeetupStatus): string | null {
   if (isLive(status)) return '참여 중'

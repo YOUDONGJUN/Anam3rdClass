@@ -22,6 +22,13 @@ public final class MeetupDtos {
     /** 모임 목적은 3개까지, 하나에 12자까지 */
     public static final int MAX_PURPOSES = 3;
 
+    /**
+     * 단톡방 링크는 카카오톡 오픈채팅 주소만 받는다 (비우면 없음).
+     * 성사되면 참여자에게 실명과 함께 보여서, 아무 주소나 받으면 피싱 링크가 될 수 있다
+     */
+    static final String OPEN_CHAT_PATTERN = "^$|^https://open\\.kakao\\.com/\\S+$";
+    static final String OPEN_CHAT_MESSAGE = "단톡방 링크는 카카오톡 오픈채팅 주소(https://open.kakao.com/…)만 넣을 수 있어요";
+
     private MeetupDtos() {
     }
 
@@ -176,7 +183,7 @@ public final class MeetupDtos {
             Integer maxPeople,
 
             @Size(max = 300, message = "링크가 너무 길어요")
-            @Pattern(regexp = "^$|^https://\\S+$", message = "오픈채팅 링크는 https:// 로 시작해야 해요")
+            @Pattern(regexp = OPEN_CHAT_PATTERN, message = OPEN_CHAT_MESSAGE)
             String openChatUrl,
 
             /** 누구에게 여는지: 우리 학교(기본, 비워도 됨) · 우리 기수 · 연합. 수정에서 바꿀 수 있다 (이미 참여한 원우가 빠지게 좁힐 수는 없다) */
@@ -215,7 +222,7 @@ public final class MeetupDtos {
                  @Pattern(regexp = "^[^,]*$", message = "모임 목적에는 쉼표(,)를 쓸 수 없어요") String> purposes,
 
             @Size(max = 300, message = "링크가 너무 길어요")
-            @Pattern(regexp = "^$|^https://\\S+$", message = "오픈채팅 링크는 https:// 로 시작해야 해요")
+            @Pattern(regexp = OPEN_CHAT_PATTERN, message = OPEN_CHAT_MESSAGE)
             String openChatUrl,
 
             // 아래는 비우면(null) 그대로 둔다 (이 칸들이 없던 예전 화면의 요청도 그대로 받는다)

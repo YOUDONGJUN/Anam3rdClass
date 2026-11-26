@@ -18,6 +18,7 @@ import {
   Lock,
   MapPin,
   MessageCircle,
+  MessagesSquare,
   PartyPopper,
   Pencil,
   Share2,
@@ -31,6 +32,7 @@ import { ApiError } from '../api/client'
 import {
   type MeetupActionKind,
   useAddSeats,
+  useChatRooms,
   useDeleteMeetup,
   useHostTool,
   useMeetup,
@@ -40,6 +42,7 @@ import {
 import type { MeetupDetail } from '../api/types'
 import { CategoryBadges } from '../components/CategoryBadge'
 import { FeedbackCard } from '../components/FeedbackCard'
+import { MeetupMemoriesCard } from '../components/MeetupMemoriesCard'
 import { MeetupOptionTags } from '../components/MeetupOptionTags'
 import { OverlapNote } from '../components/OverlapNote'
 import { AudienceBadge } from '../components/CohortBadge'
@@ -310,6 +313,7 @@ export function MeetupDetailPage() {
   const id = Number(useParams().id)
   const { data: m, isPending, error, refetch } = useMeetup(id)
   const mine = useMyMeetups()
+  const chats = useChatRooms()
   const action = useMeetupAction()
   const removeMeetup = useDeleteMeetup()
   const hostTool = useHostTool()
@@ -360,8 +364,9 @@ export function MeetupDetailPage() {
   }
 
   const live = isLive(m.status)
-  const hasActions =
-    m.canJoin || m.canWait || Boolean(m.joined && m.revealed && m.openChatUrl) || live || m.canLeave || m.canConfirm
+  const hasActions = m.canJoin || m.canWait || m.joined || live || m.canLeave || m.canConfirm
+  /** 이 3교시 톡방의 안 읽은 메시지 */
+  const chatUnread = chats.data?.rooms.find((r) => r.meetupId === m.id)?.unread ?? 0
   /** 지난 3교시를 그대로 다시 열기 (연 사람·함께한 사람) */
   const canReopen = m.joined && !live && !m.canConfirm
   /** 무산된 3교시를 되살리는 확정인지 */
@@ -461,11 +466,28 @@ export function MeetupDetailPage() {
           {reviving ? `지금 ${m.participantCount}명으로 다시 진행` : `지금 ${m.participantCount}명으로 확정`}
         </Button>
       )}
-      {m.joined && m.revealed && m.openChatUrl && (
-        <a href={m.openChatUrl} target="_blank" rel="noreferrer" className={buttonClass('ok', 'lg', 'w-full')}>
-          <MessageCircle className="size-5" aria-hidden />
-          단톡방 들어가기
-        </a>
+      {/* 함께하는 원우끼리의 톡방 (참여하면 바로). 연 사람이 넣은 카톡 단톡방은 성사되면 옆에 */}
+      {m.joined && (
+        <div className="flex gap-2.5">
+          <Link to={`/meetups/${m.id}/chat`} className={buttonClass('ok', 'lg', 'flex-1')}>
+            <MessagesSquare className="size-5" aria-hidden />
+            톡방
+            {chatUnread > 0 && (
+              <span
+                className="tabular inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[12px] font-extrabold text-ok-ink"
+                aria-label={`안 읽은 메시지 ${chatUnread}개`}
+              >
+                {chatUnread > 99 ? '99+' : chatUnread}
+              </span>
+            )}
+          </Link>
+          {m.revealed && m.openChatUrl && (
+            <a href={m.openChatUrl} target="_blank" rel="noreferrer" className={buttonClass('secondary', 'lg')}>
+              <MessageCircle className="size-5" aria-hidden />
+              카톡 단톡방
+            </a>
+          )}
+        </div>
       )}
       <div className="flex gap-2.5">
         {live && (
@@ -635,6 +657,8 @@ export function MeetupDetailPage() {
           <SettlementCard m={m} />
 
           <FeedbackCard m={m} now={now} />
+
+          <MeetupMemoriesCard m={m} now={now} />
 
           {m.description && (
             <section className={`${cardClass} px-5 py-5`}>

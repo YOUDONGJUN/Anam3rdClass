@@ -76,6 +76,10 @@ export type PushType =
   | 'SETTLE'
   /** 교수·대학원장: 새 신고 · 신고한 사람: 처리 결과 */
   | 'REPORT'
+  /** 내 3교시 톡방의 새 메시지 (알림함에는 쌓이지 않는다) */
+  | 'CHAT'
+  /** 함께한 3교시에 새 추억 */
+  | 'MEMORY'
 
 /** 알림함의 한 줄 (푸시와 같은 내용) */
 export interface NotificationItem {
@@ -356,6 +360,8 @@ export interface RankingView {
   since: string | null
   categories: RankingCategoryView[]
   schools: RankingSchoolRow[]
+  /** 학교 하나만 볼 때 그 학교 (대학원장은 다른 학교도 고른다) */
+  schoolId: number | null
 }
 
 // ---------------- 3교시 후기 ----------------
@@ -631,4 +637,124 @@ export interface Block {
   departmentLabel: string | null
   school: SchoolTag
   createdAt: string
+}
+
+// ---------------- 톡방 ----------------
+
+/** 사진 올릴 주소 (이 주소로 PUT, Content-Type 은 contentType 그대로) */
+export interface UploadTicket {
+  key: string
+  uploadUrl: string
+  contentType: string
+}
+
+/** 톡방 사진. expired: 보관 기간(30일)이 지나 지워졌다 */
+export interface ChatPhoto {
+  key: string
+  url: string | null
+  expired: boolean
+}
+
+export interface ChatMessage {
+  id: number
+  sender: PersonView
+  mine: boolean
+  body: string | null
+  photos: ChatPhoto[]
+  deleted: boolean
+  /** 내가 차단한 원우의 메시지 (내용을 내려보내지 않는다) */
+  hidden: boolean
+  createdAt: string
+}
+
+export interface ChatPage {
+  meetupId: number
+  title: string
+  status: MeetupStatus
+  meetAt: string
+  people: number
+  /** 연합 3교시 — 보낸 사람의 학교를 함께 보인다 */
+  federated: boolean
+  messages: ChatMessage[]
+  /** 더 오래된 메시지가 있다 */
+  hasMore: boolean
+  /** 취소된 3교시는 읽기만 */
+  canWrite: boolean
+  lastReadId: number
+  muted: boolean
+  photoKeepDays: number
+  photosLeftToday: number
+}
+
+export interface ChatRoom {
+  meetupId: number
+  title: string
+  status: MeetupStatus
+  meetAt: string
+  unread: number
+  muted: boolean
+  lastPreview: string
+  lastSender: string
+  lastAt: string
+}
+
+export interface ChatRooms {
+  /** 알림을 끈 톡방은 빼고 센다 */
+  totalUnread: number
+  rooms: ChatRoom[]
+}
+
+// ---------------- 추억 ----------------
+
+export type MemoryVisibility = 'PARTICIPANTS' | 'PUBLIC'
+
+export interface MemoryPhoto {
+  key: string
+  url: string
+}
+
+export interface Memory {
+  id: number
+  meetupId: number
+  meetupTitle: string
+  meetAt: string
+  author: PersonView
+  mine: boolean
+  caption: string | null
+  visibility: MemoryVisibility
+  photos: MemoryPhoto[]
+  createdAt: string
+  canDelete: boolean
+}
+
+export interface MemoryFeed {
+  items: Memory[]
+  /** 더 불러올 때 before 로 (없으면 끝) */
+  nextBefore: number | null
+}
+
+export interface MeetupMemories {
+  items: Memory[]
+  /** 지금 올릴 수 있다 (함께했고 모였던 3교시) */
+  canAdd: boolean
+  /** 이 3교시에 더 올릴 수 있는 장수 (3교시마다 10장) */
+  photosLeft: number
+}
+
+// ---------------- 만든 곳 (써클) ----------------
+
+export interface AboutOperator {
+  name: string
+  school: SchoolTag
+  graduateSchool: string | null
+  cohortLabel: string
+  departmentLabel: string | null
+  email: string | null
+}
+
+export interface About {
+  company: string
+  /** 대학원장 계정 정보 (아직 없으면 null) */
+  operator: AboutOperator | null
+  supportEmail: string | null
 }

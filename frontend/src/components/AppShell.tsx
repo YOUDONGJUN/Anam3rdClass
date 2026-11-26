@@ -1,12 +1,13 @@
 import { NavLink, Outlet, useLocation, Link } from 'react-router'
-import { Bell, CircleUser, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, Ticket, TrainFront, Trophy, type LucideIcon } from 'lucide-react'
-import { useAdminStats, useMySettlements, useUnreadNotifications } from '../api/queries'
+import { Bell, CircleUser, Images, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, Ticket, TrainFront, Trophy, type LucideIcon } from 'lucide-react'
+import { useAdminStats, useChatRooms, useMySettlements, useUnreadNotifications } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from './toastContext'
 import { useSlowServer } from '../lib/hooks'
 import { affiliation, isStaff } from '../lib/person'
 import { Brand } from './Brand'
 import { FeedbackPrompter } from './FeedbackSheet'
+import { LiveBridge } from './LiveBridge'
 import { ByCompany } from './MadeBy'
 import { RoleTag } from './PersonName'
 import { SchoolBadge } from './SchoolBadge'
@@ -18,7 +19,7 @@ interface NavItem {
   label: string
   Icon: LucideIcon
   end?: boolean
-  /** 처리할 일 수 (관리: 처리 안 된 신고 · 내 3교시: 보낼 정산) */
+  /** 처리할 일 수 (관리: 처리 안 된 신고 · 내 3교시: 안 읽은 톡 + 보낼 정산) */
   badge?: number
   /** 화면 읽기 프로그램용 배지 이름 ("처리할 신고") */
   badgeLabel?: string
@@ -64,21 +65,33 @@ export function AppShell() {
   const dues = useMySettlements(Boolean(member)).data?.length
   // 안 읽은 알림 수 (웹은 1분마다, 앱은 푸시가 오면 바로 다시 센다)
   const unread = useUnreadNotifications(Boolean(member)).data
+  // 안 읽은 톡 (알림을 끈 톡방은 빼고). 실시간 연결이 오면 바로 다시 센다
+  const unreadChats = useChatRooms(Boolean(member)).data?.totalUnread ?? 0
+  const mineBadge = (dues ?? 0) + unreadChats
 
   const feed: NavItem = { to: '/', label: '3교시', Icon: TrainFront, end: true }
-  const mine: NavItem = { to: '/my-meetups', label: '내 3교시', Icon: Ticket, badge: dues, badgeLabel: '보낼 정산' }
+  const mine: NavItem = {
+    to: '/my-meetups',
+    label: '내 3교시',
+    Icon: Ticket,
+    badge: mineBadge,
+    badgeLabel: unreadChats > 0 ? '안 읽은 톡·보낼 정산' : '보낼 정산',
+  }
+  const memories: NavItem = { to: '/memories', label: '추억', Icon: Images }
   const alerts: NavItem = { to: '/notifications', label: '알림', Icon: Bell, badge: unread, badgeLabel: '새 알림' }
   const notices: NavItem = { to: '/notices', label: '공지', Icon: Megaphone }
   const ranking: NavItem = { to: '/ranking', label: '랭킹', Icon: Trophy }
   const me: NavItem = { to: '/me', label: '내 정보', Icon: CircleUser }
   const admin: NavItem = { to: '/admin', label: '관리', Icon: ShieldCheck, badge: openReports }
   /** 데스크톱 왼쪽 레일: 관리까지 다 */
-  const railItems: NavItem[] = [feed, mine, alerts, notices, ranking, me]
+  const railItems: NavItem[] = [feed, mine, memories, alerts, notices, ranking, me]
   if (staff) railItems.push(admin)
   // 관리 화면은 표·카드가 많아 더 넓게
   const wide = pathname.startsWith('/admin')
   // 3교시 상세: 하단 메뉴 대신 그 3교시의 행동 버튼(나도 콜 …)만 바닥에 둔다
   const detail = /^\/meetups\/\d+$/.test(pathname)
+  /** 톡방: 화면 전체를 톡방이 쓴다 (머리·하단 메뉴 없이, 자기 머리와 입력창) */
+  const chat = /^\/meetups\/\d+\/chat$/.test(pathname)
   /** 쓰는 화면: 하단 메뉴가 제출 버튼을 가리고, 열기 화면에 '열기' 버튼이 또 있어서 감춘다 */
   const writing = /^\/(meetups|notices)\/(new|\d+\/edit)$/.test(pathname)
   // 안내판이 머리에서 이어지는 화면은 머리 아래 띠를 빼서 한 장으로 보이게
@@ -144,12 +157,13 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* 모바일: 상단 안내판 + 6호선 띠. 오른쪽은 랭킹 · (교수·대학원장) 관리 · 알림 — 로그아웃은 잘못 누르기 쉬워 내 정보에만 */}
-        <header className="sticky top-0 z-30 bg-board pt-[env(safe-area-inset-top)] lg:hidden">
+        {/* 모바일: 상단 안내판 + 6호선 띠. 오른쪽은 공지 · 랭킹 · (교수·대학원장) 관리 · 알림 — 로그아웃은 잘못 누르기 쉬워 내 정보에만 */}
+        <header className={`sticky top-0 z-30 bg-board pt-[env(safe-area-inset-top)] lg:hidden ${chat ? 'hidden' : ''}`}>
           <div className="flex h-14 items-center justify-between gap-3 px-4">
             <Brand />
             {member && (
               <nav aria-label="바로가기" className="-mr-2 flex shrink-0 items-center gap-0.5">
+                <HeaderLink item={notices} />
                 <HeaderLink item={ranking} />
                 {staff && <HeaderLink item={admin} />}
                 <HeaderLink item={alerts} />
@@ -161,9 +175,13 @@ export function AppShell() {
         {slow && <SlowServerBanner />}
         {/* 모바일 아래 여백: 하단 메뉴(64px) + 가운데 열기 버튼이 위로 솟은 만큼 마지막 줄이 가리지 않게. 상세는 자기 행동 바만큼 따로 둔다 */}
         <main
-          className={`mx-auto w-full flex-1 px-4 pt-6 sm:px-6 lg:px-10 lg:pt-10 lg:pb-16 ${detail || writing ? 'pb-8' : 'pb-32'} ${
-            wide ? 'max-w-5xl' : 'max-w-3xl'
-          }`}
+          className={
+            chat
+              ? 'mx-auto w-full max-w-3xl flex-1'
+              : `mx-auto w-full flex-1 px-4 pt-6 sm:px-6 lg:px-10 lg:pt-10 lg:pb-16 ${detail || writing ? 'pb-8' : 'pb-32'} ${
+                  wide ? 'max-w-5xl' : 'max-w-3xl'
+                }`
+          }
         >
           <Outlet />
         </main>
@@ -171,11 +189,13 @@ export function AppShell() {
 
       {/* 앱을 열면 어제(최근) 성사된 3교시 후기를 한 번 묻는다 */}
       <FeedbackPrompter />
-      {/* 앱: 맨 위에서 당기면 새로 불러온다 */}
-      <PullToRefresh />
+      {/* 앱: 맨 위에서 당기면 새로 불러온다 (톡방은 메시지 목록을 위로 끌어 올리니 끈다) */}
+      {!chat && <PullToRefresh />}
+      {/* 새 톡 메시지 등을 바로 받는 실시간 연결 */}
+      <LiveBridge />
 
-      {/* 모바일: 하단 메뉴 5칸 — 3교시 · 내 3교시 · (열기) · 공지 · 내 정보 */}
-      {!detail && !writing && (
+      {/* 모바일: 하단 메뉴 5칸 — 3교시 · 내 3교시(톡방) · (열기) · 추억 · 내 정보. 공지는 위 머리로 */}
+      {!detail && !writing && !chat && (
         <nav
           aria-label="주 메뉴"
           className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface shadow-[0_-8px_20px_-16px_rgb(0_0_0/0.4)] lg:hidden"
@@ -193,7 +213,7 @@ export function AppShell() {
               </span>
               열기
             </Link>
-            <TabLink item={notices} />
+            <TabLink item={memories} />
             <TabLink item={me} />
           </div>
         </nav>

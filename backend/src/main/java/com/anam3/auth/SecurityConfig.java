@@ -3,6 +3,7 @@ package com.anam3.auth;
 import java.io.IOException;
 import java.util.List;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.context.annotation.Bean;
@@ -40,7 +41,11 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .headers(h -> h.frameOptions(f -> f.sameOrigin())) // 로컬 H2 콘솔용
                 .authorizeHttpRequests(auth -> auth
+                        // 실시간 연결(/api/live)이 끝날 때의 비동기 디스패치: 처음 요청에서 이미 로그인을 확인했다
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/api/auth/**", "/api/health").permitAll()
+                        // 폴더 저장소(내 PC·테스트)의 사진: 로그인 대신 서명된 주소로 확인한다 (LocalFileController)
+                        .requestMatchers("/api/files/**").permitAll()
                         // 로그아웃한 앱이 이 기기로 알림을 그만 보내 달라고 할 때 (로그인이 풀린 뒤일 수 있다)
                         .requestMatchers(HttpMethod.POST, "/api/push/unregister").permitAll()
                         // 대학원장 전용: 학교·도메인·학과 바꾸기, 교수 임명·해임, 예전 회원 이메일 지정

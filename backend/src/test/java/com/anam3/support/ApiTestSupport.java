@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import com.anam3.common.RateLimits;
+import com.anam3.live.LiveHub;
 import com.anam3.ranking.RankingService;
 import com.jayway.jsonpath.JsonPath;
 
@@ -68,6 +69,9 @@ public abstract class ApiTestSupport {
     @Autowired
     private RateLimits rateLimits;
 
+    @Autowired
+    protected LiveHub liveHub;
+
     @BeforeEach
     void resetState() {
         clock.set(T0);
@@ -87,6 +91,12 @@ public abstract class ApiTestSupport {
         jdbc.update("delete from reports");
         jdbc.update("delete from member_blocks");
         jdbc.update("delete from email_verifications");
+        jdbc.update("delete from chat_photos");
+        jdbc.update("delete from chat_messages");
+        jdbc.update("delete from chat_states");
+        jdbc.update("delete from memory_photos");
+        jdbc.update("delete from memories");
+        liveHub.clear();
         jdbc.update("delete from meetup_feedbacks");
         jdbc.update("delete from settlement_shares");
         jdbc.update("delete from settlements");

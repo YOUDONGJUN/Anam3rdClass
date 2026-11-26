@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { Bell, ChevronRight, Copy, ReceiptText } from 'lucide-react'
-import { MINE_PAGE, useMyMeetups, useMySettlements, useMyWaits } from '../api/queries'
+import { Bell, BellOff, ChevronRight, Copy, MessagesSquare, ReceiptText } from 'lucide-react'
+import { MINE_PAGE, useChatRooms, useMyMeetups, useMySettlements, useMyWaits } from '../api/queries'
 import type { MeetupSummary } from '../api/types'
 import { BoardHero, BoardSheet, HeroTabs } from '../components/BoardHero'
 import { MeetupRow, MeetupRowSkeleton } from '../components/MeetupRow'
@@ -10,7 +10,7 @@ import { buttonClass, cardClass } from '../components/styles'
 import { useNow } from '../lib/hooks'
 import { isLive } from '../lib/meetup'
 import { formatWon } from '../lib/settlement'
-import { formatDayLabel, formatTime } from '../lib/time'
+import { formatDayLabel, formatRelative, formatTime } from '../lib/time'
 
 type Tab = 'upcoming' | 'past'
 
@@ -72,6 +72,72 @@ function SettlementDues() {
   )
 }
 
+/** 처음에 보일 톡방 수 (더 있으면 "모두 보기") */
+const ROOMS_SHOWN = 4
+
+/** 톡방: 메시지가 있는 내 3교시 톡방을 최근 순으로. 안 읽은 수가 붙는다 */
+function ChatRooms() {
+  const { data } = useChatRooms()
+  const now = useNow(60_000)
+  const [all, setAll] = useState(false)
+  if (!data || data.rooms.length === 0) return null
+  const rooms = all ? data.rooms : data.rooms.slice(0, ROOMS_SHOWN)
+  return (
+    <section className={`${cardClass} mb-6 overflow-hidden`} aria-labelledby="rooms-title">
+      <h2 id="rooms-title" className="flex items-center gap-2 border-b border-line px-5 py-3.5 text-[15px] font-extrabold text-ink">
+        <MessagesSquare className="size-5 text-ok-ink" aria-hidden />
+        톡방
+        {data.totalUnread > 0 && (
+          <span className="tabular rounded-full bg-danger px-2 py-0.5 text-[12px] font-bold text-white">
+            {data.totalUnread > 99 ? '99+' : data.totalUnread}
+          </span>
+        )}
+      </h2>
+      <ul className="divide-y divide-line">
+        {rooms.map((r) => (
+          <li key={r.meetupId}>
+            <Link to={`/meetups/${r.meetupId}/chat`} className="flex items-center gap-3 px-5 py-3.5 hover:bg-surface-2">
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate text-[15px] font-bold text-ink">{r.title}</span>
+                  {r.muted && <BellOff className="size-3.5 shrink-0 text-ink-3" aria-label="알림 꺼짐" />}
+                </span>
+                <span className={`mt-0.5 block truncate text-[13px] ${r.unread > 0 ? 'font-semibold text-ink-2' : 'text-ink-3'}`}>
+                  {r.lastSender}: {r.lastPreview}
+                </span>
+              </span>
+              <span className="flex shrink-0 flex-col items-end gap-1">
+                <time dateTime={r.lastAt} className="text-[12px] text-ink-3">
+                  {formatRelative(r.lastAt, now)}
+                </time>
+                {r.unread > 0 && (
+                  <span
+                    className={`tabular inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white ${
+                      r.muted ? 'bg-ink-3' : 'bg-danger'
+                    }`}
+                    aria-label={`안 읽은 메시지 ${r.unread}개`}
+                  >
+                    {r.unread > 99 ? '99+' : r.unread}
+                  </span>
+                )}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {data.rooms.length > ROOMS_SHOWN && (
+        <button
+          type="button"
+          onClick={() => setAll((v) => !v)}
+          className="flex h-11 w-full items-center justify-center border-t border-line text-sm font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink"
+        >
+          {all ? '접기' : `톡방 ${data.rooms.length}개 모두 보기`}
+        </button>
+      )}
+    </section>
+  )
+}
+
 /** 빈자리를 기다리는 3교시 — 자리가 나면 알림이 가고, 먼저 참여하는 원우가 탄다 */
 function WaitingList() {
   const { data } = useMyWaits()
@@ -124,7 +190,7 @@ export function MyMeetupsPage() {
 
   return (
     <div>
-      <BoardHero title="내 3교시" subtitle="내가 열고 참여한 3교시가 여기 모여요.">
+      <BoardHero title="내 3교시" subtitle="내가 열고 참여한 3교시와 톡방이 여기 모여요.">
         <HeroTabs<Tab>
           label="내 3교시 보기"
           value={tab}
@@ -137,6 +203,7 @@ export function MyMeetupsPage() {
       </BoardHero>
 
       <BoardSheet>
+        <ChatRooms />
         <SettlementDues />
         {tab === 'upcoming' && <WaitingList />}
 

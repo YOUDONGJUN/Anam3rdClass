@@ -13,6 +13,8 @@ import {
   Users,
   Armchair,
   Flag,
+  MessageCircle,
+  Camera,
   type LucideIcon,
 } from 'lucide-react'
 import { useNotifications, useReadAllNotifications, useUnreadNotifications } from '../api/queries'
@@ -34,6 +36,8 @@ const ICON: Record<PushType, LucideIcon> = {
   FEDERATION: Globe2,
   NOTICE: Megaphone,
   REPORT: Flag,
+  CHAT: MessageCircle,
+  MEMORY: Camera,
 }
 
 /**

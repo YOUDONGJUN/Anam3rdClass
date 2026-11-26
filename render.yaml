@@ -32,6 +32,15 @@ services:
         sync: false
       - key: SUPPORT_EMAIL # (선택) 약관·내 정보 화면의 문의 이메일
         sync: false
+      # ---- 사진 저장소: Cloudflare R2 (톡방·추억 사진). 버킷 수명 규칙: chat/ 아래 30일 뒤 삭제 ----
+      - key: R2_ACCOUNT_ID # R2 첫 화면 > Account Details > Account ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID # R2 > Manage API Tokens > Account API token (Object Read & Write, 버킷 하나)
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET # 예: anam3-photos
+        sync: false
       # ---- 안드로이드 앱 (docs/android-release.md) ----
       - key: KAKAO_APP_ID # 카카오 앱 ID (숫자) — 앱의 카카오톡 로그인
         sync: false

@@ -96,6 +96,14 @@ public class RankingService {
      * @param schoolOnly true 면 우리 학교 원우끼리 (학교 대항은 늘 다섯 학교)
      */
     public RankingView ranking(LoginMember viewer, boolean allTime, boolean schoolOnly) {
+        return ranking(viewer, allTime, schoolOnly, null);
+    }
+
+    /**
+     * @param schoolId 학교 하나만 볼 때 그 학교 (대학원장만 다른 학교를 고를 수 있다 — 아니면 우리 학교)
+     */
+    public RankingView ranking(LoginMember viewer, boolean allTime, boolean schoolOnly, Long schoolId) {
+        Long school = viewer.isOwner() && schoolId != null ? schoolId : viewer.schoolId();
         Instant now = clock.instant();
         Instant since = allTime ? Instant.EPOCH : monthStart(now);
         List<RankingRide> rides = participations.findRides(since, now);
@@ -109,9 +117,10 @@ public class RankingService {
         values.put(RankingCategory.FEDERATION, countBy(withOtherSchool(rides)));
 
         List<CategoryView> categories = new ArrayList<>();
-        values.forEach((category, v) -> categories.add(category(category, v, active, viewer, schoolOnly)));
+        values.forEach((category, v) -> categories.add(category(category, v, active, viewer,
+                schoolOnly ? school : null)));
         return new RankingView(allTime ? "all" : "month", schoolOnly ? "school" : "all", allTime ? null : since,
-                categories, schoolRows(rides, active.values(), viewer));
+                categories, schoolRows(rides, active.values(), viewer), schoolOnly ? school : null);
     }
 
     /**
@@ -165,12 +174,12 @@ public class RankingService {
     }
 
     private CategoryView category(RankingCategory category, Map<Long, int[]> values, Map<Long, Member> active,
-            LoginMember viewer, boolean schoolOnly) {
+            LoginMember viewer, Long onlySchool) {
         boolean rate = category == RankingCategory.RATE;
         List<Score> scores = new ArrayList<>();
         values.forEach((id, v) -> {
             Member m = active.get(id);
-            if (m == null || m.isRankingHidden() || (schoolOnly && !m.isSameSchool(viewer.schoolId()))) {
+            if (m == null || m.isRankingHidden() || (onlySchool != null && !m.isSameSchool(onlySchool))) {
                 return;
             }
             if (counts(v, rate)) {
@@ -203,7 +212,9 @@ public class RankingService {
             // 랭킹에 안 나오는 중이어도 내 기록은 보여 준다 (순위 없이)
             int[] v = values.get(viewer.id());
             Member me = active.get(viewer.id());
-            if (v != null && me != null && counts(v, rate)) {
+            // 대학원장이 다른 학교를 볼 때는 내 기록을 섞지 않는다
+            boolean inScope = me != null && (onlySchool == null || me.isSameSchool(onlySchool));
+            if (v != null && inScope && counts(v, rate)) {
                 mine = entry(null, new Score(me, v[0], v[1]), viewer, rate);
             }
         }

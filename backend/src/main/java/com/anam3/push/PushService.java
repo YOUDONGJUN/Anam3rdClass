@@ -102,6 +102,14 @@ public class PushService {
         deliver(devices.findTargets(memberIds, MemberStatus.ACTIVE), message, Set.of());
     }
 
+    /** 폰 알림만 (알림함에는 담지 않는다 — 톡 메시지처럼 자주 오는 것) */
+    public void sendPushOnly(Collection<Long> memberIds, PushMessage message) {
+        if (memberIds.isEmpty()) {
+            return;
+        }
+        deliver(devices.findTargets(memberIds, MemberStatus.ACTIVE), message, Set.of());
+    }
+
     /** 한 학교 원우 모두에게 (schoolId 가 null 이면 다섯 학교 모두). except 는 빼고 */
     public void broadcast(Long schoolId, PushMessage message, Set<Long> except) {
         List<PushTarget> targets = schoolId == null

@@ -1,8 +1,9 @@
 // react-query 훅 모음. 화면은 여기 훅만 쓰고 api() 를 직접 부르지 않는다.
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthContext'
 import { api } from './client'
 import type {
+  About,
   AdminAction,
   AdminMember,
   AdminStats,
@@ -10,6 +11,7 @@ import type {
   AuthStep,
   Block,
   Board,
+  ChatRooms,
   Contact,
   DevMember,
   FeedbackInput,
@@ -17,6 +19,10 @@ import type {
   FeedbackStats,
   Member,
   MeetupCreateInput,
+  MeetupMemories,
+  Memory,
+  MemoryFeed,
+  MemoryVisibility,
   MeetupDetail,
   MeetupSummary,
   MeetupUpdateInput,
@@ -37,6 +43,7 @@ import type {
   SignupOptions,
 } from './types'
 import { askPushOnce } from '../lib/native'
+import { uploadPhotos } from './uploads'
 
 export const keys = {
   meetups: (scope: 'upcoming' | 'past', board: Board, limit = PAST_PAGE) => ['meetups', scope, board, limit] as const,
@@ -53,10 +60,14 @@ export const keys = {
   contacts: ['contacts'] as const,
   feedbackPending: ['feedback-pending'] as const,
   places: ['places'] as const,
-  ranking: (period: RankingPeriod, scope: RankingScope) => ['ranking', period, scope] as const,
+  ranking: (period: RankingPeriod, scope: RankingScope, school?: number | null) =>
+    ['ranking', period, scope, school ?? null] as const,
   mySettlements: ['my-settlements'] as const,
   notifications: ['notifications'] as const,
   unreadNotifications: ['notifications', 'unread'] as const,
+  chats: ['chats'] as const,
+  memories: ['memories'] as const,
+  meetupMemories: (id: number) => ['memories', 'meetup', id] as const,
 }
 
 // ---------------- 알림함 ----------------
@@ -491,10 +502,12 @@ export function useRankingSetting() {
 
 // ---------------- 랭킹 ----------------
 
-export function useRanking(period: RankingPeriod, scope: RankingScope) {
+/** school: 대학원장이 학교별로 볼 때 그 학교 (다른 사람은 서버가 무시하고 우리 학교) */
+export function useRanking(period: RankingPeriod, scope: RankingScope, school?: number | null) {
   return useQuery({
-    queryKey: keys.ranking(period, scope),
-    queryFn: () => api<RankingView>(`/api/rankings?period=${period}&scope=${scope}`),
+    queryKey: keys.ranking(period, scope, school),
+    queryFn: () =>
+      api<RankingView>(`/api/rankings?period=${period}&scope=${scope}${school ? `&school=${school}` : ''}`),
     staleTime: 60_000,
   })
 }
@@ -695,4 +708,70 @@ export function useAssignEmail() {
       api<AdminMember>(`/api/admin/members/${id}/email`, { method: 'PUT', body: { email } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.admin }),
   })
+}
+
+// ---------------- 톡방 · 추억 ----------------
+
+/** 내 톡방 목록과 안 읽은 수. 실시간 연결이 오면 바로, 아니면 1분마다 다시 센다 (LiveBridge) */
+export function useChatRooms(enabled = true) {
+  return useQuery({
+    queryKey: keys.chats,
+    queryFn: () => api<ChatRooms>('/api/me/chats'),
+    enabled,
+    refetchInterval: 60_000,
+  })
+}
+
+/** 추억 모아보기 (20개씩 더 불러온다) */
+export function useMemoryFeed() {
+  return useInfiniteQuery({
+    queryKey: keys.memories,
+    queryFn: ({ pageParam }) => api<MemoryFeed>(pageParam ? `/api/memories?before=${pageParam}` : '/api/memories'),
+    initialPageParam: null as number | null,
+    getNextPageParam: (last) => last.nextBefore,
+  })
+}
+
+/** 3교시 상세의 추억 칸 */
+export function useMeetupMemories(meetupId: number, enabled = true) {
+  return useQuery({
+    queryKey: keys.meetupMemories(meetupId),
+    queryFn: () => api<MeetupMemories>(`/api/meetups/${meetupId}/memories`),
+    enabled,
+  })
+}
+
+export interface MemoryInput {
+  /** 이미 줄인 사진 (lib/photo shrinkPhoto) */
+  photos: Blob[]
+  caption: string
+  visibility: MemoryVisibility
+}
+
+/** 추억 올리기: 사진을 저장소에 바로 올린 뒤 그 이름으로 추억을 만든다 */
+export function useCreateMemory(meetupId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: MemoryInput) => {
+      const photoKeys = await uploadPhotos(`/api/meetups/${meetupId}/memories/uploads`, input.photos)
+      return api<Memory>(`/api/meetups/${meetupId}/memories`, {
+        method: 'POST',
+        body: { caption: input.caption, visibility: input.visibility, photoKeys },
+      })
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.memories }),
+  })
+}
+
+export function useDeleteMemory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api<void>(`/api/memories/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.memories }),
+  })
+}
+
+/** 만든 곳 정보 ("써클"을 누르면). 로그인한 원우에게만 */
+export function useAbout(enabled: boolean) {
+  return useQuery({ queryKey: ['about'], queryFn: () => api<About>('/api/about'), enabled, staleTime: 10 * 60_000 })
 }

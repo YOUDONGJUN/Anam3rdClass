@@ -23,6 +23,8 @@ export interface SchoolTag {
   code: string | null
   name: string
   shortName: string
+  /** 화면 이름의 동네 (신촌 → "신촌3교시"). 없으면 공식 이름 (lib/credit serviceName) */
+  place?: string | null
 }
 
 export interface Member {

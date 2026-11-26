@@ -1,7 +1,10 @@
 // 3교시를 캘린더에 넣기. 웹은 .ics 파일(1시간 전 알림 포함) 또는 구글 캘린더, 앱은 구글 캘린더 링크.
 // 끝나는 시간은 정하지 않는 서비스라 모임 시간부터 2시간으로 넣는다.
+import { COMPANY, SERVICE } from './credit'
 
 export interface CalendarEvent {
+  /** 일정 제목 앞에 붙는 이름 ("[신촌3교시] …"). 없으면 공식 이름 */
+  brand?: string
   id: number
   title: string
   place: string
@@ -51,7 +54,7 @@ export function buildIcs(e: CalendarEvent, now: Date = new Date()): string {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//써클//안암3교시//KO',
+    `PRODID:-//${COMPANY}//${SERVICE}//KO`,
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',
@@ -59,7 +62,7 @@ export function buildIcs(e: CalendarEvent, now: Date = new Date()): string {
     `DTSTAMP:${icsTime(now)}`,
     `DTSTART:${icsTime(start)}`,
     `DTEND:${icsTime(end)}`,
-    `SUMMARY:${icsText(`[안암3교시] ${e.title}`)}`,
+    `SUMMARY:${icsText(`[${e.brand ?? SERVICE}] ${e.title}`)}`,
     `LOCATION:${icsText(e.place)}`,
     `DESCRIPTION:${icsText(e.url)}`,
     `URL:${e.url}`,
@@ -80,7 +83,7 @@ export function googleCalendarUrl(e: CalendarEvent): string {
   const end = new Date(start.getTime() + LENGTH_MS)
   const params = new URLSearchParams({
     action: 'TEMPLATE',
-    text: `[안암3교시] ${e.title}`,
+    text: `[${e.brand ?? SERVICE}] ${e.title}`,
     dates: `${icsTime(start)}/${icsTime(end)}`,
     location: e.place,
     details: e.url,

@@ -1,9 +1,12 @@
+import { useEffect } from 'react'
 import { NavLink, Outlet, useLocation, Link } from 'react-router'
 import { Bell, CircleUser, Images, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, Ticket, TrainFront, Trophy, type LucideIcon } from 'lucide-react'
 import { useAdminStats, useChatRooms, useMySettlements, useUnreadNotifications } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from './toastContext'
 import { useSlowServer } from '../lib/hooks'
+import { SERVICE } from '../lib/credit'
+import { useServiceName } from '../lib/useServiceName'
 import { affiliation, isStaff } from '../lib/person'
 import { Brand } from './Brand'
 import { FeedbackPrompter } from './FeedbackSheet'
@@ -45,7 +48,19 @@ function SlowServerBanner() {
   )
 }
 
+/** 브라우저 탭 제목도 우리 학교 화면 이름으로 (로그아웃하면 공식 이름으로 되돌린다) */
+function useDocumentTitle() {
+  const name = useServiceName()
+  useEffect(() => {
+    document.title = `${name} · 수업 끝나고 번개`
+    return () => {
+      document.title = `${SERVICE} · 수업 끝나고 번개`
+    }
+  }, [name])
+}
+
 export function AppShell() {
+  useDocumentTitle()
   const { member, signOut } = useAuth()
   const toast = useToast()
   /** 확인 없이 바로 — 카카오로 금방 다시 들어올 수 있다 */

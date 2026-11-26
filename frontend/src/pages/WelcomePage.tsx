@@ -8,6 +8,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useKakaoStep } from '../auth/loginSteps'
 import { RoleTag } from '../components/PersonName'
 import { ByCompany } from '../components/MadeBy'
+import { SERVICE } from '../lib/credit'
 import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, FormError, Spinner } from '../components/ui'
 import { saveReturnPath, startKakaoLogin } from '../lib/kakao'
@@ -190,7 +191,7 @@ export function WelcomePage() {
       <section className="flex flex-col bg-board pt-[env(safe-area-inset-top)] text-on-board lg:sticky lg:top-0 lg:h-dvh">
         <div className="flex-1 px-6 pt-10 pb-8 sm:px-10 lg:flex lg:flex-col lg:justify-center lg:px-16 lg:pb-12">
           <p className="text-sm font-semibold text-on-board-2">IT연합회 대학원 번개</p>
-          <h1 className="mt-2 text-[52px] leading-[0.95] font-black tracking-[-0.04em] sm:text-7xl xl:text-8xl">안암3교시</h1>
+          <h1 className="mt-2 text-[52px] leading-[0.95] font-black tracking-[-0.04em] sm:text-7xl xl:text-8xl">{SERVICE}</h1>
           <p className="mt-5 text-xl leading-snug font-bold lg:text-2xl">
             수업 끝나고,
             <br />

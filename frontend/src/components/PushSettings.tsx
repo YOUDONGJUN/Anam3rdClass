@@ -5,6 +5,7 @@ import type { PushType } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { isStaff } from '../lib/person'
 import { enablePush, isApp, pushPermission, sendPushToken, type PushState } from '../lib/native'
+import { SERVICE } from '../lib/credit'
 import { Button } from './ui'
 import { cardClass } from './styles'
 import { useToast } from './toastContext'
@@ -74,7 +75,7 @@ export function PushSettings() {
   async function turnOn() {
     const state = await enablePush(sendPushToken).catch((): PushState => 'denied')
     setPermission(state)
-    if (state === 'denied') toast.show('휴대폰 설정 › 애플리케이션 › 안암3교시 › 알림에서 켜 주세요')
+    if (state === 'denied') toast.show(`휴대폰 설정 › 애플리케이션 › ${SERVICE} › 알림에서 켜 주세요`)
   }
 
   return (

@@ -20,10 +20,12 @@ public final class SchoolDtos {
     /**
      * 사람·3교시 옆에 붙는 학교 표시. code 로 화면 색(배지·테마)을 고른다 (null 이면 기본 색).
      */
-    public record SchoolTag(Long id, String code, String name, String shortName) {
+    /** place: 화면 이름의 동네 (신촌 → "신촌3교시"). 없으면 null — 화면이 공식 이름을 쓴다 */
+    public record SchoolTag(Long id, String code, String name, String shortName, String place) {
 
         public static SchoolTag from(School s) {
-            return s == null ? null : new SchoolTag(s.getId(), s.getCode(), s.getName(), s.getShortName());
+            return s == null ? null
+                    : new SchoolTag(s.getId(), s.getCode(), s.getName(), s.getShortName(), s.getPlace());
         }
     }
 
@@ -46,7 +48,7 @@ public final class SchoolDtos {
      * 학교 하나의 모든 것: 가입 화면(숨긴 학과 빼고)과 관리 화면(숨긴 학과 포함)이 같이 쓴다.
      */
     public record SchoolView(Long id, String code, String name, String shortName, String graduateSchool,
-            int latestCohort, List<DomainView> emailDomains, List<DepartmentView> departments) {
+            int latestCohort, String place, List<DomainView> emailDomains, List<DepartmentView> departments) {
     }
 
     // ---------------- 대학원장 전용 입력 ----------------
@@ -66,7 +68,10 @@ public final class SchoolDtos {
             @NotNull(message = "최신 기수를 입력해 주세요")
             @Min(value = 1, message = "기수를 확인해 주세요")
             @Max(value = 999, message = "기수를 확인해 주세요")
-            Integer latestCohort) {
+            Integer latestCohort,
+
+            @Size(max = 6, message = "동네 이름은 6자까지 쓸 수 있어요 (예: 신촌)")
+            String place) {
     }
 
     /** 학교 추가: 첫 이메일 도메인도 같이 받는다 */
@@ -86,6 +91,9 @@ public final class SchoolDtos {
             @Min(value = 1, message = "기수를 확인해 주세요")
             @Max(value = 999, message = "기수를 확인해 주세요")
             Integer latestCohort,
+
+            @Size(max = 6, message = "동네 이름은 6자까지 쓸 수 있어요 (예: 신촌)")
+            String place,
 
             @NotBlank(message = "이메일 도메인을 입력해 주세요")
             @Size(max = 60, message = "이메일 도메인이 너무 길어요")

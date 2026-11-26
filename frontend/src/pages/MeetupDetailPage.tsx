@@ -58,6 +58,7 @@ import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
 import { downloadIcs, googleCalendarUrl, type CalendarEvent } from '../lib/calendar'
 import { MAP_PROVIDERS } from '../lib/map'
+import { useServiceName } from '../lib/useServiceName'
 import {
   CATEGORY,
   findOverlap,
@@ -213,7 +214,9 @@ function StateNote({ m, now }: { m: MeetupDetail; now: Date }) {
 
 /** 캘린더에 넣기: 웹은 구글 캘린더 · 캘린더 파일(1시간 전 알림), 앱은 구글 캘린더 */
 function CalendarCard({ m }: { m: MeetupDetail }) {
+  const brand = useServiceName()
   const event: CalendarEvent = {
+    brand,
     id: m.id,
     title: m.title,
     place: m.place,
@@ -300,10 +303,10 @@ function WaitlistCard({ m }: { m: MeetupDetail }) {
 }
 
 /** 단톡방에 공유: 앱·폰은 공유 창, PC 는 링크 복사. 링크를 누르면 앱이 있으면 앱으로 열린다 */
-async function share(m: MeetupDetail, onCopied: () => void) {
+async function share(m: MeetupDetail, brand: string, onCopied: () => void) {
   const url = `${window.location.origin}/meetups/${m.id}`
   // 단톡방에서 다음 날 봐도 틀리지 않게 '오늘·내일' 대신 날짜로
-  const text = `[안암3교시] ${m.title} · ${formatDate(m.meetAt)} ${formatTime(m.meetAt)} · ${m.place} (${headcount(m)})`
+  const text = `[${brand}] ${m.title} · ${formatDate(m.meetAt)} ${formatTime(m.meetAt)} · ${m.place} (${headcount(m)})`
   const result = await shareLink(m.title, text, url)
   if (result === 'copied') onCopied()
   else if (result === 'failed') window.prompt('아래 링크를 복사해 주세요', url)
@@ -314,6 +317,7 @@ export function MeetupDetailPage() {
   const { data: m, isPending, error, refetch } = useMeetup(id)
   const mine = useMyMeetups()
   const chats = useChatRooms()
+  const brand = useServiceName()
   const action = useMeetupAction()
   const removeMeetup = useDeleteMeetup()
   const hostTool = useHostTool()
@@ -494,7 +498,7 @@ export function MeetupDetailPage() {
           <Button
             variant="secondary"
             className="flex-1"
-            onClick={() => share(m, () => toast.show('링크를 복사했어요. 단톡방에 붙여 넣어 보세요', 'ok'))}
+            onClick={() => share(m, brand, () => toast.show('링크를 복사했어요. 단톡방에 붙여 넣어 보세요', 'ok'))}
           >
             <Share2 className="size-4" aria-hidden />
             공유

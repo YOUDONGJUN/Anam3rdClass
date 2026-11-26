@@ -33,6 +33,10 @@ public class School {
     @Column(name = "short_name", nullable = false, length = 10)
     private String shortName;
 
+    /** 화면에 보일 동네 이름 (안암 · 신촌 · 서강 · 혜화 · 왕십리): 로그인하면 "신촌3교시"처럼. 없으면 공식 이름 */
+    @Column(length = 10)
+    private String place;
+
     /** SW·AI융합대학원 */
     @Column(name = "graduate_school", length = 40)
     private String graduateSchool;
@@ -67,6 +71,10 @@ public class School {
         this.latestCohort = latestCohort;
     }
 
+    public void changePlace(String place) {
+        this.place = place;
+    }
+
     public Long getId() {
         return id;
     }
@@ -81,6 +89,10 @@ public class School {
 
     public String getShortName() {
         return shortName;
+    }
+
+    public String getPlace() {
+        return place;
     }
 
     public String getGraduateSchool() {

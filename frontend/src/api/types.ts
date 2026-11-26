@@ -51,6 +51,8 @@ export interface Member {
   pushOff: PushType[]
   /** 원우가 학과·기수를 다시 고칠 수 있는 때 (30일에 한 번). null 이거나 지났으면 지금 고칠 수 있다 */
   profileEditableAt: string | null
+  /** 원우가 기수를 직접 고칠 수 있는 마지막 때 (가입하고 하루). 교수·대학원장은 null = 언제나 */
+  cohortEditableUntil: string | null
   /** 랭킹에 안 나오기 */
   rankingHidden: boolean
   /** 정산 송금 링크: 토스 아이디 · 카카오페이 송금 링크 (없으면 null) */

@@ -422,6 +422,20 @@
     --key-color: var(--ok);
   }
 
+  /* 작게 보이는 버튼도 누르는 영역은 44px: 보이지 않는 판을 위아래(좁으면 양옆도)로 넓힌다 */
+  .hit {
+    position: relative;
+  }
+
+  .hit::before {
+    content: '';
+    position: absolute;
+    top: min(0px, calc(50% - 22px));
+    bottom: min(0px, calc(50% - 22px));
+    left: min(0px, calc(50% - 22px));
+    right: min(0px, calc(50% - 22px));
+  }
+
   /* 카드: 테두리 + 아래 두께 + 옅은 그림자 */
   .card-depth {
     box-shadow:

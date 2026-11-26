@@ -44,6 +44,12 @@ public class MeetupService {
     /** 장소 추천: 최근 이만큼 동안 열린 3교시에서, 이만큼까지 */
     private static final Duration PLACE_WINDOW = Duration.ofDays(180);
     private static final int PLACE_LIMIT = 8;
+    /**
+     * 성사된 3교시에서 이 기간 동안 이만큼 나가면, 이미 성사된 3교시(참여하면 바로 실명·단톡방이 보인다)에는
+     * 한동안 참여할 수 없다 — 참여했다 바로 나가며 실명을 모으지 못하게
+     */
+    static final Duration LEAVE_WINDOW = Duration.ofDays(30);
+    static final int LEAVE_LIMIT = 3;
 
     private final MeetupRepository meetups;
     private final ParticipationRepository participations;
@@ -56,12 +62,13 @@ public class MeetupService {
     private final MeetupWaitRepository waits;
     private final SettlementService settlements;
     private final NotificationService notifications;
+    private final MeetupLeaveRepository leaves;
     private final Clock clock;
 
     public MeetupService(MeetupRepository meetups, ParticipationRepository participations, MemberRepository members,
             MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, PushNotifier notifier,
             FeedbackService feedback, MeetupWaitRepository waits, SettlementService settlements,
-            NotificationService notifications, Clock clock) {
+            NotificationService notifications, MeetupLeaveRepository leaves, Clock clock) {
         this.meetups = meetups;
         this.participations = participations;
         this.members = members;
@@ -73,6 +80,7 @@ public class MeetupService {
         this.waits = waits;
         this.settlements = settlements;
         this.notifications = notifications;
+        this.leaves = leaves;
         this.clock = clock;
     }
 
@@ -368,7 +376,7 @@ public class MeetupService {
         settlements.deleteFor(id);
         waits.deleteByMeetupId(id);
         participations.deleteByMeetupId(id);
-        notifications.forgetMeetup(id); // 알림함에서 눌러도 열 화면이 없다 (아래 취소 알림은 내 정보로 간다)
+        notifications.forgetMeetup(id); // 알림함에서 눌러도 열 화면이 없다 (아래 취소 알림은 3교시 목록으로 간다)
         meetups.delete(meetup);
         if (!people.isEmpty()) {
             notifier.canceled(meetup, people, viewer.id(), true);
@@ -411,11 +419,20 @@ public class MeetupService {
             throw ApiException.badRequest("FULL", "정원이 다 찼어요. 자리 나면 알림을 신청해 보세요");
         }
         boolean reachedBefore = meetup.isReached();
+        if (reachedBefore && leaves.countSince(viewer.id(), now.minus(LEAVE_WINDOW)) >= LEAVE_LIMIT) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "LEAVE_LIMIT",
+                    "최근 30일 동안 성사된 3교시에서 " + LEAVE_LIMIT + "번 나가서, 당분간 이미 성사된 3교시에는 참여할 수 없어요");
+        }
         participations.save(new Participation(meetup, members.getReferenceById(viewer.id()), now));
         meetup.addParticipant();
         waits.deleteOne(id, viewer.id()); // 기다리던 사람이 탔다
         notifier.joined(meetup, viewer.id(), !reachedBefore && meetup.isReached());
         return detail(viewer, id);
+    }
+
+    /** 30일 지난 '성사된 3교시에서 나간 기록'을 지운다 (매일 새벽 ReminderJob) */
+    public int purgeOldLeaves() {
+        return leaves.deleteOlderThan(clock.instant().minus(LEAVE_WINDOW));
     }
 
     public MeetupDetail leave(LoginMember viewer, Long id) {
@@ -430,8 +447,12 @@ public class MeetupService {
             throw ApiException.badRequest("CLOSED", "모집이 끝난 뒤에는 나갈 수 없어요. 단톡방에서 알려 주세요");
         }
         boolean fullBefore = meetup.isFull();
+        boolean reached = meetup.isReached(); // 성사된 3교시라 실명·단톡방을 본 뒤에 나간다
         participations.delete(participation);
         meetup.removeParticipant();
+        if (reached) {
+            leaves.save(new MeetupLeave(viewer.id(), id, now));
+        }
         notifier.left(meetup);
         notifyIfSpotOpened(meetup, fullBefore, now);
         return detail(viewer, id, false);

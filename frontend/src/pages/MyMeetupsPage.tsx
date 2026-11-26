@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { ChevronRight, Copy, ReceiptText } from 'lucide-react'
 import { useMyMeetups, useMySettlements } from '../api/queries'
 import type { MeetupSummary } from '../api/types'
@@ -72,7 +71,10 @@ function SettlementDues() {
 export function MyMeetupsPage() {
   const { data, isPending, isError, error, refetch } = useMyMeetups()
   const now = useNow()
-  const [tab, setTab] = useState<Tab>('upcoming')
+  // 고른 탭은 주소(?tab=past)에 남긴다 — 상세에 갔다가 뒤로 와도 보던 탭 그대로
+  const [params, setParams] = useSearchParams()
+  const tab: Tab = params.get('tab') === 'past' ? 'past' : 'upcoming'
+  const setTab = (next: Tab) => setParams(next === 'past' ? { tab: 'past' } : {}, { replace: true })
 
   const all = data ?? []
   // 무산됐어도 모임 시간 전이면 다가오는 쪽에 둔다 — 연 사람이 지금 인원으로 되살릴 수 있어서
@@ -149,7 +151,7 @@ export function MyMeetupsPage() {
                       {formatDayLabel(m.meetAt, now)} · {formatTime(m.meetAt)}
                     </p>
                     <div className={`${cardClass} overflow-hidden`}>
-                      <MeetupRow meetup={m} now={now} hideTime />
+                      <MeetupRow meetup={m} now={now} hideTime backLabel="내 3교시" />
                     </div>
                     {/* 지난 3교시: 내용 그대로 다시 열기 (시간만 새로) */}
                     {tab === 'past' && (

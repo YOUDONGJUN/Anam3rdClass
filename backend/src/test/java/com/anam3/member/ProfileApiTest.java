@@ -44,12 +44,33 @@ class ProfileApiTest extends ApiTestSupport {
         // 바뀐 게 없으면 그대로 성공 (횟수를 쓰지 않는다)
         put("/api/me/profile", token, profile("김고대", 62, bigdata)).andExpect(status().isOk());
 
-        // 30일이 지나면 다시
+        // 30일이 지나면 학과는 다시 (기수는 가입한 날만 — 아래 테스트)
         clock.advance(Duration.ofDays(30));
-        put("/api/me/profile", token, profile(null, 61, departmentId("KU", "인융")))
+        put("/api/me/profile", token, profile(null, 62, departmentId("KU", "인융")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.departmentShortLabel").value("인융"))
+                .andExpect(jsonPath("$.profileEditableAt").value("2026-05-01T09:00:00Z"));
+    }
+
+    @Test
+    void 원우는_가입한_날에만_기수를_직접_고치고_그_뒤로는_요청한다() throws Exception {
+        String token = signup("godae", "김고대", 61);
+        long inyung = departmentId("KU", "인융");
+        get("/api/me", token).andExpect(jsonPath("$.cohortEditableUntil").value("2026-03-03T09:00:00Z"));
+
+        // 하루가 지나면 기수는 못 바꾼다 (다른 기수 전용 3교시에 들어가지 못하게). 학과는 그대로 바꾼다
+        clock.advance(Duration.ofDays(1));
+        put("/api/me/profile", token, profile(null, 62, inyung))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("기수는 가입한 날에만 직접 고칠 수 있어요. 교수·대학원장에게 요청해 주세요"));
+        put("/api/me/profile", token, profile(null, 61, departmentId("KU", "빅융")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.cohort").value(61))
-                .andExpect(jsonPath("$.profileEditableAt").value("2026-05-01T09:00:00Z"));
+                .andExpect(jsonPath("$.departmentShortLabel").value("빅융"));
+
+        // 교수·대학원장은 언제나
+        String manager = managerToken("horang", "박호랑", 61);
+        get("/api/me", manager).andExpect(jsonPath("$.cohortEditableUntil").doesNotExist());
     }
 
     @Test

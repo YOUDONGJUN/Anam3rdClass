@@ -443,6 +443,32 @@ class AuthApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 예전_계정의_관리_직책은_잇지_않는다() throws Exception {
+        long legacyId = insertLegacy("chamsari", "anam1234");
+        jdbc.update("update members set role = 'MANAGER' where id = ?", legacyId);
+        String profileToken = verifyEmail(startSignup("chamsari"), "chamsari@korea.ac.kr");
+        post("/api/auth/legacy", null, legacyJson(profileToken, "chamsari", "anam1234"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.member.id").value(legacyId))
+                .andExpect(jsonPath("$.member.role").value("USER"));
+    }
+
+    @Test
+    void 예전_아이디_하나는_여러_카카오_계정으로_나눠도_하루에_스무_번까지만_틀린다() throws Exception {
+        insertLegacy("chamsari", "anam1234");
+        for (int k = 0; k < 2; k++) {
+            String token = verifyEmail(startSignup("guesser" + k), "guesser" + k + "@korea.ac.kr");
+            for (int i = 0; i < 10; i++) {
+                post("/api/auth/legacy", null, legacyJson(token, "chamsari", "guess" + k + i))
+                        .andExpect(jsonPath("$.code").value("LEGACY_LOGIN_FAILED"));
+            }
+        }
+        String third = verifyEmail(startSignup("guesser2"), "guesser2@korea.ac.kr");
+        post("/api/auth/legacy", null, legacyJson(third, "chamsari", "anam1234"))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
     void 이메일에_더하기_별칭을_붙이면_받지_않는다() throws Exception {
         requestCode(startSignup("godae"), "godae+2@korea.ac.kr")
                 .andExpect(status().isBadRequest())

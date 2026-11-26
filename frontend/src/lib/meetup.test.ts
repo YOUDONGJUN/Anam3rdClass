@@ -126,14 +126,20 @@ describe('seatsCaption', () => {
 
 describe('statusView', () => {
   it('성사됐지만 더 못 들어오면 마감 표시', () => {
-    expect(statusView({ status: 'CONFIRMED', joinable: true, minPeople: 3 }).label).toBe('성사')
-    expect(statusView({ status: 'CONFIRMED', joinable: false, minPeople: 3 }).label).toBe('성사 · 마감')
-    expect(statusView({ status: 'RECRUITING', joinable: true, minPeople: 3 }).tone).toBe('accent')
+    const seats = { maxPeople: 6, participantCount: 4 }
+    expect(statusView({ status: 'CONFIRMED', joinable: true, minPeople: 3, ...seats }).label).toBe('성사')
+    expect(statusView({ status: 'CONFIRMED', joinable: false, minPeople: 3, ...seats }).label).toBe('성사 · 마감')
+    // 마감 전이라도 정원이 찼으면 '마감'이 아니라 '만석' (옆의 '모집 마감까지'와 부딪히지 않게)
+    expect(
+      statusView({ status: 'CONFIRMED', joinable: false, minPeople: 3, maxPeople: 6, participantCount: 6 }).label,
+    ).toBe('성사 · 만석')
+    expect(statusView({ status: 'RECRUITING', joinable: true, minPeople: 3, ...seats }).tone).toBe('accent')
   })
 
   it('최소 인원이 없으면 확정', () => {
-    expect(statusView({ status: 'CONFIRMED', joinable: true, minPeople: null }).label).toBe('확정')
-    expect(statusView({ status: 'CONFIRMED', joinable: false, minPeople: null }).label).toBe('확정 · 마감')
+    const seats = { maxPeople: null, participantCount: 4 }
+    expect(statusView({ status: 'CONFIRMED', joinable: true, minPeople: null, ...seats }).label).toBe('확정')
+    expect(statusView({ status: 'CONFIRMED', joinable: false, minPeople: null, ...seats }).label).toBe('확정 · 마감')
   })
 })
 

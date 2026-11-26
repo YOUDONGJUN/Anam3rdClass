@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import {
   ArrowUpRight,
   Bell,
@@ -68,8 +68,9 @@ function TicketCountdown({ m, now }: { m: MeetupDetail; now: Date }) {
       </div>
     )
   }
+  // 정원이 차서 더 못 들어가면 마감까지 남은 시간 대신 모임까지 남은 시간을 보여 준다
   const deadline = new Date(m.deadlineAt)
-  const beforeDeadline = deadline > now
+  const beforeDeadline = deadline > now && m.joinable
   return (
     <div>
       <p className="text-xs font-bold text-ink-3">{beforeDeadline ? '모집 마감까지' : '모임까지'}</p>
@@ -101,7 +102,7 @@ function Stamp({ m, animate }: { m: MeetupDetail; animate: boolean }) {
 }
 
 /** 지금 상태에서 내가 알아야 할 것 한 가지 */
-function StateNote({ m }: { m: MeetupDetail }) {
+function StateNote({ m, now }: { m: MeetupDetail; now: Date }) {
   const left = (m.minPeople ?? 1) - m.participantCount
   let tone: 'accent' | 'ok' | 'muted' = 'accent'
   let title = ''
@@ -141,8 +142,11 @@ function StateNote({ m }: { m: MeetupDetail }) {
     case 'DONE':
       tone = 'muted'
       title = '모임 시간이 지났어요'
-      // 안부 인사는 함께한 사람에게만 (몇 명이 함께했는지는 아래 탑승 인원에 이미 나온다)
-      body = m.joined ? '즐거운 시간 보내셨나요? 귀가는 안전하게!' : ''
+      // 안부 인사는 함께한 사람에게만, 모임 당일(모임 뒤 12시간 안)에만 (몇 명이 함께했는지는 아래 탑승 인원에 나온다)
+      body =
+        m.joined && now.getTime() - new Date(m.meetAt).getTime() < 12 * 3_600_000
+          ? '즐거운 시간 보내셨나요? 귀가는 안전하게!'
+          : ''
       break
     case 'CANCELED':
       tone = 'muted'
@@ -283,6 +287,11 @@ export function MeetupDetailPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const now = useNow()
+  // 뒤로 버튼 이름: 온 곳(내 3교시 · 알림 …)을 알면 그 이름, 바로 열었으면 3교시 목록으로 간다
+  const location = useLocation()
+  const canGoBack = (window.history.state?.idx ?? 0) > 0
+  const from = (location.state as { backLabel?: unknown } | null)?.backLabel
+  const backLabel = canGoBack ? (typeof from === 'string' ? from : '뒤로') : '3교시 목록'
   const [arrived, setArrived] = useState<number | null>(null)
   /** 방금 "지금 인원으로 확정"을 눌렀으면 성사 도장이 쾅 찍힌다 */
   const [justConfirmed, setJustConfirmed] = useState(false)
@@ -429,11 +438,11 @@ export function MeetupDetailPage() {
       <div className="-mx-4 -mt-6 bg-board px-2 pt-2 pb-24 sm:-mx-6 sm:px-4 lg:mx-0 lg:mt-0 lg:bg-transparent lg:p-0 lg:pb-4">
         <button
           type="button"
-          onClick={() => ((window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate('/'))}
-          className="inline-flex h-10 items-center gap-1 rounded-lg px-2 text-[15px] font-semibold text-on-board-2 hover:text-on-board lg:-ml-2 lg:text-ink-2 lg:hover:text-ink"
+          onClick={() => (canGoBack ? navigate(-1) : navigate('/'))}
+          className="inline-flex h-11 items-center gap-1 rounded-lg px-2 text-[15px] font-semibold text-on-board-2 hover:text-on-board lg:-ml-2 lg:text-ink-2 lg:hover:text-ink"
         >
           <ChevronLeft className="size-5" aria-hidden />
-          3교시 목록
+          {backLabel}
         </button>
       </div>
 
@@ -466,7 +475,7 @@ export function MeetupDetailPage() {
                       href={p.url(m.place)}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex h-7 items-center gap-0.5 rounded-lg border border-line-strong bg-surface pr-1.5 pl-2 text-[12px] font-semibold text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
+                      className="hit inline-flex h-7 items-center gap-0.5 rounded-lg border border-line-strong bg-surface pr-1.5 pl-2 text-[12px] font-semibold text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
                     >
                       {p.label}
                       <ArrowUpRight className="size-3.5 text-ink-3" aria-hidden />
@@ -512,11 +521,12 @@ export function MeetupDetailPage() {
                 </dd>
               </div>
             )}
-            <div className="flex items-center gap-2.5">
-              <dt className="sr-only">연 사람</dt>
-              <Users className="size-4 shrink-0 text-ink-3" aria-hidden />
-              <dd className="flex min-w-0 flex-wrap items-center gap-x-1">
-                <PersonName person={m.host} showMe={false} showSchool={m.audience === 'ALL'} /> 님이 열었어요
+            <div className="flex items-start gap-2.5">
+              <Users className="mt-1 size-4 shrink-0 text-ink-3" aria-hidden />
+              {/* '님이 열었어요'만 다음 줄에 홀로 남지 않게: 이름표를 앞에 두고, 이름 묶음 안에서 줄을 바꾼다 */}
+              <dt className="shrink-0 pt-px text-ink-3">연 사람</dt>
+              <dd className="min-w-0 pt-px">
+                <PersonName person={m.host} showMe={false} showSchool={m.audience === 'ALL'} wrap />
               </dd>
             </div>
           </dl>
@@ -550,7 +560,7 @@ export function MeetupDetailPage() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
         <div className="flex flex-col gap-6">
-          <StateNote m={m} />
+          <StateNote m={m} now={now} />
 
           <WaitlistCard m={m} />
 

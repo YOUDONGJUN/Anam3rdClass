@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthContext'
@@ -13,15 +13,20 @@ export function NativeBridge() {
   const qc = useQueryClient()
   const { status, member } = useAuth()
   const memberId = member?.id ?? null
+  // navigate 는 화면을 옮길 때마다 새로 만들어진다. 앱 껍데기는 한 번만 켜고 최신 navigate 를 쓴다
+  const navigateRef = useRef(navigate)
+  useEffect(() => {
+    navigateRef.current = navigate
+  }, [navigate])
 
   useEffect(
     () =>
       startAppShell({
-        navigate: (path) => navigate(path),
+        navigate: (path) => navigateRef.current(path),
         // 앱을 보고 있을 때 알림이 오면 (누가 참여 등) 보고 있는 화면을 새로 불러온다
         onPushReceived: () => void qc.invalidateQueries(),
       }),
-    [navigate, qc],
+    [qc],
   )
 
   // 로그인하면(앱을 열 때마다) 이 폰의 알림 토큰을 서버에 알린다. 처음이면 알림 권한을 묻는다

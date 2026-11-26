@@ -76,12 +76,19 @@ export function useNotifications() {
   })
 }
 
-/** 알림함을 열어 봤다: 모두 읽음 (종 아이콘 숫자만 바로 0으로) */
+/**
+ * 알림함을 열어 봤다: 화면에 받은 알림까지만 읽음 (upTo = 그중 가장 최근 시각).
+ * 그 사이 새로 온 알림은 안 읽은 채로 남고 종 숫자에 다시 잡힌다
+ */
 export function useReadAllNotifications() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => api<void>('/api/me/notifications/read-all', { method: 'POST' }),
-    onSuccess: () => qc.setQueryData(keys.unreadNotifications, { count: 0 }),
+    mutationFn: (upTo: string) =>
+      api<void>(`/api/me/notifications/read-all?upTo=${encodeURIComponent(upTo)}`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.setQueryData(keys.unreadNotifications, { count: 0 })
+      void qc.invalidateQueries({ queryKey: keys.unreadNotifications })
+    },
   })
 }
 

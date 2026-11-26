@@ -13,6 +13,8 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.anam3.common.RateLimiter;
+import com.anam3.common.RateLimits;
 import com.anam3.meetup.Meetup;
 import com.anam3.meetup.MeetupRepository;
 import com.anam3.meetup.ParticipationRepository;
@@ -44,6 +46,11 @@ public class PushNotifier {
     static final Duration MEET_NOTICE_TOO_LATE = Duration.ofMinutes(10);
     /** 모임 2시간 안쪽에 연 3교시는 방금 모였으니 1시간 전 알림을 보내지 않는다 */
     private static final Duration SHORT_NOTICE = Duration.ofHours(2);
+    /**
+     * 한 사람이 연 3교시로 학교 전체(연합이면 다섯 학교)에 보내는 새 3교시 알림은 하루에 이만큼까지.
+     * 열고 지우기를 되풀이해 모두에게 알림을 퍼붓지 못하게 한다 (넘으면 3교시는 열리고 알림만 안 간다)
+     */
+    static final int DAILY_ANNOUNCEMENTS_PER_HOST = 3;
 
     private final PushService push;
     private final ParticipationRepository participations;
@@ -53,10 +60,11 @@ public class PushNotifier {
     private final SettlementShareRepository settlementShares;
     private final MemberBlockRepository blocks;
     private final Clock clock;
+    private final RateLimiter announcementsPerHost;
 
     public PushNotifier(PushService push, ParticipationRepository participations, MeetupRepository meetups,
             NoticeRepository notices, SettlementRepository settlements, SettlementShareRepository settlementShares,
-            MemberBlockRepository blocks, Clock clock) {
+            MemberBlockRepository blocks, Clock clock, RateLimits limits) {
         this.push = push;
         this.participations = participations;
         this.meetups = meetups;
@@ -65,6 +73,7 @@ public class PushNotifier {
         this.settlementShares = settlementShares;
         this.blocks = blocks;
         this.clock = clock;
+        this.announcementsPerHost = limits.create(DAILY_ANNOUNCEMENTS_PER_HOST, Duration.ofDays(1));
     }
 
     /** 누가 참여: 연 사람에게. 그 참여로 성사됐으면 참여자 모두에게 성사 알림으로 대신한다 */
@@ -116,15 +125,19 @@ public class PushNotifier {
     public void canceled(Meetup meetup, List<Long> participantIds, Long actorId, boolean deleted) {
         List<Long> to = participantIds.stream().filter(id -> !id.equals(actorId)).toList();
         push.send(to, new PushMessage(PushType.CHANGED, meetup.getTitle(),
-                "취소됐어요 · " + WHEN.format(meetup.getMeetAt()) + " 3교시", deleted ? "/me" : path(meetup),
+                "취소됐어요 · " + WHEN.format(meetup.getMeetAt()) + " 3교시", deleted ? "/" : path(meetup),
                 tag(meetup, "changed")));
     }
 
     /**
      * 새 3교시: 연합이면 다섯 학교 모두, 아니면 우리 학교(우리 기수만이면 그 기수) 원우에게.
-     * 밤(0~8시)에는 보내지 않고 아침 8시로 미룬다 (3교시를 여는 트랜잭션 안에서 불러야 미룬 것이 저장된다)
+     * 밤(0~8시)에는 보내지 않고 아침 8시로 미룬다 (3교시를 여는 트랜잭션 안에서 불러야 미룬 것이 저장된다).
+     * 한 사람이 하루에 보내는 새 3교시 알림은 DAILY_ANNOUNCEMENTS_PER_HOST 번까지 (미룬 것도 센다)
      */
     public void opened(Meetup meetup) {
+        if (!announcementsPerHost.tryAcquire(String.valueOf(meetup.getHost().getId()), clock.instant())) {
+            return;
+        }
         if (QuietHours.contains(clock.instant())) {
             meetup.holdAnnouncement();
             return;

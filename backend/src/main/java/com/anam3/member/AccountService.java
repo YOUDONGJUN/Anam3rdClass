@@ -68,6 +68,8 @@ public class AccountService {
      * <ul>
      *   <li>이름: 대학원장만 바꾼다. 교수는 대학원장에게, 원우는 교수·대학원장에게 요청한다 (학교 이메일로 본인 인증을 하고 들어와서)</li>
      *   <li>학과·기수: 교수·대학원장은 언제나, 원우는 30일에 한 번 (바뀐 게 없으면 횟수를 쓰지 않는다)</li>
+     *   <li>원우의 기수: 가입하고 하루 안에만 직접 고친다. 그 뒤로는 교수·대학원장에게 요청한다
+     *       (기수를 바꿔 가며 다른 기수 전용 3교시에 들어가 실명을 보지 못하게)</li>
      *   <li>학과는 내 학교의 학과만, 기수는 1기 ~ 내 학교 최신 기수</li>
      * </ul>
      */
@@ -86,6 +88,10 @@ public class AccountService {
                 || department == null || !department.getId().equals(req.departmentId());
         if (affiliationChanged) {
             Instant now = clock.instant();
+            Instant cohortUntil = MemberResponse.cohortEditableUntil(member);
+            if (member.getCohort() != req.cohort() && cohortUntil != null && !now.isBefore(cohortUntil)) {
+                throw ApiException.forbidden("기수는 가입한 날에만 직접 고칠 수 있어요. 교수·대학원장에게 요청해 주세요");
+            }
             Instant editableAt = MemberResponse.profileEditableAt(member);
             if (editableAt != null && now.isBefore(editableAt)) {
                 throw ApiException.badRequest("PROFILE_CHANGE_LIMIT",
@@ -150,9 +156,9 @@ public class AccountService {
      */
     public void releaseOpenMeetups(Member member, Instant now) {
         waits.deleteAllOfMember(member.getId());
-        for (Meetup hosted : meetups.findOpenHostedBy(member.getId(), now)) {
-            // 참여·수정과 겹치지 않게 잠그고 새로 읽은 뒤 취소한다
-            Meetup locked = meetups.findByIdForUpdate(hosted.getId()).orElseThrow();
+        for (Long meetupId : meetups.findOpenHostedIds(member.getId(), now)) {
+            // 참여·수정과 겹치지 않게 잠그고 새로 읽은 뒤 취소한다 (그 사이 연 사람이 직접 취소했으면 건너뛴다)
+            Meetup locked = meetups.findByIdForUpdate(meetupId).orElseThrow();
             if (locked.isCanceled()) {
                 continue;
             }

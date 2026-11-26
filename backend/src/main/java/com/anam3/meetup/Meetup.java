@@ -162,6 +162,14 @@ public class Meetup {
         return minPeople == null || participantCount >= minPeople;
     }
 
+    /**
+     * 실제로 여럿이 모인 3교시: 성사돼서 끝났고(DONE) 연 사람 말고도 한 명 이상 있었다.
+     * 최소 인원 없이 열어 혼자 끝난 3교시는 후기·정산을 하지 않는다 (랭킹의 '성사'와 같은 기준)
+     */
+    public boolean isGatheredAt(Instant now) {
+        return statusAt(now) == MeetupStatus.DONE && participantCount >= 2;
+    }
+
     public boolean hasNoMinimum() {
         return minPeople == null;
     }

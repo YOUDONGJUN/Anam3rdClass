@@ -76,9 +76,12 @@ public interface MeetupRepository extends JpaRepository<Meetup, Long> {
             """)
     List<Meetup> findAllWithHost(@Param("schoolId") Long schoolId, Pageable pageable);
 
-    /** 내가 연, 아직 열려 있는 3교시 (탈퇴할 때 취소한다) */
-    @Query("select m from Meetup m where m.host.id = :hostId and m.canceled = false and m.meetAt > :now")
-    List<Meetup> findOpenHostedBy(@Param("hostId") Long hostId, @Param("now") Instant now);
+    /**
+     * 내가 연, 아직 열려 있는 3교시 id (탈퇴·이용 제한 때 취소한다).
+     * 엔티티가 아니라 id만 읽는다 — 먼저 읽어 두면 잠글 때 예전 값이 그대로 남는다
+     */
+    @Query("select m.id from Meetup m where m.host.id = :hostId and m.canceled = false and m.meetAt > :now")
+    List<Long> findOpenHostedIds(@Param("hostId") Long hostId, @Param("now") Instant now);
 
     long countBySchoolId(Long schoolId);
 

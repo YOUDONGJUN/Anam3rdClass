@@ -25,7 +25,6 @@ import com.anam3.feedback.FeedbackDtos.StatsGroup;
 import com.anam3.meetup.Meetup;
 import com.anam3.meetup.MeetupAudience;
 import com.anam3.meetup.MeetupRepository;
-import com.anam3.meetup.MeetupStatus;
 import com.anam3.meetup.ParticipationRepository;
 import com.anam3.member.MemberRepository;
 import com.anam3.safety.ReportRepository;
@@ -76,9 +75,9 @@ public class FeedbackService {
         return opensAt(meetup).plus(Duration.ofDays(ASK_DAYS));
     }
 
-    /** 지금 이 3교시의 후기를 받는지: 성사돼서 끝났고(DONE), 다음 날부터 7일 안 */
+    /** 지금 이 3교시의 후기를 받는지: 성사돼서 여럿이 모였고(혼자 끝난 3교시 제외), 다음 날부터 7일 안 */
     static boolean asking(Meetup meetup, Instant now) {
-        return meetup.statusAt(now) == MeetupStatus.DONE
+        return meetup.isGatheredAt(now)
                 && !now.isBefore(opensAt(meetup)) && now.isBefore(closesAt(meetup));
     }
 
@@ -180,7 +179,7 @@ public class FeedbackService {
             Acc acc = m.audience() == MeetupAudience.ALL ? federation
                     : bySchool.computeIfAbsent(m.getSchool().getId(), id -> new Acc());
             acc.meetups++;
-            if (m.statusAt(now) == MeetupStatus.DONE) {
+            if (m.isGatheredAt(now)) { // 랭킹과 같은 기준: 혼자 끝난 3교시는 성사로 세지 않는다
                 acc.reached++;
                 acc.participants += m.getParticipantCount();
                 byMeetup.put(m.getId(), acc);

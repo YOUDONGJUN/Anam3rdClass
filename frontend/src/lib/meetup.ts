@@ -77,14 +77,18 @@ export function addPurposes(current: readonly string[], typed: string): string[]
 
 export type Tone = 'accent' | 'ok' | 'muted' | 'danger'
 
-export function statusView(m: Pick<MeetupSummary, 'status' | 'joinable' | 'minPeople'>): { label: string; tone: Tone } {
+export function statusView(
+  m: Pick<MeetupSummary, 'status' | 'joinable' | 'minPeople' | 'maxPeople' | 'participantCount'>,
+): { label: string; tone: Tone } {
   switch (m.status) {
     case 'RECRUITING':
       return { label: '모집중', tone: 'accent' }
     case 'CONFIRMED': {
-      // 최소 인원이 없는 3교시는 열자마자 "확정"
+      // 최소 인원이 없는 3교시는 열자마자 "확정". 못 들어가는 까닭을 붙인다 — 정원이 찼으면 만석, 마감이 지났으면 마감
       const word = m.minPeople === null ? '확정' : '성사'
-      return { label: m.joinable ? word : `${word} · 마감`, tone: 'ok' }
+      if (m.joinable) return { label: word, tone: 'ok' }
+      const full = m.maxPeople !== null && m.participantCount >= m.maxPeople
+      return { label: `${word} · ${full ? '만석' : '마감'}`, tone: 'ok' }
     }
     case 'FAILED':
       return { label: '무산', tone: 'muted' }

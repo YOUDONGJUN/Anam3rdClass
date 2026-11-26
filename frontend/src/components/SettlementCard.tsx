@@ -211,7 +211,7 @@ function SettlementBody({ m, s, onEdit }: { m: MeetupDetail; s: SettlementView; 
                   aria-pressed={sh.sent}
                   disabled={action.isPending}
                   onClick={() => run({ kind: 'share', ref: sh.person.ref as number, sent: !sh.sent })}
-                  className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                  className={`hit inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-50 ${
                     sh.sent ? 'bg-ok-soft text-ok-ink hover:brightness-95' : 'border border-line-strong text-ink-2 hover:bg-surface-2'
                   }`}
                 >

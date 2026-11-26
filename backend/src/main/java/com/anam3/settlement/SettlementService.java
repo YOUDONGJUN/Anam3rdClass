@@ -23,7 +23,6 @@ import com.anam3.meetup.Meetup;
 import com.anam3.meetup.MeetupDtos.PersonView;
 import com.anam3.meetup.MeetupMapper;
 import com.anam3.meetup.MeetupRepository;
-import com.anam3.meetup.MeetupStatus;
 import com.anam3.meetup.Participation;
 import com.anam3.meetup.ParticipationRepository;
 import com.anam3.member.Member;
@@ -70,9 +69,9 @@ public class SettlementService {
         this.clock = clock;
     }
 
-    /** 정산을 만들 수 있는 때: 성사돼서 모였고(DONE), 모인 뒤 7일 안 */
+    /** 정산을 만들 수 있는 때: 성사돼서 여럿이 모였고(혼자 끝난 3교시 제외), 모인 뒤 7일 안 */
     static boolean openFor(Meetup meetup, Instant now) {
-        return meetup.statusAt(now) == MeetupStatus.DONE && now.isBefore(meetup.getMeetAt().plus(OPEN_FOR));
+        return meetup.isGatheredAt(now) && now.isBefore(meetup.getMeetAt().plus(OPEN_FOR));
     }
 
     /** 토스 송금 링크에 금액을 붙인다 (toss.me/아이디/금액) */

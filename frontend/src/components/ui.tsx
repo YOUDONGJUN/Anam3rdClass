@@ -88,8 +88,8 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 export function EmptyState({ title, body, action }: { title: string; body?: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
-      <p className="text-lg font-bold text-ink">{title}</p>
-      {body && <p className="max-w-sm text-[15px] leading-relaxed text-ink-2">{body}</p>}
+      <p className="text-lg font-bold text-balance text-ink">{title}</p>
+      {body && <p className="max-w-sm text-[15px] leading-relaxed text-balance text-ink-2">{body}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>
   )
@@ -118,7 +118,7 @@ export function Segmented<T extends string>({ value, onChange, options, label }:
             role="tab"
             aria-selected={active}
             onClick={() => onChange(o.value)}
-            className={`h-9 rounded-lg px-3.5 text-sm font-semibold transition-colors ${
+            className={`hit h-9 rounded-lg px-3.5 text-sm font-semibold transition-colors ${
               active ? 'bg-surface font-bold text-ink shadow-[0_2px_0_var(--line-strong)]' : 'text-ink-3 hover:text-ink'
             }`}
           >

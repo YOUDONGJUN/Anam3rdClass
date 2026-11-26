@@ -1,9 +1,12 @@
 package com.anam3.push;
 
+import java.time.Instant;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,10 +36,10 @@ public class NotificationController {
         return notifications.unreadCount(me);
     }
 
-    /** 알림함을 열어 봤다: 모두 읽음 */
+    /** 알림함을 열어 봤다: upTo(본 목록의 가장 최근 알림 시각)까지 읽음. 없으면 모두 */
     @PostMapping("/api/me/notifications/read-all")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void readAll(@AuthenticationPrincipal LoginMember me) {
-        notifications.readAll(me);
+    public void readAll(@AuthenticationPrincipal LoginMember me, @RequestParam(required = false) Instant upTo) {
+        notifications.readAll(me, upTo);
     }
 }

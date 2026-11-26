@@ -25,12 +25,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed inset-x-0 top-[calc(72px+env(safe-area-inset-top))] z-50 flex flex-col items-center gap-2 px-4 lg:top-auto lg:bottom-8"
+        className="pointer-events-none fixed inset-x-0 bottom-[calc(96px+env(safe-area-inset-bottom))] z-50 flex flex-col items-center gap-2 px-4 lg:bottom-8"
       >
+        {/* 화면 위쪽(뒤로 버튼)을 덮지 않게 아래에 띄우고, 눌러도 뒤의 버튼이 눌린다 (알림 메시지에는 누를 것이 없다) */}
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="toast-in pointer-events-auto flex max-w-md items-center gap-2.5 rounded-xl bg-board px-4 py-3 text-[15px] font-medium text-on-board shadow-[0_8px_24px_-6px_rgb(0_0_0/0.35)]"
+            className="toast-in flex max-w-md items-center gap-2.5 rounded-xl bg-board px-4 py-3 text-[15px] font-medium text-on-board shadow-[0_8px_24px_-6px_rgb(0_0_0/0.35)]"
           >
             {t.tone === 'ok' && <Check className="size-4 shrink-0 text-ok" strokeWidth={3} aria-hidden />}
             {t.tone === 'error' && <CircleAlert className="size-4 shrink-0 text-danger" aria-hidden />}

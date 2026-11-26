@@ -3,6 +3,7 @@ package com.anam3.push;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -49,8 +50,9 @@ public class NotificationService {
     }
 
     /**
-     * 이 회원들의 알림함에 담는다 (활동 중인 회원만). 같은 묶음(tag)의 안 읽은 알림이 있으면 새로 쌓지 않고
-     * 그 줄을 새 내용으로 바꿔 맨 위로 올린다 — "한 명이 참여했어요"가 여러 줄 쌓이지 않게
+     * 이 회원들의 알림함에 담는다 (활동 중인 회원만). 같은 묶음(tag: 3교시 하나의 같은 종류 알림)이 이미 있으면
+     * 새로 쌓지 않고 그 줄을 최신 내용으로 바꿔 안 읽음으로 맨 위에 올린다 — "성사까지 2명" 같은 지난 숫자가
+     * 여러 줄 남지 않게. 예전에 쌓인 같은 묶음 줄이 더 있으면 지운다
      */
     @Transactional
     public void record(Collection<Long> memberIds, PushMessage message) {
@@ -64,11 +66,15 @@ public class NotificationService {
         Instant now = clock.instant();
         Set<Long> refreshed = new HashSet<>();
         if (message.tag() != null) {
-            for (Notification n : notifications.findUnreadByTag(active, message.tag())) {
+            List<Notification> older = new ArrayList<>();
+            for (Notification n : notifications.findByTag(active, message.tag())) {
                 if (refreshed.add(n.getMemberId())) {
                     n.refresh(message, now);
+                } else {
+                    older.add(n);
                 }
             }
+            notifications.deleteAll(older);
         }
         notifications.saveAll(active.stream()
                 .filter(id -> !refreshed.contains(id))
@@ -92,10 +98,14 @@ public class NotificationService {
         return new UnreadCount(notifications.countUnread(viewer.id()));
     }
 
-    /** 알림함을 열어 봤다: 모두 읽음 */
+    /**
+     * 알림함을 열어 봤다: 화면에 보인 알림까지 읽음 (upTo = 받은 목록의 가장 최근 시각).
+     * 목록을 받은 뒤에 온 알림은 안 읽은 채로 둔다. upTo 가 없으면 모두 읽음
+     */
     @Transactional
-    public void readAll(LoginMember viewer) {
-        notifications.markAllRead(viewer.id(), clock.instant());
+    public void readAll(LoginMember viewer, Instant upTo) {
+        Instant now = clock.instant();
+        notifications.markReadUpTo(viewer.id(), upTo == null ? now : upTo, now);
     }
 
     /** 탈퇴: 이 사람의 알림을 모두 지운다 */

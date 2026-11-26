@@ -173,7 +173,7 @@ export function FeedPage() {
                   <div className="flex flex-col gap-3">
                     {g.items.map((m) => (
                       <div key={m.id} className={`${cardClass} overflow-hidden`}>
-                        <MeetupRow meetup={m} now={now} />
+                        <MeetupRow meetup={m} now={now} backLabel="3교시 목록" />
                       </div>
                     ))}
                   </div>

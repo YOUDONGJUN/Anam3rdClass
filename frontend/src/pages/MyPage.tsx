@@ -40,7 +40,15 @@ import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, Field, FormError, Segmented } from '../components/ui'
 import { cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
-import { affiliation, canEditOwnName, isStaff, maskName, profileEditRule, profileLockedUntil } from '../lib/person'
+import {
+  affiliation,
+  canEditOwnName,
+  cohortLocked,
+  isStaff,
+  maskName,
+  profileEditRule,
+  profileLockedUntil,
+} from '../lib/person'
 import { normalizeKakaoPayUrl, normalizeTossId, payLinksError } from '../lib/settlement'
 import { formatDate } from '../lib/time'
 import { isThemedSchool, type ThemeColor, type ThemeMode } from '../lib/theme'
@@ -161,6 +169,9 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
 
   const nameEditable = canEditOwnName(member.role)
   const lockedUntil = profileLockedUntil(member)
+  const cohortFixed = cohortLocked(member)
+  /** 원우가 직접 바꿀 수 있는 것 (가입한 날이 지나면 학과만) */
+  const editableAffiliation = cohortFixed ? '학과는' : '학과·기수는'
   const affiliationChanged = Number(cohort) !== member.cohort || departmentId !== member.departmentId
   const changed = affiliationChanged || (nameEditable && name.trim() !== member.name)
 
@@ -172,7 +183,7 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
     if (
       member.role === 'USER' &&
       affiliationChanged &&
-      !window.confirm('학과·기수는 30일에 한 번 바꿀 수 있어요.\n이대로 바꿀까요?')
+      !window.confirm(`${editableAffiliation} 30일에 한 번 바꿀 수 있어요.\n이대로 바꿀까요?`)
     )
       return
     save.mutate(
@@ -223,7 +234,7 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
             </p>
             <p className="text-sm text-ink-3">
               학교 이메일로 본인 인증을 해서 이름은 바꿀 수 없어요.{' '}
-              {member.role === 'MANAGER' ? '대학원장에게 요청해 주세요.' : '교수·대학원장에게 요청해 주세요.'}
+              {member.role === 'MANAGER' ? '대학원장에게 요청해 주세요.' : '교수\u2060·\u2060대학원장에게 요청해 주세요.'}
             </p>
           </div>
         )}
@@ -236,7 +247,7 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
               {affiliation(member.cohortLabel, member.departmentLabel)}
             </p>
             <p className="text-sm text-ink-3">
-              학과·기수는 30일에 한 번 바꿀 수 있어요.{' '}
+              {editableAffiliation} 30일에 한 번 바꿀 수 있어요.{' '}
               <b className="font-semibold text-ink-2">{formatDate(lockedUntil)}</b>부터 다시 바꿀 수 있어요.
             </p>
           </div>
@@ -248,9 +259,10 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
               departmentId={departmentId}
               onCohortChange={setCohort}
               onDepartmentChange={setDepartmentId}
+              cohortLocked={cohortFixed}
             />
             {member.role === 'USER' && (
-              <p className="-mt-2 text-sm text-ink-3">학과·기수는 30일에 한 번 바꿀 수 있어요.</p>
+              <p className="-mt-2 text-sm text-ink-3">{editableAffiliation} 30일에 한 번 바꿀 수 있어요.</p>
             )}
           </>
         )}
@@ -456,32 +468,31 @@ export function MyPage() {
             {member.role === 'OWNER' ? '대학원장 · IT연합회 다섯 학교 관리' : `교수 · ${member.school.shortName} 관리`}
           </div>
         )}
-        <div className="flex items-center gap-4 px-6 py-6">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-accent text-xl font-black text-on-accent">
-            {member.name.slice(0, 1)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="flex flex-wrap items-center gap-2 text-xl font-extrabold">
+        {/* 이름 줄 옆에만 고치기 버튼을 두고, 소속·학교·이메일은 아래 줄에 넓게 쓴다 (좁은 폰에서 '61기 ·'만 남고 끊기지 않게) */}
+        <div className="px-5 py-5 sm:px-6 sm:py-6">
+          <div className="flex items-center gap-3.5 sm:gap-4">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-accent text-xl font-black text-on-accent sm:size-14">
+              {member.name.slice(0, 1)}
+            </span>
+            <p className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-xl font-extrabold">
               {member.name}
               <SchoolBadge school={member.school} />
               {member.role !== 'USER' && <RoleTag role={member.role} />}
             </p>
-            <p className="mt-1 text-sm text-on-board-2">
-              {affiliation(member.cohortLabel, member.departmentLabel)}
-            </p>
-            <p className="mt-0.5 text-sm text-on-board-2">
-              {[member.school.name, member.graduateSchool].filter(Boolean).join(' ')}
-            </p>
-            {member.email && <p className="mt-0.5 truncate text-sm text-on-board-2">{member.email}</p>}
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-board-2 px-3 text-sm font-bold text-on-board hover:brightness-110"
+            >
+              <Pencil className="size-4" aria-hidden />
+              고치기
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="inline-flex h-10 shrink-0 items-center gap-1.5 self-start rounded-xl bg-board-2 px-3 text-sm font-bold text-on-board hover:brightness-110"
-          >
-            <Pencil className="size-4" aria-hidden />
-            고치기
-          </button>
+          <div className="mt-3 text-sm text-on-board-2 sm:ml-[72px]">
+            <p>{affiliation(member.cohortLabel, member.departmentLabel)}</p>
+            <p className="mt-0.5">{[member.school.name, member.graduateSchool].filter(Boolean).join(' ')}</p>
+            {member.email && <p className="mt-0.5 break-all">{member.email}</p>}
+          </div>
         </div>
         <ul className="flex flex-col gap-2 border-t border-board-line px-6 py-4 text-sm text-on-board-2">
           {member.role === 'OWNER' ? (

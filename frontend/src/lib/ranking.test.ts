@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildIcs, foldIcsLine, googleCalendarUrl, icsText, icsTime } from './calendar'
 import { MAP_PROVIDERS } from './map'
 import { optionsSummary, seatsToAdd } from './meetup'
-import { canEditOwnName, profileEditRule, profileLockedUntil } from './person'
+import { canEditOwnName, cohortLocked, profileEditRule, profileLockedUntil } from './person'
 import { mergePlaces } from './places'
 import { crownLabel, rankingValue, schoolRate } from './ranking'
 
@@ -111,6 +111,11 @@ describe('내 정보 고치기 규칙', () => {
     expect(profileLockedUntil({ profileEditableAt: '2026-04-01T09:00:00Z' }, now)?.toISOString()).toBe(
       '2026-04-01T09:00:00.000Z',
     )
+  })
+  it('원우의 기수는 가입한 날(하루)이 지나면 잠긴다 · 교수·대학원장은 언제나', () => {
+    expect(cohortLocked({ cohortEditableUntil: null }, now)).toBe(false)
+    expect(cohortLocked({ cohortEditableUntil: '2026-03-10T09:00:00Z' }, now)).toBe(false)
+    expect(cohortLocked({ cohortEditableUntil: '2026-03-09T09:00:00Z' }, now)).toBe(true)
   })
   it('역할마다 안내', () => {
     expect(profileEditRule('USER')).toContain('30일')

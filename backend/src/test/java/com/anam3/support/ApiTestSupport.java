@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
+import com.anam3.common.RateLimits;
 import com.anam3.ranking.RankingService;
 import com.jayway.jsonpath.JsonPath;
 
@@ -64,10 +65,14 @@ public abstract class ApiTestSupport {
     @Autowired
     protected RankingService rankingService;
 
+    @Autowired
+    private RateLimits rateLimits;
+
     @BeforeEach
     void resetState() {
         clock.set(T0);
         rankingService.clearCache();
+        rateLimits.clearAll();
         mailer.clear();
         pushes.clear();
         if (seededSchools == null) {
@@ -86,6 +91,7 @@ public abstract class ApiTestSupport {
         jdbc.update("delete from settlement_shares");
         jdbc.update("delete from settlements");
         jdbc.update("delete from meetup_waits");
+        jdbc.update("delete from meetup_leaves");
         jdbc.update("delete from participations");
         jdbc.update("delete from meetups");
         jdbc.update("delete from notices");
@@ -288,6 +294,11 @@ public abstract class ApiTestSupport {
             builder.contentType(MediaType.APPLICATION_JSON).content(body);
         }
         return mvc.perform(builder);
+    }
+
+    /** 이 IP 에서 온 요청 (운영은 Cloudflare 가 CF-Connecting-IP 에 넣는다) */
+    protected ResultActions postFrom(String ip, String url, String body) throws Exception {
+        return request(MockMvcRequestBuilders.post(url).header("CF-Connecting-IP", ip), null, body);
     }
 
     protected static <T> T read(ResultActions result, String jsonPath) throws Exception {

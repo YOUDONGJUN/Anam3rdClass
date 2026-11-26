@@ -32,15 +32,41 @@ public class Report {
 
     public enum TargetType {
         /** 3교시 (제목·설명·장소 등) */
-        MEETUP,
+        MEETUP("3교시"),
         /** 공지 글 */
-        NOTICE,
+        NOTICE("공지"),
         /** 3교시에서 만난 사람 */
-        MEMBER
+        MEMBER("사람");
+
+        private final String label;
+
+        TargetType(String label) {
+            this.label = label;
+        }
+
+        public String label() {
+            return label;
+        }
     }
 
+    /** 신고 이유. 이름은 화면 lib/report.ts 의 REPORT_REASONS 와 같다 (알림·관리자 조치 기록에 쓴다) */
     public enum Reason {
-        SPAM, ABUSE, SEXUAL, ILLEGAL, PRIVACY, OTHER
+        SPAM("스팸·광고"),
+        ABUSE("욕설·괴롭힘·혐오"),
+        SEXUAL("성적인 내용"),
+        ILLEGAL("불법·위험한 내용"),
+        PRIVACY("개인정보 노출"),
+        OTHER("기타");
+
+        private final String label;
+
+        Reason(String label) {
+            this.label = label;
+        }
+
+        public String label() {
+            return label;
+        }
     }
 
     public enum Status {

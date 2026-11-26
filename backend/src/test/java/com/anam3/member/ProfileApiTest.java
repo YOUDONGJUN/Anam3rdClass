@@ -1,5 +1,6 @@
 package com.anam3.member;
 
+import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -114,6 +115,30 @@ class ProfileApiTest extends ApiTestSupport {
         put("/api/me/profile", owner, profile("박관리", 61, inyung))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("박관리"));
+    }
+
+    @Test
+    void 이름_기수를_요청할_곳은_우리_학교_교수와_대학원장이다() throws Exception {
+        String godae = signup("godae", "김고대", 61);
+        String anam = managerToken("anam", "이안암", 60);
+        managerToken("horang", "박호랑", 59);
+        managerToken("seoktap@yonsei.ac.kr", "최석탑", 1); // 다른 학교 교수는 빠진다
+        String owner = ownerToken();
+        String ownerName = jdbc.queryForObject("select name from members where role = 'OWNER'", String.class);
+
+        // 교수(이름순) 다음 대학원장. 이메일은 주지 않는다
+        get("/api/me/contacts", godae)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].name").value(contains("박호랑", "이안암", ownerName)))
+                .andExpect(jsonPath("$[*].role").value(contains("MANAGER", "MANAGER", "OWNER")))
+                .andExpect(jsonPath("$[0].school.shortName").value("고려대"))
+                .andExpect(jsonPath("$[0].email").doesNotExist());
+        // 나는 빠진다
+        get("/api/me/contacts", anam).andExpect(jsonPath("$[*].name").value(contains("박호랑", ownerName)));
+        // 해임된 교수는 빠진다
+        put("/api/admin/members/" + memberId("horang") + "/role", owner, "{\"role\":\"USER\"}")
+                .andExpect(status().isOk());
+        get("/api/me/contacts", godae).andExpect(jsonPath("$[*].name").value(contains("이안암", ownerName)));
     }
 
     @Test

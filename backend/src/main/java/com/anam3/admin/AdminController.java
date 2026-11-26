@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.anam3.admin.AdminDtos.AdminActionView;
 import com.anam3.admin.AdminDtos.AdminMemberView;
 import com.anam3.admin.AdminDtos.EmailRequest;
 import com.anam3.admin.AdminDtos.RoleRequest;
@@ -119,43 +120,57 @@ public class AdminController {
 
     @PostMapping("/schools")
     @ResponseStatus(HttpStatus.CREATED)
-    public List<SchoolView> addSchool(@Valid @RequestBody NewSchoolRequest req) {
-        schoolService.addSchool(req);
+    public List<SchoolView> addSchool(@AuthenticationPrincipal LoginMember me,
+            @Valid @RequestBody NewSchoolRequest req) {
+        schoolService.addSchool(me, req);
         return schoolService.views(true);
     }
 
     /** 이름·짧은 이름·대학원 이름·최신 기수 */
     @PutMapping("/schools/{id}")
-    public List<SchoolView> updateSchool(@PathVariable Long id, @Valid @RequestBody SchoolRequest req) {
-        schoolService.updateSchool(id, req);
+    public List<SchoolView> updateSchool(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @Valid @RequestBody SchoolRequest req) {
+        schoolService.updateSchool(me, id, req);
         return schoolService.views(true);
     }
 
     @PostMapping("/schools/{id}/domains")
     @ResponseStatus(HttpStatus.CREATED)
-    public List<SchoolView> addDomain(@PathVariable Long id, @Valid @RequestBody DomainRequest req) {
-        schoolService.addDomain(id, req.domain());
+    public List<SchoolView> addDomain(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @Valid @RequestBody DomainRequest req) {
+        schoolService.addDomain(me, id, req.domain());
         return schoolService.views(true);
     }
 
     @DeleteMapping("/schools/{id}/domains/{domainId}")
-    public List<SchoolView> removeDomain(@PathVariable Long id, @PathVariable Long domainId) {
-        schoolService.removeDomain(id, domainId);
+    public List<SchoolView> removeDomain(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @PathVariable Long domainId) {
+        schoolService.removeDomain(me, id, domainId);
         return schoolService.views(true);
     }
 
     @PostMapping("/schools/{id}/departments")
     @ResponseStatus(HttpStatus.CREATED)
-    public List<SchoolView> addDepartment(@PathVariable Long id, @Valid @RequestBody DepartmentRequest req) {
-        schoolService.addDepartment(id, req);
+    public List<SchoolView> addDepartment(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @Valid @RequestBody DepartmentRequest req) {
+        schoolService.addDepartment(me, id, req);
         return schoolService.views(true);
     }
 
     /** 이름 바꾸기, 숨기기(active=false)·다시 보이기 */
     @PutMapping("/departments/{id}")
-    public List<SchoolView> updateDepartment(@PathVariable Long id, @Valid @RequestBody DepartmentRequest req) {
-        schoolService.updateDepartment(id, req);
+    public List<SchoolView> updateDepartment(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @Valid @RequestBody DepartmentRequest req) {
+        schoolService.updateDepartment(me, id, req);
         return schoolService.views(true);
+    }
+
+    // ---------------- 관리자 조치 기록 (대학원장 전용) ----------------
+
+    /** 최근 200건: 누가 · 언제 · 무엇을 · 누구에게 */
+    @GetMapping("/actions")
+    public List<AdminActionView> actions() {
+        return adminService.actions();
     }
 
     // ---------------- 신고 ----------------

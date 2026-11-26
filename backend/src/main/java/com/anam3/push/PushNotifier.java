@@ -247,6 +247,21 @@ public class PushNotifier {
         push.send(List.of(settlement.getPayer().getId()), settleMessage(settlement, "정산 끝! 모두 보냈어요"));
     }
 
+    /**
+     * 새 신고: 처리할 수 있는 교수·대학원장에게 (ReportService 가 신고한 사람·신고당한 사람을 뺀 명단을 넘긴다).
+     * 무엇을 신고했는지는 관리 화면에서 본다. 같은 알림은 하나로 바뀐다 (신고가 몰려도 폰에 쌓이지 않게)
+     */
+    public void reportFiled(List<Long> staffIds, String reasonLabel) {
+        push.send(staffIds, new PushMessage(PushType.REPORT, "새 신고", "새 신고가 들어왔어요 · " + reasonLabel,
+                "/admin?tab=reports", "report-new"));
+    }
+
+    /** 신고를 처리함: 신고한 사람에게. 어떻게 처리했는지는 알리지 않는다 */
+    public void reportResolved(Long reporterId, Long reportId) {
+        push.send(List.of(reporterId), new PushMessage(PushType.REPORT, "내가 한 신고",
+                "신고를 처리했어요. 알려 줘서 고마워요", "/notifications", "report-" + reportId + "-done"));
+    }
+
     private static PushMessage settleMessage(Settlement settlement, String body) {
         Meetup m = settlement.getMeetup();
         return new PushMessage(PushType.SETTLE, m.getTitle(), body, path(m), tag(m, "settle"));

@@ -42,8 +42,10 @@ export interface Member {
   /** 인융 */
   departmentShortLabel: string | null
   role: Role
-  /** false 면 약관 동의 화면부터 (예전 회원) */
+  /** false 면 약관 동의 화면부터 (예전 회원, 약관이 바뀐 뒤) */
   termsAgreed: boolean
+  /** 예전 약관에 동의했는데 약관이 바뀌어 다시 동의해야 할 때 true */
+  termsChanged: boolean
   /** 로그인 방법: 카카오 연결 · 학교 이메일 + 비밀번호 */
   kakaoLinked: boolean
   hasPassword: boolean
@@ -72,6 +74,8 @@ export type PushType =
   | 'SCHOOL'
   | 'SPOT'
   | 'SETTLE'
+  /** 교수·대학원장: 새 신고 · 신고한 사람: 처리 결과 */
+  | 'REPORT'
 
 /** 알림함의 한 줄 (푸시와 같은 내용) */
 export interface NotificationItem {
@@ -519,6 +523,52 @@ export interface AdminMember {
   kakaoLinked: boolean
   hasPassword: boolean
   createdAt: string
+}
+
+/** 관리자 조치 종류 (서버 AdminAction.Type). 화면에는 label 을 쓴다 */
+export type AdminActionType =
+  | 'BAN'
+  | 'UNBAN'
+  | 'APPOINT'
+  | 'DISMISS'
+  | 'EDIT_PROFILE'
+  | 'ASSIGN_EMAIL'
+  | 'WITHDRAW'
+  | 'DELETE_MEETUP'
+  | 'DELETE_NOTICE'
+  | 'RESOLVE_REPORT'
+  | 'REOPEN_REPORT'
+  | 'ADD_SCHOOL'
+  | 'EDIT_SCHOOL'
+  | 'ADD_DOMAIN'
+  | 'REMOVE_DOMAIN'
+  | 'ADD_DEPARTMENT'
+  | 'EDIT_DEPARTMENT'
+
+/** 관리자 조치 기록 한 줄 (대학원장만 본다). 이름은 지금 이름 — 탈퇴했으면 '탈퇴한 원우' */
+export interface AdminAction {
+  id: number
+  action: AdminActionType
+  /** 이용 정지 · 교수 임명 · 3교시 지우기 … */
+  label: string
+  actorName: string
+  /** 그때 직책 */
+  actorRole: Role
+  targetMemberId: number | null
+  targetName: string | null
+  /** 고려대 · 61기 (탈퇴했으면 null) */
+  targetAffiliation: string | null
+  targetMeetupId: number | null
+  /** 지운 3교시·공지 제목, 바뀐 기수·학과, 신고 종류 등 */
+  detail: string | null
+  createdAt: string
+}
+
+/** 이름·기수를 바꿔 달라고 요청할 곳: 우리 학교 교수 · 대학원장 */
+export interface Contact {
+  name: string
+  role: Role
+  school: SchoolTag
 }
 
 export interface AdminStats {

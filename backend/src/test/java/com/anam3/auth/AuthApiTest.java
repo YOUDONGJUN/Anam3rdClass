@@ -9,6 +9,7 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import com.anam3.member.Member;
 import com.anam3.support.ApiTestSupport;
 
 class AuthApiTest extends ApiTestSupport {
@@ -292,6 +293,33 @@ class AuthApiTest extends ApiTestSupport {
         String token = login("legacy");
         post("/api/me/terms", token, null).andExpect(status().isOk()).andExpect(jsonPath("$.termsAgreed").value(true));
         get("/api/me", token).andExpect(jsonPath("$.termsAgreed").value(true));
+    }
+
+    @Test
+    void 약관이_바뀌면_예전에_동의한_원우도_다시_동의해야_쓸_수_있다() throws Exception {
+        String token = signup("godae", "김고대", 61);
+        get("/api/me", token)
+                .andExpect(jsonPath("$.termsAgreed").value(true))
+                .andExpect(jsonPath("$.termsChanged").value(false));
+
+        // 약관 버전을 올린 것처럼: 이 원우가 동의한 버전을 지금보다 낮춘다
+        jdbc.update("update members set terms_version = ? where id = ?", Member.CURRENT_TERMS_VERSION - 1,
+                memberId("godae"));
+        get("/api/me", token)
+                .andExpect(jsonPath("$.termsAgreed").value(false))
+                .andExpect(jsonPath("$.termsChanged").value(true));
+        String meetup = meetupJson("치맥 번개", 2, 4, T0.plus(Duration.ofHours(3)), T0.plus(Duration.ofHours(2)), null);
+        post("/api/meetups", token, meetup)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("TERMS_REQUIRED"));
+
+        post("/api/me/terms", token, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.termsAgreed").value(true))
+                .andExpect(jsonPath("$.termsChanged").value(false));
+        assertThat(jdbc.queryForObject("select terms_version from members where id = ?", Integer.class,
+                memberId("godae"))).isEqualTo(Member.CURRENT_TERMS_VERSION);
+        post("/api/meetups", token, meetup).andExpect(status().isCreated());
     }
 
     @Test

@@ -3,12 +3,14 @@ import { BellOff, Moon } from 'lucide-react'
 import { usePushSettings } from '../api/queries'
 import type { PushType } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { isStaff } from '../lib/person'
 import { enablePush, isApp, pushPermission, sendPushToken, type PushState } from '../lib/native'
 import { Button } from './ui'
 import { cardClass } from './styles'
 import { useToast } from './toastContext'
 
-const ITEMS: Array<{ type: PushType; label: string; hint: string }> = [
+/** staffHint: 교수·대학원장에게 보일 설명 (없으면 hint) */
+const ITEMS: Array<{ type: PushType; label: string; hint: string; staffHint?: string }> = [
   { type: 'JOIN', label: '내 3교시 참여·나감', hint: '내가 연 3교시에 누가 들어오거나 나가면' },
   { type: 'REACHED', label: '성사', hint: '참여한 3교시가 성사되면' },
   { type: 'DEADLINE', label: '모집 마감 30분 전', hint: '참여한 3교시에 아직 인원이 모자라면' },
@@ -19,6 +21,7 @@ const ITEMS: Array<{ type: PushType; label: string; hint: string }> = [
   { type: 'SCHOOL', label: '새 우리 학교 3교시', hint: '우리 학교 3교시가 열리면 (우리 기수만 3교시는 그 기수에게만)' },
   { type: 'FEDERATION', label: '새 연합 3교시', hint: '연합 3교시가 열리면' },
   { type: 'NOTICE', label: '새 공지', hint: '교수·대학원장이 올린 공지' },
+  { type: 'REPORT', label: '신고', hint: '내가 한 신고를 처리하면', staffHint: '새 신고, 내가 한 신고의 처리 결과' },
 ]
 
 /** 앱 알림 켜고 끄기 (앱에서만 보인다) */
@@ -41,6 +44,7 @@ export function PushSettings() {
 
   if (!isApp || !member || permission === null || permission === 'unavailable') return null
   const off = new Set(member.pushOff)
+  const staff = isStaff(member.role)
 
   /** 먼저 바꿔 보여 주고 저장한다. 실패하면 되돌린다 (서버가 느려도 스위치가 잠기지 않게) */
   function apply(next: Set<PushType>) {
@@ -105,7 +109,9 @@ export function PushSettings() {
               <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4 py-2.5">
                 <span className="min-w-0">
                   <span className="block text-[15px] font-semibold text-ink">{item.label}</span>
-                  <span className="block text-[13px] leading-snug text-ink-3">{item.hint}</span>
+                  <span className="block text-[13px] leading-snug text-ink-3">
+                    {staff && item.staffHint ? item.staffHint : item.hint}
+                  </span>
                 </span>
                 <input
                   type="checkbox"

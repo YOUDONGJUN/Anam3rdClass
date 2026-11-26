@@ -16,10 +16,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.anam3.auth.AuthDtos.AuthStep;
+import com.anam3.auth.AuthDtos.PasswordChangeRequest;
 import com.anam3.auth.AuthService;
 import com.anam3.auth.LoginMember;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
 import com.anam3.meetup.MeetupService;
+import com.anam3.member.MeDtos.ContactView;
 import com.anam3.member.MeDtos.MyProfileRequest;
 import com.anam3.member.MeDtos.PayLinksRequest;
 import com.anam3.member.MeDtos.RankingSettingRequest;
@@ -66,6 +69,12 @@ public class MeController {
         return accountService.updateProfile(me, req);
     }
 
+    /** 이름·기수를 바꿔 달라고 요청할 곳: 우리 학교 교수와 대학원장 */
+    @GetMapping("/contacts")
+    public List<ContactView> contacts(@AuthenticationPrincipal LoginMember me) {
+        return accountService.contacts(me);
+    }
+
     /** 랭킹에 안 나오기 */
     @PutMapping("/ranking")
     public MemberResponse rankingSetting(@AuthenticationPrincipal LoginMember me,
@@ -79,7 +88,17 @@ public class MeController {
         return accountService.changePayLinks(me, req.tossId(), req.kakaoPayUrl());
     }
 
-    /** 이용약관·개인정보 처리방침 동의 (예전 회원) */
+    /**
+     * 지금 비밀번호로 새 비밀번호 바꾸기 (비밀번호가 있는 회원). 다른 기기는 로그아웃되고,
+     * 이 기기는 응답의 새 토큰으로 이어서 쓴다. 잊었으면 학교 메일 인증(/api/auth/password)으로 찾는다
+     */
+    @PutMapping("/password")
+    public AuthStep changePassword(@AuthenticationPrincipal LoginMember me,
+            @Valid @RequestBody PasswordChangeRequest req) {
+        return authService.changePassword(me, req);
+    }
+
+    /** 이용약관·개인정보 처리방침 동의 (예전 회원, 약관이 바뀐 뒤) */
     @PostMapping("/terms")
     public MemberResponse agreeTerms(@AuthenticationPrincipal LoginMember me) {
         return accountService.agreeTerms(me);

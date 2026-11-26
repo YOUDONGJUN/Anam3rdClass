@@ -1,11 +1,13 @@
 package com.anam3.admin;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.anam3.admin.AdminDtos.AdminActionView;
 import com.anam3.admin.AdminDtos.AdminMemberView;
 import com.anam3.admin.AdminDtos.StatsView;
 import com.anam3.auth.AuthDtos.ProfileRequest;
@@ -42,17 +44,26 @@ public class AdminService {
     private final SchoolService schoolService;
     private final ReportService reportService;
     private final AccountService accountService;
+    private final AdminActionLog actionLog;
     private final Clock clock;
 
     public AdminService(MemberRepository members, MeetupRepository meetups, NoticeRepository notices,
-            SchoolService schoolService, ReportService reportService, AccountService accountService, Clock clock) {
+            SchoolService schoolService, ReportService reportService, AccountService accountService,
+            AdminActionLog actionLog, Clock clock) {
         this.members = members;
         this.meetups = meetups;
         this.notices = notices;
         this.schoolService = schoolService;
         this.reportService = reportService;
         this.accountService = accountService;
+        this.actionLog = actionLog;
         this.clock = clock;
+    }
+
+    /** 관리 화면 '기록' (대학원장 전용) */
+    @Transactional(readOnly = true)
+    public List<AdminActionView> actions() {
+        return actionLog.recent();
     }
 
     /** 원우 그리드 전체 (교수는 자기 학교만). 수백 명 규모라 거르기·정렬·통계는 화면에서 한다 */
@@ -68,16 +79,24 @@ public class AdminService {
             throw ApiException.badRequest("CANNOT_BAN_OWNER", "대학원장은 차단할 수 없어요");
         }
         requireManageable(viewer, member);
+        if (member.getStatus() == MemberStatus.BANNED) {
+            return view(viewer, member);
+        }
+        boolean wasManager = member.getRole() == MemberRole.MANAGER;
         member.ban();
         // 이용이 막히면 로그인할 수 없으니, 그 사람이 연 3교시는 취소하고 모집 중인 3교시에서는 뺀다
         accountService.releaseOpenMeetups(member, clock.instant());
+        actionLog.record(viewer, AdminAction.Type.BAN, member, null, wasManager ? "교수 직책도 풀림" : null);
         return view(viewer, member);
     }
 
     public AdminMemberView unban(LoginMember viewer, Long memberId) {
         Member member = load(memberId);
         requireManageable(viewer, member);
-        member.unban();
+        if (member.getStatus() == MemberStatus.BANNED) {
+            member.unban();
+            actionLog.record(viewer, AdminAction.Type.UNBAN, member, null, null);
+        }
         return view(viewer, member);
     }
 
@@ -88,8 +107,31 @@ public class AdminService {
         School school = member.getSchool();
         schoolService.checkCohort(school, req.cohort());
         Department department = schoolService.requireDepartment(school, req.departmentId(), member.getDepartment());
+        String changes = profileChanges(member, req.name().strip(), req.cohort(), department);
         member.updateProfile(req.name().strip(), req.cohort(), department);
+        if (changes != null) {
+            actionLog.record(viewer, AdminAction.Type.EDIT_PROFILE, member, null, changes);
+        }
         return view(viewer, member);
+    }
+
+    /** 기록에 남길 바뀐 것 (이름은 바뀌었다는 것만 — 이름 자체는 적지 않는다). 바뀐 게 없으면 null */
+    static String profileChanges(Member member, String name, int cohort, Department department) {
+        List<String> changes = new ArrayList<>();
+        if (!member.getName().equals(name)) {
+            changes.add("이름");
+        }
+        if (member.getCohort() != cohort) {
+            changes.add("기수 " + member.cohortLabel() + " → " + cohort + "기");
+        }
+        if (!member.sameDepartment(department)) {
+            changes.add("학과 " + shortLabel(member.getDepartment()) + " → " + shortLabel(department));
+        }
+        return changes.isEmpty() ? null : String.join(" · ", changes);
+    }
+
+    private static String shortLabel(Department department) {
+        return department == null ? "없음" : department.getShortName();
     }
 
     /**
@@ -99,6 +141,7 @@ public class AdminService {
     public AdminMemberView withdraw(LoginMember viewer, Long memberId) {
         Member member = load(memberId);
         accountService.withdraw(member);
+        actionLog.record(viewer, AdminAction.Type.WITHDRAW, member, null, null);
         return view(viewer, member);
     }
 
@@ -115,7 +158,11 @@ public class AdminService {
         if (role == MemberRole.MANAGER && !member.isActive()) {
             throw ApiException.badRequest("BANNED_MEMBER", "차단된 원우는 교수로 임명할 수 없어요");
         }
-        member.changeRole(role);
+        if (member.getRole() != role) {
+            member.changeRole(role);
+            actionLog.record(viewer, role == MemberRole.MANAGER ? AdminAction.Type.APPOINT : AdminAction.Type.DISMISS,
+                    member, null, null);
+        }
         return view(viewer, member);
     }
 
@@ -137,6 +184,8 @@ public class AdminService {
                     throw ApiException.conflict("DUPLICATE_EMAIL", "이미 다른 원우가 쓰는 학교 이메일이에요");
                 });
         member.assignEmail(email, school);
+        // 이메일 주소는 남기지 않는다 (어느 학교 도메인인지만)
+        actionLog.record(viewer, AdminAction.Type.ASSIGN_EMAIL, member, null, email.substring(email.indexOf('@')));
         return view(viewer, member);
     }
 

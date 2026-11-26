@@ -51,4 +51,22 @@ public final class AdminDtos {
     /** 현황. 대학원장은 모든 학교, 교수는 자기 학교 숫자 (탈퇴한 원우는 빼고 센다) */
     public record StatsView(long members, long meetups, long confirmedMeetups, long notices, long openReports) {
     }
+
+    /**
+     * 관리자 조치 기록 한 줄 (대학원장만 본다). 이름은 지금 이름 — 탈퇴했으면 "탈퇴한 원우".
+     * actorRole 은 그때 직책. target… 은 대상 원우가 없으면 null, targetAffiliation 은 탈퇴했으면 null
+     */
+    public record AdminActionView(Long id, AdminAction.Type action, String label, String actorName,
+            MemberRole actorRole, Long targetMemberId, String targetName, String targetAffiliation,
+            Long targetMeetupId, String detail, Instant createdAt) {
+
+        static AdminActionView from(AdminAction a) {
+            Member t = a.getTargetMember();
+            String affiliation = t == null || t.isWithdrawn() ? null
+                    : t.getSchool().getShortName() + " · " + t.cohortLabel();
+            return new AdminActionView(a.getId(), a.getAction(), a.getAction().label(), a.getActor().getName(),
+                    a.getActorRole(), t == null ? null : t.getId(), t == null ? null : t.getName(), affiliation,
+                    a.getTargetMeetupId(), a.getDetail(), a.getCreatedAt());
+        }
+    }
 }

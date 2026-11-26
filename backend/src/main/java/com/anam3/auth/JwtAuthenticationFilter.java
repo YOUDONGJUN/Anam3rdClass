@@ -51,6 +51,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
             var member = found.filter(Member::isActive);
             if (member.isPresent()) {
+                // 지금 약관 버전에 동의하지 않았으면 (예전 회원, 약관이 바뀐 뒤) 보기와 동의만 된다 — Member.CURRENT_TERMS_VERSION
                 if (!member.get().hasAgreedTerms() && !allowedBeforeTerms(request)) {
                     SecurityConfig.writeError(response, 403, "TERMS_REQUIRED", "이용약관에 먼저 동의해 주세요");
                     return;

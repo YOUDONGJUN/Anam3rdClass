@@ -11,6 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.anam3.admin.AdminAction;
+import com.anam3.admin.AdminActionLog;
 import com.anam3.auth.LoginMember;
 import com.anam3.common.ApiException;
 import com.anam3.feedback.MeetupFeedback.Rating;
@@ -27,6 +29,7 @@ import com.anam3.member.MemberStatus;
 import com.anam3.notice.Notice;
 import com.anam3.notice.NoticeRepository;
 import com.anam3.notice.NoticeService;
+import com.anam3.push.PushNotifier;
 import com.anam3.safety.SafetyDtos.ReportRequest;
 import com.anam3.safety.SafetyDtos.ReportView;
 import com.anam3.school.SchoolDtos.SchoolTag;
@@ -34,6 +37,7 @@ import com.anam3.school.SchoolDtos.SchoolTag;
 /**
  * 신고. 누구나 3교시·공지·3교시에서 만난 사람을 신고할 수 있다.
  * 교수는 자기 학교 신고를, 대학원장은 모든 신고를 관리 화면에서 보고 처리한다.
+ * 새 신고는 처리할 수 있는 교수·대학원장에게, 처리 결과는 신고한 사람에게 알린다 (신고당한 사람에게는 알리지 않는다).
  */
 @Service
 @Transactional
@@ -47,18 +51,22 @@ public class ReportService {
     private final NoticeRepository notices;
     private final MemberRepository members;
     private final MeetupFeedbackRepository feedbacks;
+    private final PushNotifier notifier;
+    private final AdminActionLog actionLog;
     private final Clock clock;
     private final LeftMembers leftMembers;
 
     public ReportService(ReportRepository reports, MeetupRepository meetups, ParticipationRepository participations,
-            NoticeRepository notices, MemberRepository members, MeetupFeedbackRepository feedbacks, Clock clock,
-            LeftMembers leftMembers) {
+            NoticeRepository notices, MemberRepository members, MeetupFeedbackRepository feedbacks,
+            PushNotifier notifier, AdminActionLog actionLog, Clock clock, LeftMembers leftMembers) {
         this.reports = reports;
         this.meetups = meetups;
         this.participations = participations;
         this.notices = notices;
         this.members = members;
         this.feedbacks = feedbacks;
+        this.notifier = notifier;
+        this.actionLog = actionLog;
         this.clock = clock;
         this.leftMembers = leftMembers;
     }
@@ -121,6 +129,24 @@ public class ReportService {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY", "오늘은 신고를 더 할 수 없어요. 내일 다시 해 주세요");
         }
         reports.save(report);
+        notifyStaff(report, viewer.id());
+    }
+
+    /**
+     * 새 신고를 처리할 수 있는 사람에게 알린다 — 관리 화면 신고 목록과 같은 범위
+     * (대학원장은 모두, 교수는 자기 학교의 일반 원우가 대상인 신고만. 학교가 없는 연합 공지는 대학원장만).
+     * 신고한 사람과 신고당한 사람은 뺀다
+     */
+    private void notifyStaff(Report report, Long reporterId) {
+        Member target = report.getMember();
+        boolean targetIsStaff = target != null && target.isStaff();
+        Long schoolId = report.getSchool() == null || targetIsStaff ? null : report.getSchool().getId();
+        List<Long> to = members.findStaffFor(schoolId, MemberRole.OWNER, MemberRole.MANAGER, MemberStatus.ACTIVE)
+                .stream()
+                .map(Member::getId)
+                .filter(id -> !id.equals(reporterId) && (target == null || !id.equals(target.getId())))
+                .toList();
+        notifier.reportFiled(to, report.getReason().label());
     }
 
     /** 관리 화면: 대학원장은 모든 신고, 교수는 자기 학교 신고. 처리 안 된 것부터 */
@@ -138,10 +164,20 @@ public class ReportService {
         if (!canManage(viewer, report)) {
             throw ApiException.forbidden("우리 학교 신고만 처리할 수 있어요");
         }
+        boolean wasOpen = report.getStatus() == Report.Status.OPEN;
         if (resolved) {
             report.resolve(members.getReferenceById(viewer.id()), clock.instant());
         } else {
             report.reopen();
+        }
+        if (wasOpen == resolved) { // 상태가 바뀌었을 때만 기록·알림
+            actionLog.record(viewer, resolved ? AdminAction.Type.RESOLVE_REPORT : AdminAction.Type.REOPEN_REPORT,
+                    report.getMember(), idOf(report.getMeetup()),
+                    report.getTargetType().label() + " 신고 · " + report.getReason().label());
+            Long reporterId = report.getReporter().getId();
+            if (resolved && !reporterId.equals(viewer.id())) {
+                notifier.reportResolved(reporterId, report.getId());
+            }
         }
         return view(report, viewer);
     }

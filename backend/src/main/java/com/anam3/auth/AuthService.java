@@ -30,6 +30,7 @@ import com.anam3.auth.AuthDtos.EmailVerifyRequest;
 import com.anam3.auth.AuthDtos.KakaoAppLoginRequest;
 import com.anam3.auth.AuthDtos.KakaoLoginRequest;
 import com.anam3.auth.AuthDtos.LegacyClaimRequest;
+import com.anam3.auth.AuthDtos.PasswordChangeRequest;
 import com.anam3.auth.AuthDtos.PasswordSetRequest;
 import com.anam3.auth.AuthDtos.SignupOptions;
 import com.anam3.auth.AuthDtos.SignupRequest;
@@ -103,6 +104,8 @@ public class AuthService {
     static final int DAILY_LIMIT_EMAIL_START = 300;
     /** 같은 이메일로 "이메일로 시작"한 코드 요청 (1시간) */
     private static final int HOURLY_LIMIT_EMAIL_START_PER_EMAIL = 5;
+    /** 로그인한 채로 비밀번호 바꾸기: 지금 비밀번호를 회원마다 1시간에 틀릴 수 있는 횟수 */
+    static final int HOURLY_PASSWORD_CHANGE_FAILURES = 10;
     /** BCrypt 는 72바이트까지만 쓴다 (한글이 섞인 긴 비밀번호) */
     private static final int PASSWORD_MAX_BYTES = 72;
     /** 비밀번호 확인(BCrypt)은 무거워서 동시에 몇 개만 (몰려오면 서버 CPU 를 다 쓰지 않게) */
@@ -134,6 +137,8 @@ public class AuthService {
     private final RateLimiter loginAttemptsPerIp;
     /** "이메일로 시작"한 인증코드 요청 수 (IP 마다) */
     private final RateLimiter emailStartCodesPerIp;
+    /** 로그인한 채로 비밀번호 바꾸기: 지금 비밀번호를 틀린 기록 (회원마다) */
+    private final RateLimiter passwordChangeFailures;
     private final SecureRandom random = new SecureRandom();
 
     public AuthService(MemberRepository members, KakaoClient kakao, JwtService jwtService,
@@ -158,6 +163,7 @@ public class AuthService {
         this.loginFailuresPerEmail = limits.create(HOURLY_LOGIN_FAILURES_PER_EMAIL, Duration.ofHours(1));
         this.loginAttemptsPerIp = limits.create(LOGIN_ATTEMPTS_PER_IP, Duration.ofMinutes(10));
         this.emailStartCodesPerIp = limits.create(HOURLY_EMAIL_START_CODES_PER_IP, Duration.ofHours(1));
+        this.passwordChangeFailures = limits.create(HOURLY_PASSWORD_CHANGE_FAILURES, Duration.ofHours(1));
     }
 
     @Transactional(readOnly = true)
@@ -441,6 +447,50 @@ public class AuthService {
         ownerPolicy.apply(member);
         loginFailuresPerEmail.reset(email); // 비밀번호를 새로 정했으니 잠금을 푼다
         return done(member);
+    }
+
+    // ---------------- 4-3. 로그인한 채로 비밀번호 바꾸기 (지금 비밀번호 확인) ----------------
+
+    /**
+     * 지금 비밀번호를 맞히면 새 비밀번호로 바꾼다 (메일 인증 없이). 다른 기기의 로그인은 풀리고(토큰 버전 +1),
+     * 이 기기는 새 로그인 토큰을 받아 그대로 쓴다. 지금 비밀번호는 회원마다 1시간에 10번까지 틀릴 수 있다.
+     * 비밀번호 확인(BCrypt)은 DB 연결을 잡지 않고 한다
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public AuthStep changePassword(LoginMember viewer, PasswordChangeRequest req) {
+        Instant now = clock.instant();
+        String key = String.valueOf(viewer.id());
+        if (passwordChangeFailures.isLimited(key, now)) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY",
+                    "비밀번호를 너무 많이 틀렸어요. 1시간 뒤에 다시 하거나 학교 메일로 비밀번호를 찾아 주세요");
+        }
+        String hash = tx.execute(status -> members.findById(viewer.id())
+                .map(Member::getEmailPasswordHash)
+                .orElse(null));
+        if (hash == null) {
+            throw ApiException.badRequest("NO_PASSWORD", "아직 비밀번호가 없어요. 학교 메일 인증으로 먼저 만들어 주세요");
+        }
+        if (req.currentPassword().equals(req.newPassword())) {
+            throw ApiException.badRequest("SAME_PASSWORD", "지금과 다른 비밀번호로 정해 주세요");
+        }
+        if (!checkPassword(req.currentPassword(), hash)) {
+            passwordChangeFailures.record(key, now);
+            throw ApiException.badRequest("WRONG_PASSWORD", "지금 비밀번호가 맞지 않아요");
+        }
+        String newHash = encodePassword(req.newPassword());
+        passwordChangeFailures.reset(key);
+        return tx.execute(status -> {
+            Member member = members.findWithSchool(viewer.id())
+                    .orElseThrow(() -> ApiException.notFound("회원 정보를 찾을 수 없어요"));
+            if (!hash.equals(member.getEmailPasswordHash())) { // 그사이 다른 곳에서 바꿨다
+                throw ApiException.conflict("PASSWORD_CHANGED", "비밀번호가 방금 바뀌었어요. 다시 해 주세요");
+            }
+            member.setEmailPassword(newHash); // 다른 기기의 로그인을 푼다
+            if (member.getEmail() != null) {
+                loginFailuresPerEmail.reset(member.getEmail());
+            }
+            return done(member); // 이 기기는 새 토큰으로 이어서 쓴다
+        });
     }
 
     // ---------------- 그 밖 ----------------

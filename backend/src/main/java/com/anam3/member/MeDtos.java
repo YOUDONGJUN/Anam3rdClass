@@ -6,6 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import com.anam3.school.SchoolDtos.SchoolTag;
+
 public final class MeDtos {
 
     private MeDtos() {
@@ -26,6 +28,14 @@ public final class MeDtos {
 
             @NotNull(message = "학과를 선택해 주세요")
             Long departmentId) {
+    }
+
+    /** 요청할 곳 한 사람: 우리 학교 교수 · 대학원장 (이메일은 주지 않는다) */
+    public record ContactView(String name, MemberRole role, SchoolTag school) {
+
+        static ContactView from(Member m) {
+            return new ContactView(m.getName(), m.getRole(), SchoolTag.from(m.getSchool()));
+        }
     }
 
     /** 랭킹에 안 나오기 */

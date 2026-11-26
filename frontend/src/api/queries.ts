@@ -3,11 +3,14 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { useAuth } from '../auth/AuthContext'
 import { api } from './client'
 import type {
+  AdminAction,
   AdminMember,
   AdminStats,
   AuthConfig,
+  AuthStep,
   Block,
   Board,
+  Contact,
   DevMember,
   FeedbackInput,
   FeedbackPending,
@@ -47,6 +50,7 @@ export const keys = {
   signupOptions: ['signup-options'] as const,
   authConfig: ['auth-config'] as const,
   devMembers: ['dev-members'] as const,
+  contacts: ['contacts'] as const,
   feedbackPending: ['feedback-pending'] as const,
   places: ['places'] as const,
   ranking: (period: RankingPeriod, scope: RankingScope) => ['ranking', period, scope] as const,
@@ -495,6 +499,30 @@ export function useRanking(period: RankingPeriod, scope: RankingScope) {
   })
 }
 
+/** 이름·기수를 바꿔 달라고 요청할 곳: 우리 학교 교수 · 대학원장 (자주 바뀌지 않는다) */
+export function useContacts(enabled = true) {
+  return useQuery({
+    queryKey: keys.contacts,
+    queryFn: () => api<Contact[]>('/api/me/contacts'),
+    staleTime: 10 * 60_000,
+    enabled,
+  })
+}
+
+/**
+ * 지금 비밀번호로 새 비밀번호 바꾸기 → 새 로그인 토큰 (다른 기기는 로그아웃되고 이 기기는 그대로 쓴다)
+ */
+export function useChangePassword() {
+  const { signIn } = useAuth()
+  return useMutation({
+    mutationFn: (input: { currentPassword: string; newPassword: string }) =>
+      api<AuthStep>('/api/me/password', { method: 'PUT', body: input }),
+    onSuccess: (res) => {
+      if (res.token && res.member) signIn({ token: res.token, member: res.member })
+    },
+  })
+}
+
 /** 탈퇴 — 되돌릴 수 없다 */
 export function useWithdraw() {
   return useMutation({ mutationFn: () => api<void>('/api/me', { method: 'DELETE' }) })
@@ -516,6 +544,15 @@ export function useAdminMeetups() {
 
 export function useAdminReports() {
   return useQuery({ queryKey: [...keys.admin, 'reports'], queryFn: () => api<Report[]>('/api/admin/reports') })
+}
+
+/** 관리자 조치 기록 (대학원장 전용): 최근 200건 */
+export function useAdminActions(enabled = true) {
+  return useQuery({
+    queryKey: [...keys.admin, 'actions'],
+    queryFn: () => api<AdminAction[]>('/api/admin/actions'),
+    enabled,
+  })
 }
 
 export function useResolveReport() {

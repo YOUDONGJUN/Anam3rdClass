@@ -8,6 +8,7 @@ import { Button, FormError } from '../components/ui'
 
 // 이용약관 · 개인정보 처리방침. 학생이 비영리로 운영하는 비공식 커뮤니티 기준으로 쓴 초안이다 —
 // 운영자가 읽어 보고 고친다. 고치면 TERMS_UPDATED 를 바꾼다.
+// 모두에게 다시 동의를 받아야 할 만큼 바꿨으면 서버의 Member.CURRENT_TERMS_VERSION 도 1 올린다 (다음 요청부터 동의 화면).
 export const TERMS_UPDATED = '2026년 11월 26일'
 
 function Contact() {
@@ -323,12 +324,22 @@ export function TermsGate() {
       </header>
       <main className="mx-auto max-w-md px-4 py-8">
         <div className="flex flex-col gap-5 rounded-3xl border border-line bg-surface p-6 sm:p-8">
-          <div>
-            <h1 className="text-xl font-extrabold text-ink">{member.name}님, 약관에 동의해 주세요</h1>
-            <p className="mt-1.5 text-[15px] leading-relaxed text-ink-2">
-              이제 IT연합회 학교들이 함께 써요. 서로 지킬 약속과 개인정보를 어떻게 다루는지 정리했어요.
-            </p>
-          </div>
+          {member.termsChanged ? (
+            <div>
+              <h1 className="text-xl font-extrabold text-balance text-ink">{member.name}님, 약관이 바뀌었어요</h1>
+              <p className="mt-1.5 text-[15px] leading-relaxed text-balance text-ink-2">
+                {TERMS_UPDATED.replaceAll(' ', '\u00a0')}부터 적용되는 이용약관과 개인정보 처리방침을 읽고 다시 동의해
+                주세요.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <h1 className="text-xl font-extrabold text-balance text-ink">{member.name}님, 약관에 동의해 주세요</h1>
+              <p className="mt-1.5 text-[15px] leading-relaxed text-ink-2">
+                이제 IT연합회 학교들이 함께 써요. 서로 지킬 약속과 개인정보를 어떻게 다루는지 정리했어요.
+              </p>
+            </div>
+          )}
           <ul className="flex flex-col gap-1.5 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-ink-2">
             <li>• 욕설·괴롭힘·성적인 글은 허용되지 않아요. 신고되면 운영진이 확인해요.</li>
             <li>• 불편한 사람은 신고하거나 차단할 수 있어요.</li>

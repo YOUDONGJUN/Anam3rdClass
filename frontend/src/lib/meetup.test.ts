@@ -4,13 +4,40 @@ import {
   categoryLabel,
   fitPeople,
   headcount,
+  hiddenNamesNote,
   isReachedWith,
+  joinedLabel,
   peopleError,
   peopleRule,
   seatsCaption,
+  showsLateJoin,
   statusView,
   toggleCategory,
 } from './meetup'
+
+describe('지난 3교시 표시', () => {
+  it('참여 표시: 모이는 중이면 "참여 중", 끝났으면 "참여함", 무산·취소면 없음', () => {
+    expect(joinedLabel('RECRUITING')).toBe('참여 중')
+    expect(joinedLabel('CONFIRMED')).toBe('참여 중')
+    expect(joinedLabel('DONE')).toBe('참여함')
+    expect(joinedLabel('FAILED')).toBeNull()
+    expect(joinedLabel('CANCELED')).toBeNull()
+  })
+
+  it('중간 합류 OK 는 모이는 중일 때만', () => {
+    expect(showsLateJoin({ lateJoin: true, status: 'CONFIRMED' })).toBe(true)
+    expect(showsLateJoin({ lateJoin: true, status: 'DONE' })).toBe(false)
+    expect(showsLateJoin({ lateJoin: true, status: 'CANCELED' })).toBe(false)
+    expect(showsLateJoin({ lateJoin: false, status: 'RECRUITING' })).toBe(false)
+  })
+
+  it('가려진 이름 안내: 이미 성사·완료된 3교시에 "성사되면"이라 하지 않는다', () => {
+    expect(hiddenNamesNote('RECRUITING')).toBe('성사되면 함께하는 사람끼리만 실명이 보여요.')
+    expect(hiddenNamesNote('CONFIRMED')).toBe('참여한 사람끼리만 실명이 보여요.')
+    expect(hiddenNamesNote('DONE')).toBe('함께한 사람끼리만 실명이 보여요.')
+    expect(hiddenNamesNote('FAILED')).toBe('성사되지 않은 3교시라 이름은 계속 가려져요.')
+  })
+})
 
 describe('fitPeople / peopleError', () => {
   const people = { minPeople: 3, noMinimum: false, maxPeople: 6, unlimited: false }

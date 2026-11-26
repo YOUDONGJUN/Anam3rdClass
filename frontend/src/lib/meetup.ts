@@ -168,6 +168,33 @@ export function isLive(status: MeetupStatus) {
   return status === 'RECRUITING' || status === 'CONFIRMED'
 }
 
+/** 중간 합류 OK 는 아직 모이는 중일 때만 의미가 있다 (지난·무산·취소된 3교시에는 붙이지 않는다) */
+export function showsLateJoin(m: Pick<MeetupSummary, 'lateJoin' | 'status'>) {
+  return m.lateJoin && isLive(m.status)
+}
+
+/** 내가 참여한 3교시 표시: 모이는 중이면 "참여 중", 모였으면 "참여함", 무산·취소면 붙이지 않는다 */
+export function joinedLabel(status: MeetupStatus): string | null {
+  if (isLive(status)) return '참여 중'
+  if (status === 'DONE') return '참여함'
+  return null
+}
+
+/** 이름이 가려져 있을 때 탑승 인원 위 안내 (이미 성사·완료된 3교시에 "성사되면"이라 하지 않는다) */
+export function hiddenNamesNote(status: MeetupStatus): string {
+  switch (status) {
+    case 'RECRUITING':
+      return '성사되면 함께하는 사람끼리만 실명이 보여요.'
+    case 'CONFIRMED':
+      return '참여한 사람끼리만 실명이 보여요.'
+    case 'DONE':
+      return '함께한 사람끼리만 실명이 보여요.'
+    case 'FAILED':
+    case 'CANCELED':
+      return '성사되지 않은 3교시라 이름은 계속 가려져요.'
+  }
+}
+
 /** 참여비: 10000 → "1만 원", 15000 → "15,000원" */
 export function formatFee(fee: number): string {
   return fee % 10000 === 0 ? `${fee / 10000}만 원` : `${fee.toLocaleString('ko-KR')}원`

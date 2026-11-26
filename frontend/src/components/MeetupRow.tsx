@@ -4,7 +4,7 @@ import { Check, MapPin } from 'lucide-react'
 import type { MeetupSummary } from '../api/types'
 import { useMeetupAction } from '../api/queries'
 import { formatDayLabel, formatRemaining, formatTime } from '../lib/time'
-import { isLive, seatsCaption } from '../lib/meetup'
+import { isLive, joinedLabel, seatsCaption } from '../lib/meetup'
 import { CategoryBadges } from './CategoryBadge'
 import { AudienceBadge } from './CohortBadge'
 import { LineGauge } from './LineGauge'
@@ -50,13 +50,18 @@ export function QuickJoin({ meetup, block = false }: { meetup: MeetupSummary; bl
 export function MeetupRole({ meetup, block = false }: { meetup: MeetupSummary; block?: boolean }) {
   if (meetup.hosting)
     return <span className="rounded-lg bg-board px-2 py-1 text-xs font-bold text-on-board">내 3교시</span>
-  if (meetup.joined)
+  if (meetup.joined) {
+    // 지난 3교시는 "참여함"(회색), 무산·취소된 3교시는 붙이지 않는다
+    const label = joinedLabel(meetup.status)
+    if (!label) return null
+    const tone = isLive(meetup.status) ? 'bg-ok-soft text-ok-ink' : 'bg-surface-2 text-ink-2'
     return (
-      <span className="inline-flex items-center gap-1 rounded-lg bg-ok-soft px-2 py-1 text-xs font-bold text-ok-ink">
+      <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${tone}`}>
         <Check className="size-3.5" strokeWidth={3} aria-hidden />
-        참여 중
+        {label}
       </span>
     )
+  }
   if (meetup.joinable) return <QuickJoin meetup={meetup} block={block} />
   return null
 }

@@ -101,10 +101,11 @@ cd frontend && npm run lint && npm test
 
 Render 무료 플랜은 SMTP 포트(25·465·587)를 막아서, 메일을 보내려면 유료 인스턴스(Starter)가 필요해요.
 
-## 안드로이드 앱
+## 앱 (안드로이드 · 아이폰)
 
-`frontend/android` (Capacitor). 앱은 서버 화면을 그대로 열어서, 웹을 배포하면 앱에도 바로 반영돼요.
-키 준비·빌드·Play Console 순서는 [docs/android-release.md](docs/android-release.md).
+`frontend/android`, `frontend/ios` (Capacitor). 앱은 서버 화면을 그대로 열어서, 웹을 배포하면 앱에도 바로 반영돼요.
+- 안드로이드: 키 준비·빌드·Play Console 순서는 [docs/android-release.md](docs/android-release.md)
+- 아이폰: Mac 없이 GitHub Actions 로 빌드하고 윈도우에서 설치 → [docs/ios-sideload.md](docs/ios-sideload.md)
 
 ## 함께 만들기
 

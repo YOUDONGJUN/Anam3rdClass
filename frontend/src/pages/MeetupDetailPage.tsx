@@ -43,7 +43,16 @@ import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
 import { downloadIcs, googleCalendarUrl, type CalendarEvent } from '../lib/calendar'
 import { MAP_PROVIDERS } from '../lib/map'
-import { CATEGORY, headcount, isLive, seatsCaption, seatsToAdd, sortCategories } from '../lib/meetup'
+import {
+  CATEGORY,
+  headcount,
+  hiddenNamesNote,
+  isLive,
+  seatsCaption,
+  seatsToAdd,
+  showsLateJoin,
+  sortCategories,
+} from '../lib/meetup'
 import { isApp, shareLink } from '../lib/native'
 import { affiliation } from '../lib/person'
 import { formatDate, formatDateTime, formatDayLabel, formatRemaining, formatTime } from '../lib/time'
@@ -132,7 +141,8 @@ function StateNote({ m }: { m: MeetupDetail }) {
     case 'DONE':
       tone = 'muted'
       title = '모임 시간이 지났어요'
-      body = '즐거운 시간 보내셨나요? 귀가는 안전하게!'
+      // 안부 인사는 함께한 사람에게만 (몇 명이 함께했는지는 아래 탑승 인원에 이미 나온다)
+      body = m.joined ? '즐거운 시간 보내셨나요? 귀가는 안전하게!' : ''
       break
     case 'CANCELED':
       tone = 'muted'
@@ -493,7 +503,7 @@ export function MeetupDetailPage() {
                 </dd>
               </div>
             )}
-            {(m.fee !== null || m.lateJoin) && (
+            {(m.fee !== null || showsLateJoin(m)) && (
               <div className="flex items-center gap-2.5">
                 <dt className="sr-only">참여 방식</dt>
                 <Wallet className="size-4 shrink-0 text-ink-3" aria-hidden />
@@ -568,9 +578,7 @@ export function MeetupDetailPage() {
             {!m.revealed && (
               <p className="mx-1 mb-3 flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-sm text-ink-2">
                 <EyeOff className="size-4 shrink-0" aria-hidden />
-                {m.status === 'FAILED' || m.status === 'CANCELED'
-                  ? '성사되지 않은 3교시라 이름은 계속 가려져요.'
-                  : '성사되면 함께하는 사람끼리만 실명이 보여요.'}
+                {hiddenNamesNote(m.status)}
               </p>
             )}
             <ParticipantRoute

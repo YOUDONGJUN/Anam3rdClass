@@ -36,7 +36,8 @@ import type {
 import { askPushOnce } from '../lib/native'
 
 export const keys = {
-  meetups: (scope: 'upcoming' | 'past', board: Board) => ['meetups', scope, board] as const,
+  meetups: (scope: 'upcoming' | 'past', board: Board, limit = PAST_PAGE) => ['meetups', scope, board, limit] as const,
+  myWaits: ['my-waits'] as const,
   meetup: (id: number) => ['meetup', id] as const,
   myMeetups: ['my-meetups'] as const,
   notices: ['notices'] as const,
@@ -124,12 +125,17 @@ export function useDevMembers(enabled: boolean) {
 
 // ---------------- 번개 ----------------
 
-/** board: school(우리 학교) · all(연합) */
-export function useMeetups(scope: 'upcoming' | 'past', board: Board) {
+/** 지난 3교시·내 3교시를 한 번에 더 불러오는 개수 ('더 보기') */
+export const PAST_PAGE = 30
+export const MINE_PAGE = 100
+
+/** board: school(우리 학교) · all(연합). limit: 지난 3교시 개수 ('더 보기'로 늘린다) */
+export function useMeetups(scope: 'upcoming' | 'past', board: Board, limit = PAST_PAGE) {
   return useQuery({
-    queryKey: keys.meetups(scope, board),
-    queryFn: () => api<MeetupSummary[]>(`/api/meetups?scope=${scope}&board=${board}`),
+    queryKey: keys.meetups(scope, board, limit),
+    queryFn: () => api<MeetupSummary[]>(`/api/meetups?scope=${scope}&board=${board}&limit=${limit}`),
     refetchInterval: scope === 'upcoming' ? 60_000 : false,
+    placeholderData: (prev) => prev, // 더 보기를 누르는 동안 보던 목록을 그대로 둔다
   })
 }
 
@@ -141,8 +147,30 @@ export function useMeetup(id: number) {
   })
 }
 
-export function useMyMeetups() {
-  return useQuery({ queryKey: keys.myMeetups, queryFn: () => api<MeetupSummary[]>('/api/me/meetups') })
+/** 내가 열었거나 참여한 3교시. limit: 최근 것부터 ('더 보기'로 늘린다. 시간 겹침 검사는 기본 개수로 충분하다) */
+export function useMyMeetups(limit = MINE_PAGE) {
+  return useQuery({
+    queryKey: limit === MINE_PAGE ? keys.myMeetups : [...keys.myMeetups, limit],
+    queryFn: () => api<MeetupSummary[]>(`/api/me/meetups${limit === MINE_PAGE ? '' : `?limit=${limit}`}`),
+    placeholderData: (prev) => prev,
+  })
+}
+
+/** 빈자리를 기다리는 3교시 */
+export function useMyWaits() {
+  return useQuery({ queryKey: keys.myWaits, queryFn: () => api<MeetupSummary[]>('/api/me/waits') })
+}
+
+/** 연 사람 도구: 참여자 내보내기 · 연 사람 넘기기 (ref: 참여 번호) */
+export function useHostTool() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ref, kind }: { id: number; ref: number; kind: 'kick' | 'transfer' }) =>
+      kind === 'kick'
+        ? api<MeetupDetail>(`/api/meetups/${id}/participants/${ref}`, { method: 'DELETE' })
+        : api<MeetupDetail>(`/api/meetups/${id}/host`, { method: 'POST', body: { ref } }),
+    onSuccess: (d) => afterMeetupChange(qc, d),
+  })
 }
 
 function afterMeetupChange(qc: QueryClient, detail: MeetupDetail) {
@@ -152,6 +180,7 @@ function afterMeetupChange(qc: QueryClient, detail: MeetupDetail) {
   qc.invalidateQueries({ queryKey: keys.admin })
   qc.invalidateQueries({ queryKey: keys.places })
   qc.invalidateQueries({ queryKey: keys.mySettlements })
+  qc.invalidateQueries({ queryKey: keys.myWaits })
 }
 
 export function useCreateMeetup() {

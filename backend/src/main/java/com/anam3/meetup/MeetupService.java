@@ -47,6 +47,10 @@ public class MeetupService {
     /** 한 사람이 동시에 열어 둘 수 있는 (아직 모이기 전인) 3교시 수 */
     static final int MAX_OPEN_HOSTED = 10;
     private static final int LIST_LIMIT = 100;
+    /** 지난 3교시 기본 개수 */
+    private static final int PAST_LIMIT = 30;
+    /** '더 보기'로 늘려도 이만큼까지 */
+    private static final int MAX_LIST_LIMIT = 500;
     /** 최대 인원 상한 (MeetupCreateRequest 와 같다) */
     public static final int MAX_SEATS = 30;
     /** 장소 추천: 최근 이만큼 동안 열린 3교시에서, 이만큼까지 */
@@ -78,6 +82,7 @@ public class MeetupService {
     private final SettlementService settlements;
     private final NotificationService notifications;
     private final MeetupLeaveRepository leaves;
+    private final MeetupKickRepository kicks;
     private final Clock clock;
     /** 시간 겹침 검사 (app.meetup.overlap-check, 기본 켜짐) */
     private final boolean overlapCheck;
@@ -85,7 +90,7 @@ public class MeetupService {
     public MeetupService(MeetupRepository meetups, ParticipationRepository participations, MemberRepository members,
             MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, PushNotifier notifier,
             FeedbackService feedback, MeetupWaitRepository waits, SettlementService settlements,
-            NotificationService notifications, MeetupLeaveRepository leaves, Clock clock,
+            NotificationService notifications, MeetupLeaveRepository leaves, MeetupKickRepository kicks, Clock clock,
             @Value("${app.meetup.overlap-check:true}") boolean overlapCheck) {
         this.meetups = meetups;
         this.participations = participations;
@@ -99,6 +104,7 @@ public class MeetupService {
         this.settlements = settlements;
         this.notifications = notifications;
         this.leaves = leaves;
+        this.kicks = kicks;
         this.clock = clock;
         this.overlapCheck = overlapCheck;
     }
@@ -138,13 +144,19 @@ public class MeetupService {
      */
     @Transactional(readOnly = true)
     public List<MeetupSummary> list(LoginMember viewer, String scope, String board) {
+        return list(viewer, scope, board, PAST_LIMIT);
+    }
+
+    /** limit: 지난 3교시를 몇 개까지 (화면의 '더 보기'가 늘린다, 최대 MAX_LIST_LIMIT) */
+    @Transactional(readOnly = true)
+    public List<MeetupSummary> list(LoginMember viewer, String scope, String board, int limit) {
         Instant now = clock.instant();
         boolean federated = "all".equals(board);
         boolean allCohorts = viewer.isStaff();
         Set<Long> hidden = hiddenHostIds(viewer);
         List<Meetup> found = "past".equals(scope)
                 ? meetups.findPastConfirmed(now, federated, viewer.schoolId(), viewer.cohort(), allCohorts,
-                        PageRequest.of(0, 30))
+                        PageRequest.of(0, clampLimit(limit)))
                 : meetups.findUpcoming(now, federated, viewer.schoolId(), viewer.cohort(), allCohorts,
                         PageRequest.of(0, LIST_LIMIT)).stream()
                         .filter(m -> m.statusAt(now) != MeetupStatus.FAILED) // 무산된 3교시는 조용히 숨긴다
@@ -155,9 +167,86 @@ public class MeetupService {
     /** 내가 열었거나 참여한 3교시 (무산/취소 포함 — 본인에게만 보인다) */
     @Transactional(readOnly = true)
     public List<MeetupSummary> mine(LoginMember viewer) {
+        return mine(viewer, LIST_LIMIT);
+    }
+
+    /** limit: 최근 것부터 몇 개까지 (화면의 '더 보기'가 늘린다) */
+    @Transactional(readOnly = true)
+    public List<MeetupSummary> mine(LoginMember viewer, int limit) {
         Instant now = clock.instant();
-        List<Meetup> found = participations.findMeetupsOfMember(viewer.id(), PageRequest.of(0, LIST_LIMIT));
+        List<Meetup> found = participations.findMeetupsOfMember(viewer.id(), PageRequest.of(0, clampLimit(limit)));
         return found.stream().map(m -> mapper.toSummary(m, viewer, true, now)).toList();
+    }
+
+    /** 빈자리를 기다리는 3교시 (아직 모이기 전인 것, 가까운 것부터) */
+    @Transactional(readOnly = true)
+    public List<MeetupSummary> myWaits(LoginMember viewer) {
+        Instant now = clock.instant();
+        return waits.findOpenMeetupsOfMember(viewer.id(), now).stream()
+                .map(m -> mapper.toSummary(m, viewer, false, now))
+                .toList();
+    }
+
+    private static int clampLimit(int limit) {
+        return Math.max(1, Math.min(limit, MAX_LIST_LIMIT));
+    }
+
+    /**
+     * 내보내기: 연 사람 · 그 학교 교수 · 대학원장이, 모이기 전에.
+     * 내보낸 원우는 이 3교시에 다시 참여하거나 빈자리를 기다릴 수 없다. 내보낸 원우에게 알리고, 자리가 나면 기다리던 원우에게 알린다
+     */
+    public MeetupDetail kick(LoginMember viewer, Long id, Long ref) {
+        Instant now = clock.instant();
+        Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
+        if (!canModerate(meetup, viewer)) {
+            throw ApiException.forbidden("3교시를 연 사람만 내보낼 수 있어요");
+        }
+        if (meetup.isCanceled() || !now.isBefore(meetup.getMeetAt())) {
+            throw ApiException.badRequest("NOT_OPEN", "모이기 전에만 내보낼 수 있어요");
+        }
+        Participation participation = participations.findById(ref)
+                .filter(p -> p.getMeetup().getId().equals(id))
+                .orElseThrow(() -> ApiException.badRequest("NOT_JOINED", "참여 중인 원우가 아니에요"));
+        Long memberId = participation.getMember().getId();
+        if (meetup.isHostedBy(memberId)) {
+            throw ApiException.badRequest("HOST_CANNOT_LEAVE", "연 사람은 내보낼 수 없어요");
+        }
+        boolean fullBefore = meetup.isFull();
+        participations.delete(participation);
+        meetup.removeParticipant();
+        if (!kicks.existsByMeetupIdAndMemberId(id, memberId)) {
+            kicks.save(new MeetupKick(id, memberId, now));
+        }
+        waits.deleteOne(id, memberId);
+        notifier.kicked(meetup, memberId);
+        notifyIfSpotOpened(meetup, fullBefore, now);
+        return detail(viewer, id);
+    }
+
+    /**
+     * 연 사람 넘기기: 연 사람(·대학원장)이 참여자 중 한 명에게. 모이기 전에.
+     * 못 가게 된 연 사람이 3교시를 통째로 취소하지 않아도 되게. 원래 연 사람은 참여자로 남는다 (나가려면 마감 전에 나간다)
+     */
+    public MeetupDetail transferHost(LoginMember viewer, Long id, Long ref) {
+        Meetup meetup = meetups.findByIdForUpdate(id).orElseThrow(MeetupService::notFound);
+        if (!viewer.isOwner() && !meetup.isHostedBy(viewer.id())) {
+            throw ApiException.forbidden("3교시를 연 사람만 넘길 수 있어요");
+        }
+        checkOpen(meetup);
+        Participation participation = participations.findById(ref)
+                .filter(p -> p.getMeetup().getId().equals(id))
+                .orElseThrow(() -> ApiException.badRequest("NOT_JOINED", "참여 중인 원우에게만 넘길 수 있어요"));
+        Member next = participation.getMember();
+        if (meetup.isHostedBy(next.getId())) {
+            throw ApiException.badRequest("ALREADY_HOST", "이미 연 사람이에요");
+        }
+        if (!next.isActive()) {
+            throw ApiException.badRequest("NOT_ACTIVE", "지금은 이 원우에게 넘길 수 없어요");
+        }
+        Long before = meetup.getHost().getId();
+        meetup.changeHost(next, clock.instant());
+        notifier.hostChanged(meetup, before);
+        return detail(viewer, id);
     }
 
     /** 관리 화면: 대학원장은 모든 학교, 교수는 자기 학교 3교시 */
@@ -185,7 +274,8 @@ public class MeetupService {
             throw closedTo(meetup);
         }
         boolean blocked = !meetup.isHostedBy(viewer.id()) && !joined
-                && blockedWithAnyone(viewer.id(), people.stream().map(p -> p.getMember().getId()).toList());
+                && (blockedWithAnyone(viewer.id(), people.stream().map(p -> p.getMember().getId()).toList())
+                        || kicks.existsByMeetupIdAndMemberId(id, viewer.id()));
         Instant now = clock.instant();
         boolean manages = meetup.isHostedBy(viewer.id()) || viewer.isOwner();
         WaitInfo wait = new WaitInfo(!joined && waits.existsByMeetupIdAndMemberId(id, viewer.id()),
@@ -610,6 +700,9 @@ public class MeetupService {
         }
         if (meetup.isCanceled()) {
             throw ApiException.badRequest("CANCELED", "취소된 3교시예요");
+        }
+        if (kicks.existsByMeetupIdAndMemberId(meetup.getId(), viewer.id())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "KICKED", "연 사람이 내보낸 3교시라 다시 참여할 수 없어요");
         }
         // 연 사람이나 이미 참여한 원우와 차단한 사이면 (성사되면 서로 실명·단톡방이 보이니)
         if (blockedWithAnyone(viewer.id(), participations.findMemberIds(meetup.getId()))) {

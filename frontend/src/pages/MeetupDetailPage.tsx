@@ -8,6 +8,7 @@ import {
   CheckCheck,
   ChevronLeft,
   Copy,
+  Crown,
   EyeOff,
   Flag,
   Globe2,
@@ -20,6 +21,7 @@ import {
   Pencil,
   Share2,
   Trash2,
+  UserMinus,
   UserPlus,
   Users,
   Wallet,
@@ -29,6 +31,7 @@ import {
   type MeetupActionKind,
   useAddSeats,
   useDeleteMeetup,
+  useHostTool,
   useMeetup,
   useMeetupAction,
   useMyMeetups,
@@ -308,6 +311,7 @@ export function MeetupDetailPage() {
   const mine = useMyMeetups()
   const action = useMeetupAction()
   const removeMeetup = useDeleteMeetup()
+  const hostTool = useHostTool()
   const toast = useToast()
   const navigate = useNavigate()
   const now = useNow()
@@ -665,6 +669,7 @@ export function MeetupDetailPage() {
                 setReporting({
                   type: 'MEMBER',
                   id: p.ref,
+                  name: p.name,
                   label: `${p.name} · ${affiliation(p.cohortLabel, p.departmentLabel)} · ${p.school.shortName}`,
                   // 후기를 받는 동안의 사람 신고: '아쉬웠어요'라고 답했으면 서버가 "후기에서" 표시를 붙인다
                   fromFeedback: m.feedback !== null,
@@ -731,7 +736,77 @@ export function MeetupDetailPage() {
         </aside>
       </div>
 
-      {reporting && <ReportDialog key={`${reporting.type}-${reporting.id}`} target={reporting} onClose={() => setReporting(null)} />}
+      {reporting && (
+        <ReportDialog
+          key={`${reporting.type}-${reporting.id}`}
+          target={reporting}
+          onClose={() => setReporting(null)}
+          hostTools={
+            reporting.type === 'MEMBER' && (m.canCancel || (m.hosting && m.canEdit))
+              ? (close) => (
+                  <div className="flex gap-2">
+                    {m.canCancel && (
+                      <Button
+                        variant="secondary"
+                        className="flex-1"
+                        loading={hostTool.isPending}
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `${reporting.name ?? '이 원우'} 님을 내보낼까요?\n\n• 이 3교시에 다시 참여할 수 없어요\n• 내보냈다고 알림이 가요`,
+                            )
+                          )
+                            return
+                          hostTool.mutate(
+                            { id: m.id, ref: reporting.id, kind: 'kick' },
+                            {
+                              onSuccess: () => {
+                                toast.show('내보냈어요', 'ok')
+                                close()
+                              },
+                              onError: (e) => toast.show(e.message, 'error'),
+                            },
+                          )
+                        }}
+                      >
+                        <UserMinus className="size-4" aria-hidden />
+                        내보내기
+                      </Button>
+                    )}
+                    {m.hosting && m.canEdit && (
+                      <Button
+                        variant="secondary"
+                        className="flex-1"
+                        loading={hostTool.isPending}
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `${reporting.name ?? '이 원우'} 님에게 연 사람을 넘길까요?\n\n• 넘겨받은 원우가 수정·취소·확정을 맡아요\n• 나는 참여자로 남아요`,
+                            )
+                          )
+                            return
+                          hostTool.mutate(
+                            { id: m.id, ref: reporting.id, kind: 'transfer' },
+                            {
+                              onSuccess: () => {
+                                toast.show('연 사람을 넘겼어요', 'ok')
+                                close()
+                              },
+                              onError: (e) => toast.show(e.message, 'error'),
+                            },
+                          )
+                        }}
+                      >
+                        <Crown className="size-4" aria-hidden />
+                        연 사람 넘기기
+                      </Button>
+                    )}
+                  </div>
+                )
+              : undefined
+          }
+        />
+      )}
 
       {/* 모바일: 하단 고정 행동 바 (상세에서는 하단 메뉴 대신 이것만) */}
       {hasActions && (

@@ -346,6 +346,12 @@ public class Meetup {
         return id;
     }
 
+    /** 연 사람 넘기기: 참여자 중 한 명이 연 사람이 된다 (원래 연 사람은 참여자로 남는다) */
+    public void changeHost(Member next, Instant now) {
+        this.host = next;
+        this.updatedAt = now;
+    }
+
     public Member getHost() {
         return host;
     }

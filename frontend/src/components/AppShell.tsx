@@ -11,6 +11,7 @@ import { ByCompany } from './MadeBy'
 import { RoleTag } from './PersonName'
 import { SchoolBadge } from './SchoolBadge'
 import { buttonClass } from './styles'
+import { PullToRefresh } from './PullToRefresh'
 
 interface NavItem {
   to: string
@@ -170,6 +171,8 @@ export function AppShell() {
 
       {/* 앱을 열면 어제(최근) 성사된 3교시 후기를 한 번 묻는다 */}
       <FeedbackPrompter />
+      {/* 앱: 맨 위에서 당기면 새로 불러온다 */}
+      <PullToRefresh />
 
       {/* 모바일: 하단 메뉴 5칸 — 3교시 · 내 3교시 · (열기) · 공지 · 내 정보 */}
       {!detail && !writing && (

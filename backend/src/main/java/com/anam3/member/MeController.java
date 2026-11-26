@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -46,9 +47,17 @@ public class MeController {
         return authService.me(me);
     }
 
+    /** limit: 최근 것부터 몇 개까지 (기본 100, 화면의 '더 보기'가 늘린다) */
     @GetMapping("/meetups")
-    public List<MeetupSummary> myMeetups(@AuthenticationPrincipal LoginMember me) {
-        return meetupService.mine(me);
+    public List<MeetupSummary> myMeetups(@AuthenticationPrincipal LoginMember me,
+            @RequestParam(defaultValue = "100") int limit) {
+        return meetupService.mine(me, limit);
+    }
+
+    /** 빈자리를 기다리는 3교시 (아직 모이기 전인 것) */
+    @GetMapping("/waits")
+    public List<MeetupSummary> myWaits(@AuthenticationPrincipal LoginMember me) {
+        return meetupService.myWaits(me);
     }
 
     /** 내 정보 고치기 (AccountService.updateProfile 참고) */

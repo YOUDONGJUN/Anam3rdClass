@@ -3,11 +3,15 @@ package com.anam3.meetup;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -50,6 +54,13 @@ public class MeetupService {
      */
     static final Duration LEAVE_WINDOW = Duration.ofDays(30);
     static final int LEAVE_LIMIT = 3;
+    /**
+     * 내가 열었거나 참여한 3교시끼리는 모임 시간이 이만큼 떨어져 있어야 한다 — 같은 시간대에 두 곳을 잡아
+     * 한쪽 자리를 비우지 않게 (19시 1차 · 21시 2차처럼 나눠 여는 것은 된다). 취소·무산된 3교시는 세지 않는다
+     */
+    static final Duration OVERLAP = Duration.ofHours(2);
+    private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("M/d(E) HH:mm", Locale.KOREAN)
+            .withZone(ZoneId.of("Asia/Seoul"));
 
     private final MeetupRepository meetups;
     private final ParticipationRepository participations;
@@ -64,11 +75,14 @@ public class MeetupService {
     private final NotificationService notifications;
     private final MeetupLeaveRepository leaves;
     private final Clock clock;
+    /** 시간 겹침 검사 (app.meetup.overlap-check, 기본 켜짐) */
+    private final boolean overlapCheck;
 
     public MeetupService(MeetupRepository meetups, ParticipationRepository participations, MemberRepository members,
             MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, PushNotifier notifier,
             FeedbackService feedback, MeetupWaitRepository waits, SettlementService settlements,
-            NotificationService notifications, MeetupLeaveRepository leaves, Clock clock) {
+            NotificationService notifications, MeetupLeaveRepository leaves, Clock clock,
+            @Value("${app.meetup.overlap-check:true}") boolean overlapCheck) {
         this.meetups = meetups;
         this.participations = participations;
         this.members = members;
@@ -82,11 +96,13 @@ public class MeetupService {
         this.notifications = notifications;
         this.leaves = leaves;
         this.clock = clock;
+        this.overlapCheck = overlapCheck;
     }
 
     public MeetupDetail create(LoginMember viewer, MeetupCreateRequest req) {
         Instant now = clock.instant();
         checkTimes(req.meetAt(), req.deadlineAt(), now);
+        checkOverlap(viewer.id(), req.meetAt(), null, now);
         if (req.minPeople() != null && req.maxPeople() != null && req.maxPeople() < req.minPeople()) {
             throw ApiException.badRequest("INVALID_PEOPLE", "최대 인원은 최소 인원보다 같거나 많아야 해요");
         }
@@ -184,6 +200,9 @@ public class MeetupService {
         boolean reachedBefore = meetup.isReached();
         boolean fullBefore = meetup.isFull();
         if (req.schedule() != null) {
+            if (!req.schedule().meetAt().equals(meetAtBefore)) {
+                checkOverlap(meetup.getHost().getId(), req.schedule().meetAt(), id, now); // 연 사람의 다른 3교시와
+            }
             changeSchedule(meetup, req.schedule(), now);
         }
         if (req.audience() != null && req.audience() != meetup.audience()) {
@@ -246,6 +265,7 @@ public class MeetupService {
         if (!meetup.isFull()) {
             throw ApiException.badRequest("NOT_FULL", "자리가 있어요. 바로 참여해 주세요");
         }
+        checkOverlap(viewer.id(), meetup.getMeetAt(), id, now); // 자리가 나도 못 탈 3교시는 기다리지 않게
         if (!waits.existsByMeetupIdAndMemberId(id, viewer.id())) {
             waits.save(new MeetupWait(meetup, members.getReferenceById(viewer.id()), now));
         }
@@ -293,6 +313,25 @@ public class MeetupService {
         if (fee == null && Boolean.TRUE.equals(feePrepaid)) {
             throw ApiException.badRequest("INVALID_FEE", "선입금은 참여비가 있을 때만 고를 수 있어요");
         }
+    }
+
+    /**
+     * 이 원우가 열었거나 참여한 3교시 중 모임 시간이 앞뒤 OVERLAP 안인 것이 있으면 막는다 (취소·무산 제외).
+     * exceptId: 지금 고치거나 참여하려는 3교시 자신
+     */
+    private void checkOverlap(Long memberId, Instant meetAt, Long exceptId, Instant now) {
+        if (!overlapCheck) {
+            return;
+        }
+        participations.findNearby(memberId, meetAt.minus(OVERLAP), meetAt.plus(OVERLAP),
+                exceptId == null ? 0L : exceptId).stream()
+                .filter(m -> m.statusAt(now) != MeetupStatus.FAILED)
+                .findFirst()
+                .ifPresent(m -> {
+                    throw ApiException.conflict("TIME_OVERLAP", "앞뒤 " + OVERLAP.toHours() + "시간 안에 이미 "
+                            + (m.isHostedBy(memberId) ? "연" : "참여한") + " 3교시가 있어요: '" + m.getTitle() + "' "
+                            + WHEN.format(m.getMeetAt()));
+                });
     }
 
     /** 시간 바꾸기. 그대로면 검사하지 않는다 (마감이 지난 성사 3교시도 제목·장소는 고칠 수 있게) */
@@ -403,6 +442,10 @@ public class MeetupService {
             throw ApiException.badRequest("TOO_FEW", "나 말고 한 명은 더 있어야 확정할 수 있어요");
         }
         boolean revived = meetup.statusAt(now) == MeetupStatus.FAILED;
+        if (revived) {
+            // 무산된 3교시는 겹침에서 빠져 있었다 — 되살리기 전에 그사이 잡은 연 사람의 다른 3교시와 겹치는지 본다
+            checkOverlap(meetup.getHost().getId(), meetup.getMeetAt(), id, now);
+        }
         meetup.confirmWithCurrent(now);
         notifier.confirmedByHost(meetup, viewer.id(), revived);
         return detail(viewer, id);
@@ -418,6 +461,7 @@ public class MeetupService {
         if (!meetup.isJoinableAt(now)) {
             throw ApiException.badRequest("FULL", "정원이 다 찼어요. 자리 나면 알림을 신청해 보세요");
         }
+        checkOverlap(viewer.id(), meetup.getMeetAt(), id, now);
         boolean reachedBefore = meetup.isReached();
         if (reachedBefore && leaves.countSince(viewer.id(), now.minus(LEAVE_WINDOW)) >= LEAVE_LIMIT) {
             throw new ApiException(HttpStatus.FORBIDDEN, "LEAVE_LIMIT",

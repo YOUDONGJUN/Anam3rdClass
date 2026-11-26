@@ -3,6 +3,7 @@
 // 여러 종류를 고르면 환승역 표지판처럼 노선 배지가 나란히 붙는다.
 import { Beer, Coffee, GlassWater, Martini, Milk, Sparkles, Wine, type LucideIcon } from 'lucide-react'
 import type { MeetupAudience, MeetupCategory, MeetupStatus, MeetupSummary } from '../api/types'
+import { formatDateTime } from './time'
 
 export interface CategoryMeta {
   label: string
@@ -73,6 +74,33 @@ export function addPurposes(current: readonly string[], typed: string): string[]
     next.push(tag)
   }
   return next
+}
+
+/**
+ * 내가 열었거나 참여한 3교시끼리는 모임 시간이 이만큼 떨어져야 한다 (서버 MeetupService.OVERLAP).
+ * 같은 시간대에 두 곳을 잡아 한쪽 자리를 비우지 않게. 19시 1차 · 21시 2차는 된다
+ */
+export const OVERLAP_HOURS = 2
+
+type MineForOverlap = Pick<MeetupSummary, 'id' | 'title' | 'meetAt' | 'status' | 'hosting'>
+
+/** 모임 시간이 앞뒤 2시간 안인 내 3교시 (취소·무산 제외, exceptId 는 뺀다). 가장 이른 것 하나, 없으면 null */
+export function findOverlap<T extends MineForOverlap>(
+  mine: readonly T[],
+  meetAt: Date,
+  exceptId?: number | null,
+): T | null {
+  const limit = OVERLAP_HOURS * 3_600_000
+  const near = mine
+    .filter((m) => m.id !== exceptId && m.status !== 'CANCELED' && m.status !== 'FAILED')
+    .filter((m) => Math.abs(new Date(m.meetAt).getTime() - meetAt.getTime()) < limit)
+    .sort((a, b) => new Date(a.meetAt).getTime() - new Date(b.meetAt).getTime())
+  return near[0] ?? null
+}
+
+/** "앞뒤 2시간 안에 이미 참여한 3교시가 있어요: '치맥 번개' 오늘 21:00" */
+export function overlapMessage(m: MineForOverlap, now: Date = new Date()): string {
+  return `앞뒤 ${OVERLAP_HOURS}시간 안에 이미 ${m.hosting ? '연' : '참여한'} 3교시가 있어요: '${m.title}' ${formatDateTime(m.meetAt, now)}`
 }
 
 export type Tone = 'accent' | 'ok' | 'muted' | 'danger'

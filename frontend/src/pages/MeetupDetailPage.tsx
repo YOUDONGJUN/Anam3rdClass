@@ -25,11 +25,19 @@ import {
   Wallet,
 } from 'lucide-react'
 import { ApiError } from '../api/client'
-import { type MeetupActionKind, useAddSeats, useDeleteMeetup, useMeetup, useMeetupAction } from '../api/queries'
+import {
+  type MeetupActionKind,
+  useAddSeats,
+  useDeleteMeetup,
+  useMeetup,
+  useMeetupAction,
+  useMyMeetups,
+} from '../api/queries'
 import type { MeetupDetail } from '../api/types'
 import { CategoryBadges } from '../components/CategoryBadge'
 import { FeedbackCard } from '../components/FeedbackCard'
 import { MeetupOptionTags } from '../components/MeetupOptionTags'
+import { OverlapNote } from '../components/OverlapNote'
 import { AudienceBadge } from '../components/CohortBadge'
 import { ParticipantRoute } from '../components/LineGauge'
 import { PersonName } from '../components/PersonName'
@@ -45,6 +53,7 @@ import { downloadIcs, googleCalendarUrl, type CalendarEvent } from '../lib/calen
 import { MAP_PROVIDERS } from '../lib/map'
 import {
   CATEGORY,
+  findOverlap,
   headcount,
   hiddenNamesNote,
   isLive,
@@ -282,6 +291,7 @@ async function share(m: MeetupDetail, onCopied: () => void) {
 export function MeetupDetailPage() {
   const id = Number(useParams().id)
   const { data: m, isPending, error, refetch } = useMeetup(id)
+  const mine = useMyMeetups()
   const action = useMeetupAction()
   const removeMeetup = useDeleteMeetup()
   const toast = useToast()
@@ -323,6 +333,9 @@ export function MeetupDetailPage() {
   const canReopen = m.joined && !live && !m.canConfirm
   /** 무산된 3교시를 되살리는 확정인지 */
   const reviving = m.status === 'FAILED'
+  /** 참여(·빈자리 대기)하려는데 내 다른 3교시와 시간이 겹친다 — 누르기 전에 까닭을 보여 준다 */
+  const clash =
+    m.canJoin || (m.canWait && !m.waiting) ? findOverlap(mine.data ?? [], new Date(m.meetAt), m.id) : null
 
   function remove() {
     if (!window.confirm('3교시를 지울까요?\n\n• 목록과 기록에서 아예 사라져요\n• 참여자 기록도 함께 지워져요\n• 되돌릴 수 없어요')) return
@@ -379,8 +392,9 @@ export function MeetupDetailPage() {
 
   const actions = (
     <div className="flex flex-col gap-2.5">
+      {clash && <OverlapNote meetup={clash} now={now} link />}
       {m.canJoin && (
-        <Button size="lg" loading={action.isPending} onClick={() => run('join')} className="w-full">
+        <Button size="lg" loading={action.isPending} disabled={Boolean(clash)} onClick={() => run('join')} className="w-full">
           나도 콜
         </Button>
       )}
@@ -391,7 +405,7 @@ export function MeetupDetailPage() {
             빈자리 알림 대기 중 · 끄기
           </Button>
         ) : (
-          <Button size="lg" loading={action.isPending} onClick={() => run('wait')} className="w-full">
+          <Button size="lg" loading={action.isPending} disabled={Boolean(clash)} onClick={() => run('wait')} className="w-full">
             <Bell className="size-5" aria-hidden />
             자리 나면 알림 받기
           </Button>
@@ -433,7 +447,7 @@ export function MeetupDetailPage() {
   const time = formatTime(m.meetAt)
 
   return (
-    <div className={hasActions ? 'pb-40 lg:pb-0' : 'lg:pb-0'}>
+    <div className={hasActions ? `${clash ? 'pb-56' : 'pb-40'} lg:pb-0` : 'lg:pb-0'}>
       {/* 모바일: 머리의 안내판이 이어지고, 승차권이 그 위로 겹쳐 올라온다 */}
       <div className="-mx-4 -mt-6 bg-board px-2 pt-2 pb-24 sm:-mx-6 sm:px-4 lg:mx-0 lg:mt-0 lg:bg-transparent lg:p-0 lg:pb-4">
         <button

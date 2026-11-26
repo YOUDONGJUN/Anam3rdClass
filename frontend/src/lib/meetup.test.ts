@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   addPurposes,
   categoryLabel,
+  findOverlap,
   fitPeople,
   headcount,
   hiddenNamesNote,
   isReachedWith,
   joinedLabel,
+  overlapMessage,
   peopleError,
   peopleRule,
   seatsCaption,
@@ -171,5 +173,31 @@ describe('모임 목적 직접 쓰기', () => {
   it('3개까지만, 하나에 12자까지만', () => {
     expect(addPurposes(['a', 'b', 'c'], 'd')).toEqual(['a', 'b', 'c'])
     expect(addPurposes([], '열세글자가넘는아주긴모임목적')[0]).toHaveLength(12)
+  })
+})
+
+describe('시간 겹침 (앞뒤 2시간)', () => {
+  // 한국 시간 3월 2일 21:00 = 12:00Z
+  const mine = [
+    { id: 1, title: '치맥 번개', meetAt: '2026-03-02T12:00:00Z', status: 'CONFIRMED' as const, hosting: false },
+    { id: 2, title: '취소된 번개', meetAt: '2026-03-02T13:00:00Z', status: 'CANCELED' as const, hosting: true },
+    { id: 3, title: '무산된 번개', meetAt: '2026-03-02T13:00:00Z', status: 'FAILED' as const, hosting: true },
+  ]
+  const at = (iso: string) => new Date(iso)
+
+  it('2시간 안이면 겹치고, 딱 2시간 떨어지면 된다', () => {
+    expect(findOverlap(mine, at('2026-03-02T13:30:00Z'))?.id).toBe(1) // 22:30
+    expect(findOverlap(mine, at('2026-03-02T10:30:00Z'))?.id).toBe(1) // 19:30
+    expect(findOverlap(mine, at('2026-03-02T14:00:00Z'))).toBeNull() // 23:00
+    expect(findOverlap(mine, at('2026-03-02T10:00:00Z'))).toBeNull() // 19:00
+  })
+  it('취소·무산된 3교시와 고치는 3교시 자신은 세지 않는다', () => {
+    expect(findOverlap(mine.slice(1), at('2026-03-02T13:00:00Z'))).toBeNull()
+    expect(findOverlap(mine, at('2026-03-02T12:30:00Z'), 1)).toBeNull()
+  })
+  it('무엇과 겹치는지 알려 준다', () => {
+    const now = new Date('2026-03-02T09:00:00Z')
+    expect(overlapMessage(mine[0], now)).toBe("앞뒤 2시간 안에 이미 참여한 3교시가 있어요: '치맥 번개' 오늘 21:00")
+    expect(overlapMessage({ ...mine[0], hosting: true }, now)).toContain('이미 연 3교시')
   })
 })

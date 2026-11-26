@@ -21,7 +21,7 @@ import { useAuth } from '../auth/AuthContext'
 import { LineGauge } from '../components/LineGauge'
 import { OverlapNote } from '../components/OverlapNote'
 import { Button, ErrorState, Field, FormError, Spinner } from '../components/ui'
-import { cardClass, inputClass } from '../components/styles'
+import { buttonClass, cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import {
   addPurposes,
@@ -45,6 +45,7 @@ import {
   type PeopleValues,
 } from '../lib/meetup'
 import { confirmLeave, readDraft, useLeaveGuard, writeDraft } from '../lib/leaveGuard'
+import { MAP_PROVIDERS } from '../lib/map'
 import { mergePlaces } from '../lib/places'
 import { placePresets } from '../lib/schools'
 import { ceilTo10Minutes, formatDateTime, formatLeadTime, fromKstInputValue, kstAt, toKstInputValue } from '../lib/time'
@@ -583,7 +584,7 @@ function MeetupForm({
       <div data-field="place">
         <Field
           label="어디서"
-          hint={popular.data && popular.data.length > 0 ? '우리 학교에서 자주 모인 곳부터 보여요' : '가게 이름을 그대로 적어도 돼요'}
+          hint="장소 이름을 입력하면 카카오맵·네이버지도에서 검색할 수 있어요"
           error={errorField === 'place' ? error : null}
         >
           {({ id, describedBy, invalid }) => (
@@ -602,6 +603,21 @@ function MeetupForm({
                 value={v.place}
                 onChange={(e) => set('place', e.target.value)}
               />
+              {v.place.trim() && (
+                <div className="flex flex-wrap gap-2">
+                  {MAP_PROVIDERS.map((provider) => (
+                    <a
+                      key={provider.label}
+                      href={provider.url(v.place)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={buttonClass('secondary', 'sm')}
+                    >
+                      {provider.label}에서 검색
+                    </a>
+                  ))}
+                </div>
+              )}
               <datalist id={placeListId}>
                 {places.map((p) => (
                   <option key={p} value={p} />

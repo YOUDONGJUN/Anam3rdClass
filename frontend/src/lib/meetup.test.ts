@@ -8,6 +8,8 @@ import {
   hiddenNamesNote,
   isReachedWith,
   joinedLabel,
+  lateJoinConfirm,
+  openChatError,
   overlapMessage,
   peopleError,
   peopleRule,
@@ -199,5 +201,21 @@ describe('시간 겹침 (앞뒤 2시간)', () => {
     const now = new Date('2026-03-02T09:00:00Z')
     expect(overlapMessage(mine[0], now)).toBe("앞뒤 2시간 안에 이미 참여한 3교시가 있어요: '치맥 번개' 오늘 21:00")
     expect(overlapMessage({ ...mine[0], hosting: true }, now)).toContain('이미 연 3교시')
+  })
+})
+
+describe('되돌릴 수 없는 참여 · 단톡방 링크', () => {
+  it('마감이 지난 3교시에 참여할 때만 확인받는다', () => {
+    const now = new Date('2026-03-02T12:00:00Z')
+    expect(lateJoinConfirm({ deadlineAt: '2026-03-02T12:30:00Z' }, now)).toBeNull()
+    expect(lateJoinConfirm({ deadlineAt: '2026-03-02T11:00:00Z' }, now)).toContain('취소할 수 없어요')
+  })
+
+  it('단톡방 링크는 카카오톡 오픈채팅 주소만 받는다', () => {
+    expect(openChatError('')).toBeNull()
+    expect(openChatError('https://open.kakao.com/o/abc123')).toBeNull()
+    expect(openChatError('https://open-kakao.phish.example/o/abc')).not.toBeNull()
+    expect(openChatError('https://open.kakao.com.evil.example/o/abc')).not.toBeNull()
+    expect(openChatError('http://open.kakao.com/o/abc')).not.toBeNull()
   })
 })

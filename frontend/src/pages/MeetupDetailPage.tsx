@@ -57,6 +57,7 @@ import {
   headcount,
   hiddenNamesNote,
   isLive,
+  lateJoinConfirm,
   seatsCaption,
   seatsToAdd,
   showsLateJoin,
@@ -338,7 +339,8 @@ export function MeetupDetailPage() {
     m.canJoin || (m.canWait && !m.waiting) ? findOverlap(mine.data ?? [], new Date(m.meetAt), m.id) : null
 
   function remove() {
-    if (!window.confirm('3교시를 지울까요?\n\n• 목록과 기록에서 아예 사라져요\n• 참여자 기록도 함께 지워져요\n• 되돌릴 수 없어요')) return
+    const others = (m?.participantCount ?? 0) > 1 ? '\n• 참여자의 참여·정산·후기 기록도 함께 지워져요' : ''
+    if (!window.confirm(`3교시를 지울까요?\n\n• 목록과 기록에서 아예 사라져요${others}\n• 되돌릴 수 없어요`)) return
     removeMeetup.mutate(id, {
       onSuccess: () => {
         toast.show('3교시를 지웠어요', 'ok')
@@ -351,6 +353,9 @@ export function MeetupDetailPage() {
   function run(kind: MeetupActionKind) {
     if (kind === 'cancel' && !window.confirm('3교시를 취소할까요? 참여자들에게는 "취소됨"으로 보여요.')) return
     if (kind === 'leave' && !window.confirm('참여를 취소할까요?')) return
+    // 마감 뒤(중간 합류) 참여는 되돌릴 수 없어서 한 번 더 묻는다
+    const lateWarn = kind === 'join' && m ? lateJoinConfirm(m) : null
+    if (lateWarn && !window.confirm(lateWarn)) return
     const count = m?.participantCount ?? 0
     if (
       kind === 'confirm' &&

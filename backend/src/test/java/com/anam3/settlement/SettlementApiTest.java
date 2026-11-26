@@ -315,7 +315,9 @@ class SettlementApiTest extends ApiTestSupport {
         assertThat(jdbc.queryForObject("select toss_id from members where id = ?", String.class, anamId))
                 .isNull();
 
-        delete("/api/meetups/" + meetupId, host).andExpect(status().isNoContent());
+        // 연 사람은 모였던 3교시를 지울 수 없다 (남의 정산이 사라지니) · 대학원장은 지울 수 있고 정산도 함께 지운다
+        delete("/api/meetups/" + meetupId, host).andExpect(jsonPath("$.code").value("DELETE_LOCKED"));
+        delete("/api/meetups/" + meetupId, ownerToken()).andExpect(status().isNoContent());
         assertThat(jdbc.queryForObject("select count(*) from settlements", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from settlement_shares", Integer.class)).isZero();
     }

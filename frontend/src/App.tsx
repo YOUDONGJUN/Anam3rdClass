@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router'
+import { type ReactNode, useLayoutEffect } from 'react'
+import { Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router'
 import { useAuth } from './auth/AuthContext'
 import { AppShell } from './components/AppShell'
 import { Spinner } from './components/ui'
@@ -54,69 +54,85 @@ function RequireStaff({ children }: { children: ReactNode }) {
   return children
 }
 
+/**
+ * 다른 화면으로 가면 맨 위부터 보여 준다. 뒤로·앞으로(POP)는 브라우저가 보던 자리로 돌려 놓게 둔다.
+ * 같은 화면 안에서 주소의 ?tab= 만 바뀔 때는 그대로 둔다
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  const type = useNavigationType()
+  useLayoutEffect(() => {
+    if (type !== 'POP') window.scrollTo(0, 0)
+  }, [pathname, type])
+  return null
+}
+
 export function App() {
   return (
-    <Routes>
-      <Route
-        path="/welcome"
-        element={
-          <GuestOnly>
-            <WelcomePage />
-          </GuestOnly>
-        }
-      />
-      {/* 약관은 로그인 없이도 본다 (가입 화면에서 연다) */}
-      <Route path="/terms" element={<TermsPage />} />
-      <Route path="/privacy" element={<PrivacyPage />} />
-      {/* 카카오가 돌려보내는 곳 — 로그인 처리 중이라 GuestOnly 로 감싸지 않는다 */}
-      <Route path="/auth/kakao/callback" element={<KakaoCallbackPage />} />
-      <Route
-        path="/signup"
-        element={
-          <GuestOnly>
-            <SignupPage />
-          </GuestOnly>
-        }
-      />
-      <Route
-        path="/login/email"
-        element={
-          <GuestOnly>
-            <EmailLoginPage />
-          </GuestOnly>
-        }
-      />
-      {/* 비밀번호 찾기(로그아웃 상태) · 비밀번호 만들기(내 정보에서, 로그인한 채로) 둘 다 여기 */}
-      <Route path="/password" element={<PasswordPage />} />
-      <Route
-        element={
-          <RequireAuth>
-            <AppShell />
-          </RequireAuth>
-        }
-      >
-        <Route index element={<FeedPage />} />
-        <Route path="meetups/new" element={<MeetupCreatePage />} />
-        <Route path="meetups/:id" element={<MeetupDetailPage />} />
-        <Route path="meetups/:id/edit" element={<MeetupEditPage />} />
-        <Route path="notices" element={<NoticesPage />} />
-        <Route path="notices/new" element={<NoticeCreatePage />} />
-        <Route path="notices/:id" element={<NoticeDetailPage />} />
-        <Route path="notices/:id/edit" element={<NoticeEditPage />} />
-        <Route path="my-meetups" element={<MyMeetupsPage />} />
-        <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="ranking" element={<RankingPage />} />
-        <Route path="me" element={<MyPage />} />
+    <>
+      <ScrollToTop />
+      <Routes>
         <Route
-          path="admin"
+          path="/welcome"
           element={
-            <RequireStaff>
-              <AdminPage />
-            </RequireStaff>
+            <GuestOnly>
+              <WelcomePage />
+            </GuestOnly>
           }
         />
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
+        {/* 약관은 로그인 없이도 본다 (가입 화면에서 연다) */}
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        {/* 카카오가 돌려보내는 곳 — 로그인 처리 중이라 GuestOnly 로 감싸지 않는다 */}
+        <Route path="/auth/kakao/callback" element={<KakaoCallbackPage />} />
+        <Route
+          path="/signup"
+          element={
+            <GuestOnly>
+              <SignupPage />
+            </GuestOnly>
+          }
+        />
+        <Route
+          path="/login/email"
+          element={
+            <GuestOnly>
+              <EmailLoginPage />
+            </GuestOnly>
+          }
+        />
+        {/* 비밀번호 찾기(로그아웃 상태) · 비밀번호 만들기(내 정보에서, 로그인한 채로) 둘 다 여기 */}
+        <Route path="/password" element={<PasswordPage />} />
+        <Route
+          element={
+            <RequireAuth>
+              <AppShell />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<FeedPage />} />
+          <Route path="meetups/new" element={<MeetupCreatePage />} />
+          <Route path="meetups/:id" element={<MeetupDetailPage />} />
+          <Route path="meetups/:id/edit" element={<MeetupEditPage />} />
+          <Route path="notices" element={<NoticesPage />} />
+          <Route path="notices/new" element={<NoticeCreatePage />} />
+          <Route path="notices/:id" element={<NoticeDetailPage />} />
+          <Route path="notices/:id/edit" element={<NoticeEditPage />} />
+          <Route path="my-meetups" element={<MyMeetupsPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="ranking" element={<RankingPage />} />
+          <Route path="me" element={<MyPage />} />
+          <Route
+            path="admin"
+            element={
+              <RequireStaff>
+                <AdminPage />
+              </RequireStaff>
+            }
+          />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </>
   )
 }

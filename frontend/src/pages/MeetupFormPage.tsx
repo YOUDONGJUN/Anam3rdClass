@@ -32,6 +32,7 @@ import {
   isReachedWith,
   type JoinedState,
   MAX_PURPOSES,
+  openChatError,
   optionsSummary,
   PURPOSE_MAX_LENGTH,
   PURPOSE_PRESETS,
@@ -420,6 +421,11 @@ function MeetupForm({
       setShowOptions(true)
       return fail('참여비는 1,000원 ~ 100만 원으로 적어 주세요', 'fee')
     }
+    const chatProblem = openChatError(v.openChatUrl)
+    if (chatProblem) {
+      setShowOptions(true)
+      return fail(chatProblem, 'openChat')
+    }
 
     try {
       if (editing && initial.id) {
@@ -779,24 +785,27 @@ function MeetupForm({
               )}
             </Field>
 
-            <Field
-              label="카카오톡 오픈채팅 링크"
-              optional
-              hint="성사되면 참여자에게만 보여요 · 나중에 넣어도 돼요"
-            >
-              {({ id, describedBy }) => (
-                <input
-                  id={id}
-                  type="url"
-                  inputMode="url"
-                  aria-describedby={describedBy}
-                  className={inputClass}
-                  placeholder="https://open.kakao.com/o/…"
-                  value={v.openChatUrl}
-                  onChange={(e) => set('openChatUrl', e.target.value.trim())}
-                />
-              )}
-            </Field>
+            <div data-field="openChat">
+              <Field
+                label="카카오톡 오픈채팅 링크"
+                optional
+                hint="성사되면 참여자에게만 보여요 · 나중에 넣어도 돼요"
+                error={errorField === 'openChat' ? error : null}
+              >
+                {({ id, describedBy }) => (
+                  <input
+                    id={id}
+                    type="url"
+                    inputMode="url"
+                    aria-describedby={describedBy}
+                    className={inputClass}
+                    placeholder="https://open.kakao.com/o/…"
+                    value={v.openChatUrl}
+                    onChange={(e) => set('openChatUrl', e.target.value.trim())}
+                  />
+                )}
+              </Field>
+            </div>
           </div>
         </>
       )}
@@ -816,7 +825,7 @@ function MeetupForm({
   )
 }
 
-type ErrorField = 'title' | 'categories' | 'time' | 'place' | 'people' | 'fee'
+type ErrorField = 'title' | 'categories' | 'time' | 'place' | 'people' | 'fee' | 'openChat'
 
 /** 칸 바로 아래의 오류 한 줄 */
 function FieldAlert({ message }: { message: string | null }) {

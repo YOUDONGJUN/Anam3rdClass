@@ -4,7 +4,7 @@ import { Check, MapPin } from 'lucide-react'
 import type { MeetupSummary } from '../api/types'
 import { useMeetupAction } from '../api/queries'
 import { formatDayLabel, formatRemaining, formatTime } from '../lib/time'
-import { isLive, joinedLabel, seatsCaption } from '../lib/meetup'
+import { isLive, joinedLabel, lateJoinConfirm, seatsCaption } from '../lib/meetup'
 import { CategoryBadges } from './CategoryBadge'
 import { AudienceBadge } from './CohortBadge'
 import { LineGauge } from './LineGauge'
@@ -23,7 +23,10 @@ export function QuickJoin({ meetup, block = false }: { meetup: MeetupSummary; bl
       size={block ? 'lg' : 'sm'}
       className={`relative z-10 ${block ? 'w-full' : ''}`}
       loading={action.isPending}
-      onClick={() =>
+      onClick={() => {
+        // 마감 뒤(중간 합류) 참여는 되돌릴 수 없어서 한 번 더 묻는다
+        const warn = lateJoinConfirm(meetup)
+        if (warn && !window.confirm(warn)) return
         action.mutate(
           { id: meetup.id, action: 'join' },
           {
@@ -39,7 +42,7 @@ export function QuickJoin({ meetup, block = false }: { meetup: MeetupSummary; bl
             onError: (e) => toast.show(e.message, 'error'),
           },
         )
-      }
+      }}
     >
       나도 콜
     </Button>

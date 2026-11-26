@@ -233,8 +233,8 @@ class FeedbackApiTest extends ApiTestSupport {
         get("/api/admin/feedback-stats", owner).andExpect(jsonPath("$.total.meetups").value(3));
         get("/api/admin/feedback-stats?days=0", owner).andExpect(status().isBadRequest());
 
-        // 후기가 남은 3교시도 지울 수 있다
-        delete("/api/meetups/" + failed, host).andExpect(status().isNoContent());
+        // 후기가 남은 3교시도 지울 수 있다 (지난 3교시는 대학원장·교수만)
+        delete("/api/meetups/" + failed, owner).andExpect(status().isNoContent());
         delete("/api/meetups/" + ku, owner).andExpect(status().isNoContent());
     }
 }

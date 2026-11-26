@@ -1,4 +1,4 @@
-import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { CircleAlert, LoaderCircle, RefreshCw } from 'lucide-react'
 import { buttonClass, type ButtonSize, type ButtonVariant } from './styles'
 import { tabKeys } from '../lib/tabKeys'
@@ -106,13 +106,25 @@ interface SegmentedProps<T extends string> {
 }
 
 export function Segmented<T extends string>({ value, onChange, options, label }: SegmentedProps<T>) {
+  const listRef = useRef<HTMLDivElement>(null)
+  // 고른 탭이 가로 스크롤 밖에 있으면 보이게 민다 (관리 '기록'처럼 끝에 있는 탭을 주소로 열었을 때)
+  useEffect(() => {
+    const list = listRef.current
+    const tab = list?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!list || !tab) return
+    const left = tab.offsetLeft
+    const right = left + tab.offsetWidth
+    if (left < list.scrollLeft) list.scrollLeft = left - 8
+    else if (right > list.scrollLeft + list.clientWidth) list.scrollLeft = right - list.clientWidth + 8
+  }, [value])
   return (
-    // 탭이 많으면(관리 6개 + 신고 수) 좁은 폰에서 가로로 밀어 본다
+    // 탭이 많으면(관리 7개 + 신고 수) 좁은 폰에서 가로로 밀어 본다
     <div
+      ref={listRef}
       role="tablist"
       aria-label={label}
       onKeyDown={(e) => tabKeys(e, options.map((o) => o.value), value, onChange)}
-      className="inline-flex max-w-full overflow-x-auto rounded-xl bg-surface-2 p-1 pb-1.5 shadow-[inset_0_1px_2px_rgb(0_0_0/0.1)]"
+      className="relative inline-flex max-w-full overflow-x-auto rounded-xl bg-surface-2 p-1 pb-1.5 shadow-[inset_0_1px_2px_rgb(0_0_0/0.1)]"
     >
       {options.map((o) => {
         const active = o.value === value

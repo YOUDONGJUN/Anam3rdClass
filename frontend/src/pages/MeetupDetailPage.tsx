@@ -131,9 +131,19 @@ function StateNote({ m, now }: { m: MeetupDetail; now: Date }) {
       tone = 'ok'
       title = m.minPeople === null ? '인원 상관없이 무조건 진행해요' : '성사된 3교시예요'
       body = m.joined
-        ? m.openChatUrl
-          ? '단톡방에서 만나요. 이제 서로 실명이 보여요'
-          : '이제 서로 실명이 보여요. 단톡방 링크는 곧 올라와요'
+        ? [
+            m.participantCount < 2
+              ? '함께할 원우를 기다리고 있어요'
+              : m.openChatUrl
+                ? '단톡방에서 만나요. 이제 서로 실명이 보여요'
+                : m.hosting
+                  ? '이제 서로 실명이 보여요. 아래에서 단톡방 링크를 넣어 주세요'
+                  : '이제 서로 실명이 보여요. 단톡방 링크는 곧 올라와요',
+            // 마감이 지나면 참여 취소 버튼이 사라진다 — 까닭을 알려 준다
+            !m.hosting && !m.canLeave ? '마감이 지나 참여 취소는 안 돼요. 못 가게 되면 단톡방에 알려 주세요' : '',
+          ]
+            .filter(Boolean)
+            .join('. ')
         : m.canJoin
           ? '지금 참여하면 바로 실명·단톡방이 열려요'
           : m.canWait
@@ -147,7 +157,9 @@ function StateNote({ m, now }: { m: MeetupDetail; now: Date }) {
       title = '이번엔 인원이 모이지 않았어요'
       body = m.canConfirm
         ? `모임 시간 전이라 지금 ${m.participantCount}명으로 다시 진행할 수 있어요`
-        : '나만 볼 수 있어요. 다음에 또 열어 봐요'
+        : m.hosting
+          ? '나만 볼 수 있어요. 다음에 또 열어 봐요'
+          : '참여한 원우만 볼 수 있어요. 연 사람이 다시 진행하면 알려 드려요'
       break
     case 'DONE':
       tone = 'muted'
@@ -283,7 +295,8 @@ function WaitlistCard({ m }: { m: MeetupDetail }) {
 /** 단톡방에 공유: 앱·폰은 공유 창, PC 는 링크 복사. 링크를 누르면 앱이 있으면 앱으로 열린다 */
 async function share(m: MeetupDetail, onCopied: () => void) {
   const url = `${window.location.origin}/meetups/${m.id}`
-  const text = `[안암3교시] ${m.title} · ${formatDateTime(m.meetAt)} · ${m.place} (${headcount(m)})`
+  // 단톡방에서 다음 날 봐도 틀리지 않게 '오늘·내일' 대신 날짜로
+  const text = `[안암3교시] ${m.title} · ${formatDate(m.meetAt)} ${formatTime(m.meetAt)} · ${m.place} (${headcount(m)})`
   const result = await shareLink(m.title, text, url)
   if (result === 'copied') onCopied()
   else if (result === 'failed') window.prompt('아래 링크를 복사해 주세요', url)
@@ -310,19 +323,33 @@ export function MeetupDetailPage() {
 
   if (isPending) return <Spinner />
   // 처음 불러오기가 실패했을 때만 (그 뒤 다시 불러오기가 실패해도 보던 내용·쓰던 신고는 그대로)
-  if (!m) {
-    // 다른 학교·다른 기수 전용 3교시(403)는 다시 시도해도 같다
-    const forbidden = error instanceof ApiError && error.status === 403
+  // 보던 3교시가 그사이 지워졌으면(다시 불러오기가 404) 지워졌다고 바꿔 보여 준다
+  const gone = error instanceof ApiError && error.status === 404
+  if (!m || gone) {
+    // 다른 학교·다른 기수 전용(403) · 지워진 3교시(404)는 다시 시도해도 같다
+    const final = gone || (error instanceof ApiError && error.status === 403)
     return (
       <div>
-        <ErrorState message={error?.message ?? '불러오지 못했어요'} onRetry={forbidden ? undefined : () => refetch()} />
-        {forbidden && (
-          <div className="flex justify-center">
-            <Link to="/" className={buttonClass('secondary')}>
-              열린 3교시 보기
-            </Link>
-          </div>
-        )}
+        {/* 상세에는 하단 메뉴가 없어서, 막다른 화면이 되지 않게 뒤로 버튼을 둔다 */}
+        <button
+          type="button"
+          onClick={() => (canGoBack ? navigate(-1) : navigate('/'))}
+          className="-ml-2 inline-flex h-11 items-center gap-1 rounded-lg px-2 text-[15px] font-semibold text-ink-2 hover:text-ink"
+        >
+          <ChevronLeft className="size-5" aria-hidden />
+          {backLabel}
+        </button>
+        <ErrorState
+          message={gone ? '지워진 3교시예요' : (error?.message ?? '불러오지 못했어요')}
+          onRetry={() => refetch()}
+          action={
+            final ? (
+              <Link to="/" className={buttonClass('secondary')}>
+                열린 3교시 보기
+              </Link>
+            ) : undefined
+          }
+        />
       </div>
     )
   }
@@ -352,7 +379,15 @@ export function MeetupDetailPage() {
 
   function run(kind: MeetupActionKind) {
     if (kind === 'cancel' && !window.confirm('3교시를 취소할까요? 참여자들에게는 "취소됨"으로 보여요.')) return
-    if (kind === 'leave' && !window.confirm('참여를 취소할까요?')) return
+    if (
+      kind === 'leave' &&
+      !window.confirm(
+        m?.status === 'CONFIRMED'
+          ? '참여를 취소할까요?\n\n• 성사된 3교시에서 30일 동안 3번 나가면, 한동안 이미 성사된 3교시에는 참여할 수 없어요'
+          : '참여를 취소할까요?',
+      )
+    )
+      return
     // 마감 뒤(중간 합류) 참여는 되돌릴 수 없어서 한 번 더 묻는다
     const lateWarn = kind === 'join' && m ? lateJoinConfirm(m) : null
     if (lateWarn && !window.confirm(lateWarn)) return

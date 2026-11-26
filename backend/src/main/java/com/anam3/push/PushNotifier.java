@@ -106,15 +106,27 @@ public class PushNotifier {
                 tag(meetup, "reached")));
     }
 
-    /** 시간·장소가 바뀜: 참여자에게 (고친 사람 빼고) */
-    public void changed(Meetup meetup, Long actorId, boolean timeChanged, boolean placeChanged) {
-        if (!timeChanged && !placeChanged) {
+    /**
+     * 시간·장소·참여비가 바뀌거나 단톡방 링크가 올라옴: 참여자에게 (고친 사람 빼고).
+     * 한 번에 여럿이 바뀌면 시간·장소 → 참여비 → 단톡방 순으로 하나만 알린다 (자세한 건 상세에서)
+     */
+    public void changed(Meetup meetup, Long actorId, boolean timeChanged, boolean placeChanged, boolean feeChanged,
+            boolean chatAdded) {
+        String what;
+        if (timeChanged || placeChanged) {
+            what = timeChanged && placeChanged ? "시간·장소가 바뀌었어요 · " + WHEN.format(meetup.getMeetAt()) + " · "
+                    + meetup.getPlace()
+                    : timeChanged ? "시간이 바뀌었어요 · " + WHEN.format(meetup.getMeetAt())
+                    : "장소가 바뀌었어요 · " + meetup.getPlace();
+        } else if (feeChanged) {
+            what = meetup.getFee() == null ? "참여비가 없어졌어요"
+                    : "참여비가 바뀌었어요 · " + String.format(java.util.Locale.ROOT, "%,d원", meetup.getFee())
+                            + (meetup.isFeePrepaid() ? " · 선입금" : "");
+        } else if (chatAdded && meetup.isReached()) {
+            what = "단톡방 링크가 올라왔어요";
+        } else {
             return;
         }
-        String what = timeChanged && placeChanged ? "시간·장소가 바뀌었어요 · " + WHEN.format(meetup.getMeetAt()) + " · "
-                + meetup.getPlace()
-                : timeChanged ? "시간이 바뀌었어요 · " + WHEN.format(meetup.getMeetAt())
-                : "장소가 바뀌었어요 · " + meetup.getPlace();
         push.send(others(meetup, actorId), new PushMessage(PushType.CHANGED, meetup.getTitle(), what, path(meetup),
                 tag(meetup, "changed")));
     }

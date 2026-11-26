@@ -13,6 +13,9 @@ import { useToast } from '../components/toastContext'
 import { useNow } from '../lib/hooks'
 import { affiliation, isStaff } from '../lib/person'
 import { formatRelative } from '../lib/time'
+import { LinkifiedText } from '../components/LinkifiedText'
+import { confirmLeave, useLeaveGuard } from '../lib/leaveGuard'
+import { ApiError } from '../api/client'
 
 function Author({ author, showSchool }: { author: AuthorView; showSchool: boolean }) {
   if (author.official) {
@@ -139,7 +142,21 @@ export function NoticeDetailPage() {
   const [reporting, setReporting] = useState(false)
 
   if (isPending) return <Spinner />
-  if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />
+  if (isError)
+    return (
+      <ErrorState
+        message={error.message}
+        onRetry={() => refetch()}
+        // 지워진 공지(알림·링크로 들어옴)는 다시 시도해도 소용없다 — 목록으로
+        action={
+          error instanceof ApiError && error.status === 404 ? (
+            <Link to="/notices" className={buttonClass('secondary', 'sm')}>
+              공지 목록 보기
+            </Link>
+          ) : undefined
+        }
+      />
+    )
 
   return (
     <article className="max-w-2xl">
@@ -162,7 +179,9 @@ export function NoticeDetailPage() {
           {n.updatedAt !== n.createdAt && <span>· 수정됨</span>}
         </p>
       </header>
-      <div className="py-6 text-base leading-[1.75] whitespace-pre-wrap text-ink">{n.content}</div>
+      <div className="py-6 text-base leading-[1.75] break-words whitespace-pre-wrap text-ink">
+        <LinkifiedText text={n.content} />
+      </div>
 
       {(n.canEdit || n.canPin) && (
         <div className="flex flex-wrap gap-2 border-t border-line pt-5">
@@ -256,6 +275,9 @@ function NoticeForm({ id, initial }: { id?: number; initial: { title: string; co
   const [content, setContent] = useState(initial.content)
   const [target, setTarget] = useState<NoticeTarget>(member?.school.id ?? 'ALL')
   const [error, setError] = useState<string | null>(null)
+  // 쓰던 내용이 있으면 나가기 전에 묻는다 (3000자 공지가 뒤로 한 번에 사라지지 않게)
+  const [saved, setSaved] = useState(false)
+  useLeaveGuard(!saved && (title !== initial.title || content !== initial.content))
   // 보이는 곳은 새로 쓸 때만 정한다: 대학원장은 고르고, 교수는 우리 학교
   const choosable = !id && member?.role === 'OWNER'
   const schools = options.data?.schools ?? []
@@ -270,6 +292,7 @@ function NoticeForm({ id, initial }: { id?: number; initial: { title: string; co
         federated: choosable && target === 'ALL',
         schoolId: choosable && target !== 'ALL' ? target : null,
       })
+      setSaved(true)
       toast.show(id ? '수정했어요' : '올렸어요', 'ok')
       navigate(`/notices/${d.id}`, { replace: true })
     } catch (err) {
@@ -325,7 +348,16 @@ function NoticeForm({ id, initial }: { id?: number; initial: { title: string; co
       )}
       <FormError message={error} />
       <div className="flex gap-2.5">
-        <Button variant="secondary" size="lg" onClick={() => navigate(-1)}>
+        <Button
+          variant="secondary"
+          size="lg"
+          onClick={() => {
+            if (!confirmLeave()) return
+            // 바로 들어온 화면(앞 화면 없음)이면 공지 목록으로
+            if ((window.history.state?.idx ?? 0) > 0) navigate(-1)
+            else navigate(id ? `/notices/${id}` : '/notices', { replace: true })
+          }}
+        >
           돌아가기
         </Button>
         <Button type="submit" size="lg" loading={save.isPending} disabled={!title.trim() || !content.trim()} className="flex-1 sm:flex-none sm:px-10">

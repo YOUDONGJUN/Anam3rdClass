@@ -261,6 +261,9 @@ class MeetupApiTest extends ApiTestSupport {
         post("/api/meetups/" + reached + "/join", horang, null)
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("LEAVE_LIMIT"));
+        // 내 참여로 바로 성사되는 3교시도 실명이 보이니 막는다
+        long reachesByMe = createMeetup(host, 2, 6, IN_2H, IN_1H, null);
+        post("/api/meetups/" + reachesByMe + "/join", horang, null).andExpect(jsonPath("$.code").value("LEAVE_LIMIT"));
         // 아직 성사 전인 3교시에는 참여할 수 있다 (실명이 바로 보이지 않는다)
         long recruiting = createMeetup(host, 3, 6, IN_2H, IN_1H, null);
         post("/api/meetups/" + recruiting + "/join", horang, null).andExpect(status().isOk());

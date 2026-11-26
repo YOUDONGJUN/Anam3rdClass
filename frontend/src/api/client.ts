@@ -24,7 +24,9 @@ function readStoredToken(): string | null {
 }
 
 let token: string | null = readStoredToken()
-let unauthorizedHandler: (() => void) | null = null
+/** 로그인이 풀린 까닭: 만료(401) · 이용 제한(403 BANNED) */
+export type SignOutReason = 'expired' | 'banned'
+let unauthorizedHandler: ((reason: SignOutReason) => void) | null = null
 
 export function getToken() {
   return token
@@ -40,9 +42,20 @@ export function setToken(next: string | null) {
   }
 }
 
-/** 로그인이 풀렸을 때(401) 호출할 함수. AuthProvider 가 등록한다 */
-export function setUnauthorizedHandler(handler: (() => void) | null) {
+/** 로그인이 풀렸을 때(401 · 이용 제한) 호출할 함수. AuthProvider 가 등록한다 */
+export function setUnauthorizedHandler(handler: ((reason: SignOutReason) => void) | null) {
   unauthorizedHandler = handler
+}
+
+/** 다른 탭에서 로그아웃·로그인하면 이 탭도 따라간다 (공용 PC에서 한 탭만 로그아웃되지 않게) */
+export function subscribeTokenChange(listener: (next: string | null) => void) {
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== TOKEN_KEY) return
+    token = e.newValue
+    listener(e.newValue)
+  }
+  window.addEventListener('storage', onStorage)
+  return () => window.removeEventListener('storage', onStorage)
 }
 
 // ----- 느린 요청 감지 (Render 무료 서버는 잠들었다 깨는 데 30초~1분) -----
@@ -86,6 +99,9 @@ export async function api<T>(path: string, options: { method?: Method; body?: un
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     })
+    // 쓰는 동안 서버가 로그인을 늘려 주면(새 토큰) 바꿔 끼운다
+    const renewed = res.headers.get('X-Renewed-Token')
+    if (renewed && token) setToken(renewed)
     if (res.status === 204) return undefined as T
 
     const text = await res.text()
@@ -99,8 +115,9 @@ export async function api<T>(path: string, options: { method?: Method; body?: un
 
     if (!res.ok) {
       const err = (data ?? {}) as { code?: string; message?: string }
-      if (res.status === 401 && token && !path.startsWith('/api/auth/')) {
-        unauthorizedHandler?.()
+      if (token && !path.startsWith('/api/auth/')) {
+        if (res.status === 401) unauthorizedHandler?.('expired')
+        else if (res.status === 403 && err.code === 'BANNED') unauthorizedHandler?.('banned')
       }
       throw new ApiError(res.status, err.code ?? 'ERROR', err.message ?? '문제가 생겼어요. 잠시 후 다시 시도해 주세요')
     }

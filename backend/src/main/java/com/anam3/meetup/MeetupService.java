@@ -7,6 +7,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.Objects;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -175,7 +176,8 @@ public class MeetupService {
         if (checkVisible && !joined && !canSee(meetup, viewer)) {
             throw closedTo(meetup);
         }
-        boolean blocked = !meetup.isHostedBy(viewer.id()) && blocks.existsBetween(viewer.id(), meetup.getHost().getId());
+        boolean blocked = !meetup.isHostedBy(viewer.id()) && !joined
+                && blockedWithAnyone(viewer.id(), people.stream().map(p -> p.getMember().getId()).toList());
         Instant now = clock.instant();
         boolean manages = meetup.isHostedBy(viewer.id()) || viewer.isOwner();
         WaitInfo wait = new WaitInfo(!joined && waits.existsByMeetupIdAndMemberId(id, viewer.id()),
@@ -197,6 +199,9 @@ public class MeetupService {
         Instant now = clock.instant();
         Instant meetAtBefore = meetup.getMeetAt();
         String placeBefore = meetup.getPlace();
+        Integer feeBefore = meetup.getFee();
+        boolean prepaidBefore = meetup.isFeePrepaid();
+        String chatBefore = meetup.getOpenChatUrl();
         boolean reachedBefore = meetup.isReached();
         boolean fullBefore = meetup.isFull();
         if (req.schedule() != null) {
@@ -219,7 +224,9 @@ public class MeetupService {
         meetup.update(req.title().strip(), clean(req.description()), req.place().strip(), req.categories(),
                 purposes, blankToNull(req.openChatUrl()), now);
         notifier.changed(meetup, viewer.id(), !meetAtBefore.equals(meetup.getMeetAt()),
-                !placeBefore.equals(meetup.getPlace()));
+                !placeBefore.equals(meetup.getPlace()),
+                !Objects.equals(feeBefore, meetup.getFee()) || prepaidBefore != meetup.isFeePrepaid(),
+                meetup.getOpenChatUrl() != null && !meetup.getOpenChatUrl().equals(chatBefore));
         if (!reachedBefore && meetup.isReached()) {
             notifier.reached(meetup, viewer.id()); // 최소 인원을 낮춰서 바로 성사
         }
@@ -295,17 +302,22 @@ public class MeetupService {
 
     /** 열 때와 같은 시간 규칙: 모임은 지금 이후 한 달 이내, 마감은 지금 이후이고 모임 시간보다 늦지 않게 */
     private static void checkTimes(Instant meetAt, Instant deadlineAt, Instant now) {
-        if (!meetAt.isAfter(now)) {
-            throw ApiException.badRequest("INVALID_TIME", "모임 시간은 지금 이후로 정해 주세요");
-        }
-        if (meetAt.isAfter(now.plus(MAX_AHEAD))) {
-            throw ApiException.badRequest("INVALID_TIME", "3교시는 한 달 이내 일정만 열 수 있어요");
-        }
+        checkMeetAt(meetAt, now);
         if (!deadlineAt.isAfter(now)) {
             throw ApiException.badRequest("INVALID_DEADLINE", "모집 마감은 지금 이후로 정해 주세요");
         }
         if (deadlineAt.isAfter(meetAt)) {
             throw ApiException.badRequest("INVALID_DEADLINE", "모집 마감은 모임 시간보다 늦을 수 없어요");
+        }
+    }
+
+    /** 모임은 지금 이후 한 달 이내 */
+    private static void checkMeetAt(Instant meetAt, Instant now) {
+        if (!meetAt.isAfter(now)) {
+            throw ApiException.badRequest("INVALID_TIME", "모임 시간은 지금 이후로 정해 주세요");
+        }
+        if (meetAt.isAfter(now.plus(MAX_AHEAD))) {
+            throw ApiException.badRequest("INVALID_TIME", "3교시는 한 달 이내 일정만 열 수 있어요");
         }
     }
 
@@ -320,27 +332,46 @@ public class MeetupService {
      * exceptId: 지금 고치거나 참여하려는 3교시 자신
      */
     private void checkOverlap(Long memberId, Instant meetAt, Long exceptId, Instant now) {
-        if (!overlapCheck) {
-            return;
+        Meetup m = findOverlap(memberId, meetAt, exceptId, now);
+        if (m != null) {
+            throw ApiException.conflict("TIME_OVERLAP", "앞뒤 " + OVERLAP.toHours() + "시간 안에 이미 "
+                    + (m.isHostedBy(memberId) ? "연" : "참여한") + " 3교시가 있어요: '" + m.getTitle() + "' "
+                    + WHEN.format(m.getMeetAt()));
         }
-        participations.findNearby(memberId, meetAt.minus(OVERLAP), meetAt.plus(OVERLAP),
+    }
+
+    /** 겹치는 3교시 (없거나 겹침 검사를 끈 설정이면 null) */
+    private Meetup findOverlap(Long memberId, Instant meetAt, Long exceptId, Instant now) {
+        if (!overlapCheck) {
+            return null;
+        }
+        return participations.findNearby(memberId, meetAt.minus(OVERLAP), meetAt.plus(OVERLAP),
                 exceptId == null ? 0L : exceptId).stream()
                 .filter(m -> m.statusAt(now) != MeetupStatus.FAILED)
                 .findFirst()
-                .ifPresent(m -> {
-                    throw ApiException.conflict("TIME_OVERLAP", "앞뒤 " + OVERLAP.toHours() + "시간 안에 이미 "
-                            + (m.isHostedBy(memberId) ? "연" : "참여한") + " 3교시가 있어요: '" + m.getTitle() + "' "
-                            + WHEN.format(m.getMeetAt()));
-                });
+                .orElse(null);
     }
 
-    /** 시간 바꾸기. 그대로면 검사하지 않는다 (마감이 지난 성사 3교시도 제목·장소는 고칠 수 있게) */
+    /**
+     * 시간 바꾸기. 그대로면 검사하지 않는다 (마감이 지난 성사 3교시도 제목·장소는 고칠 수 있게).
+     * 마감이 이미 지났으면 마감은 그대로 두고 모임 시간만 옮긴다 — 마감을 다시 미래로 옮기면
+     * 성사 뒤 나가기와 (중간 합류가 아닌데도) 새 참여가 다시 열린다
+     */
     private static void changeSchedule(Meetup meetup, ScheduleChange schedule, Instant now) {
-        if (schedule.meetAt().equals(meetup.getMeetAt()) && schedule.deadlineAt().equals(meetup.getDeadlineAt())) {
+        boolean deadlinePassed = !meetup.getDeadlineAt().isAfter(now);
+        Instant deadlineAt = deadlinePassed ? meetup.getDeadlineAt() : schedule.deadlineAt();
+        if (schedule.meetAt().equals(meetup.getMeetAt()) && deadlineAt.equals(meetup.getDeadlineAt())) {
             return;
         }
-        checkTimes(schedule.meetAt(), schedule.deadlineAt(), now);
-        meetup.reschedule(schedule.meetAt(), schedule.deadlineAt(), now);
+        if (deadlinePassed) {
+            checkMeetAt(schedule.meetAt(), now);
+            if (deadlineAt.isAfter(schedule.meetAt())) {
+                throw ApiException.badRequest("INVALID_TIME", "모집 마감(" + WHEN.format(deadlineAt) + ")보다 앞으로 옮길 수 없어요");
+            }
+        } else {
+            checkTimes(schedule.meetAt(), deadlineAt, now);
+        }
+        meetup.reschedule(schedule.meetAt(), deadlineAt, now);
     }
 
     /** 대상 바꾸기: 넓히기는 언제나, 좁히기는 이미 참여한 원우가 모두 새 대상에 들 때만 */
@@ -463,6 +494,13 @@ public class MeetupService {
         if (revived) {
             // 무산된 3교시는 겹침에서 빠져 있었다 — 되살리기 전에 그사이 잡은 연 사람의 다른 3교시와 겹치는지 본다
             checkOverlap(meetup.getHost().getId(), meetup.getMeetAt(), id, now);
+            // 참여자도 무산된 사이 같은 시간대 다른 3교시에 참여했을 수 있다 (누구인지는 밝히지 않는다)
+            for (Long memberId : participations.findMemberIds(id)) {
+                if (!meetup.isHostedBy(memberId) && findOverlap(memberId, meetup.getMeetAt(), id, now) != null) {
+                    throw ApiException.conflict("TIME_OVERLAP",
+                            "참여자 중 그사이 같은 시간대 다른 3교시에 참여한 원우가 있어 다시 진행할 수 없어요. 새로 열어 주세요");
+                }
+            }
         }
         meetup.confirmWithCurrent(now);
         notifier.confirmedByHost(meetup, viewer.id(), revived);
@@ -481,7 +519,9 @@ public class MeetupService {
         }
         checkOverlap(viewer.id(), meetup.getMeetAt(), id, now);
         boolean reachedBefore = meetup.isReached();
-        if (reachedBefore && leaves.countSince(viewer.id(), now.minus(LEAVE_WINDOW)) >= LEAVE_LIMIT) {
+        // 이미 성사됐거나 내 참여로 성사되는 3교시 (실명·단톡방을 보게 된다)
+        boolean revealsNames = reachedBefore || meetup.getParticipantCount() + 1 >= meetup.getMinPeople();
+        if (revealsNames && leaves.countSince(viewer.id(), now.minus(LEAVE_WINDOW)) >= LEAVE_LIMIT) {
             throw new ApiException(HttpStatus.FORBIDDEN, "LEAVE_LIMIT",
                     "최근 30일 동안 성사된 3교시에서 " + LEAVE_LIMIT + "번 나가서, 당분간 이미 성사된 3교시에는 참여할 수 없어요");
         }
@@ -520,6 +560,16 @@ public class MeetupService {
         return detail(viewer, id, false);
     }
 
+    /** 이 원우와 차단한(당한) 사이인 사람이 people 안에 있는지 (people: 연 사람을 포함한 참여자) */
+    private boolean blockedWithAnyone(Long memberId, List<Long> people) {
+        if (people.isEmpty()) {
+            return false;
+        }
+        Set<Long> blocked = new HashSet<>(blocks.findBlockedIds(memberId));
+        blocked.addAll(blocks.findBlockerIds(memberId));
+        return people.stream().anyMatch(blocked::contains);
+    }
+
     /** 참여·빈자리 대기 공통: 학교·기수, 취소, 차단, 마감 */
     private void checkJoinRules(LoginMember viewer, Meetup meetup, Instant now) {
         if (!meetup.isOpenTo(viewer.schoolId(), viewer.cohort())) {
@@ -528,7 +578,8 @@ public class MeetupService {
         if (meetup.isCanceled()) {
             throw ApiException.badRequest("CANCELED", "취소된 3교시예요");
         }
-        if (blocks.existsBetween(viewer.id(), meetup.getHost().getId())) {
+        // 연 사람이나 이미 참여한 원우와 차단한 사이면 (성사되면 서로 실명·단톡방이 보이니)
+        if (blockedWithAnyone(viewer.id(), participations.findMemberIds(meetup.getId()))) {
             throw new ApiException(HttpStatus.FORBIDDEN, "BLOCKED", "참여할 수 없는 3교시예요");
         }
         if (!meetup.isTakingJoinsAt(now)) {

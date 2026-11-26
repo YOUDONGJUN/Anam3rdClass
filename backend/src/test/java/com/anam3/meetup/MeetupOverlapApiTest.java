@@ -44,6 +44,24 @@ class MeetupOverlapApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 무산된_3교시를_되살릴_때_참여자가_그사이_잡은_3교시와_겹치면_막는다() throws Exception {
+        // 21:00 · 최소 3명 · 20:30 마감 — 2명에서 무산
+        Number failed = read(post("/api/meetups", host, meetupJson("치맥", 3, 6, at(3, 0), at(2, 30), null))
+                .andExpect(status().isCreated()), "$.id");
+        post("/api/meetups/" + failed + "/join", anam, null).andExpect(status().isOk());
+        clock.advance(Duration.ofMinutes(160)); // 20:40 — 무산
+
+        // 무산된 3교시는 겹침에서 빠지므로 이안암은 21:30 3교시에 참여할 수 있다
+        long other = open(horang, "2차", at(3, 30));
+        post("/api/meetups/" + other + "/join", anam, null).andExpect(status().isOk());
+
+        post("/api/meetups/" + failed + "/confirm", host, null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TIME_OVERLAP"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("참여자 중")));
+    }
+
+    @Test
     void 앞뒤_2시간_안에는_3교시를_또_열_수_없고_2시간_떨어지면_된다() throws Exception {
         open(host, "1차 치맥", at(3, 0)); // 21:00
 

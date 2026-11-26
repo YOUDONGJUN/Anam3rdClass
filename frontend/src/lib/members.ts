@@ -10,6 +10,8 @@ export interface MemberFilters {
   department: number | 'all' | 'none'
   role: Role | 'all'
   status: MemberStatus | 'all'
+  /** 관리 홈의 할 일에서 왔을 때: 중복 가입 의심 · 아직 안 들어온 예전 회원만 */
+  only?: 'duplicates' | 'legacy'
 }
 
 export const EMPTY_FILTERS: MemberFilters = {
@@ -23,7 +25,10 @@ export const EMPTY_FILTERS: MemberFilters = {
 
 export function filterMembers(list: readonly AdminMember[], f: MemberFilters): AdminMember[] {
   const q = f.q.trim().toLowerCase()
+  const duplicateIds = f.only === 'duplicates' ? new Set(findDuplicates(list).flat().map((m) => m.id)) : null
   return list.filter((m) => {
+    if (duplicateIds && !duplicateIds.has(m.id)) return false
+    if (f.only === 'legacy' && !(isLegacy(m) && m.status === 'ACTIVE')) return false
     if (f.school !== 'all' && m.school.id !== f.school) return false
     if (f.cohort !== 'all' && f.cohort !== (f.cohort.includes('-') ? `${m.school.id}-${m.cohort}` : String(m.cohort)))
       return false

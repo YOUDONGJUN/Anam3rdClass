@@ -2,7 +2,7 @@ import { type ReactNode, useLayoutEffect } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router'
 import { useAuth } from './auth/AuthContext'
 import { AppShell } from './components/AppShell'
-import { Spinner } from './components/ui'
+import { Button, Spinner } from './components/ui'
 import { useSlowServer } from './lib/hooks'
 import { isStaff } from './lib/person'
 import { AdminPage } from './pages/AdminPage'
@@ -19,13 +19,24 @@ import { RankingPage } from './pages/RankingPage'
 import { PrivacyPage, TermsGate, TermsPage } from './pages/TermsPages'
 import { WelcomePage } from './pages/WelcomePage'
 
-/** 로그인 상태를 확인하는 동안. 서버가 잠들어 있으면 깨우는 중이라고 알려준다 */
+/** 로그인 상태를 확인하는 동안. 서버가 잠들어 있으면 깨우는 중, 인터넷이 안 되면 그렇다고 알려준다 */
 function BootSplash() {
   const slow = useSlowServer()
+  const { offline, retry } = useAuth()
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-5 px-6 text-center">
       <span className="flex size-14 items-center justify-center rounded-full bg-accent text-2xl font-black text-on-accent">3</span>
-      <Spinner label={slow ? '서버를 깨우는 중이에요. 최대 1분 걸릴 수 있어요' : '들어가는 중'} />
+      {offline ? (
+        <div className="flex flex-col items-center gap-3">
+          <p className="text-[15px] font-semibold text-ink">인터넷 연결을 확인해 주세요</p>
+          <p className="text-sm text-ink-3">연결되면 저절로 들어가요</p>
+          <Button variant="secondary" onClick={retry}>
+            다시 시도
+          </Button>
+        </div>
+      ) : (
+        <Spinner label={slow ? '서버를 깨우는 중이에요. 최대 1분 걸릴 수 있어요' : '들어가는 중'} />
+      )}
     </div>
   )
 }

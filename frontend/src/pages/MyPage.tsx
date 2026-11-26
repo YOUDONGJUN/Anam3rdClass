@@ -170,8 +170,10 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
   const nameEditable = canEditOwnName(member.role)
   const lockedUntil = profileLockedUntil(member)
   const cohortFixed = cohortLocked(member)
-  /** 원우가 직접 바꿀 수 있는 것 (가입한 날이 지나면 학과만) */
-  const editableAffiliation = cohortFixed ? '학과는' : '학과·기수는'
+  /** 원우 규칙 안내: 가입한 날엔 학과·기수를 자유롭게, 그 뒤로 학과만 30일에 한 번 */
+  const affiliationRule = cohortFixed
+    ? '학과는 30일에 한 번 바꿀 수 있어요. 기수는 교수\u2060·\u2060대학원장에게 요청해 주세요.'
+    : '가입한 오늘은 학과\u2060·\u2060기수를 몇 번이든 고칠 수 있어요. 내일부터 기수는 직접 못 바꾸고, 학과는 30일에 한 번 바꿀 수 있어요.'
   const affiliationChanged = Number(cohort) !== member.cohort || departmentId !== member.departmentId
   const changed = affiliationChanged || (nameEditable && name.trim() !== member.name)
 
@@ -183,7 +185,11 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
     if (
       member.role === 'USER' &&
       affiliationChanged &&
-      !window.confirm(`${editableAffiliation} 30일에 한 번 바꿀 수 있어요.\n이대로 바꿀까요?`)
+      !window.confirm(
+        cohortFixed
+          ? '학과는 30일에 한 번 바꿀 수 있어요.\n이대로 바꿀까요?'
+          : '내일부터는 기수를 직접 못 바꿔요. 기수와 학과가 맞는지 한 번 더 확인해 주세요.\n이대로 바꿀까요?',
+      )
     )
       return
     save.mutate(
@@ -247,8 +253,8 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
               {affiliation(member.cohortLabel, member.departmentLabel)}
             </p>
             <p className="text-sm text-ink-3">
-              {editableAffiliation} 30일에 한 번 바꿀 수 있어요.{' '}
-              <b className="font-semibold text-ink-2">{formatDate(lockedUntil)}</b>부터 다시 바꿀 수 있어요.
+              학과는 <b className="font-semibold text-ink-2">{formatDate(lockedUntil)}</b>부터 다시 바꿀 수 있어요.
+              기수는 교수{'\u2060·\u2060'}대학원장에게 요청해 주세요.
             </p>
           </div>
         ) : (
@@ -262,7 +268,7 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
               cohortLocked={cohortFixed}
             />
             {member.role === 'USER' && (
-              <p className="-mt-2 text-sm text-ink-3">{editableAffiliation} 30일에 한 번 바꿀 수 있어요.</p>
+              <p className="-mt-2 text-sm text-balance text-ink-3">{affiliationRule}</p>
             )}
           </>
         )}
@@ -503,7 +509,7 @@ export function MyPage() {
               </li>
               <li className="flex items-center gap-2.5">
                 <Pencil className="size-4 shrink-0" aria-hidden />
-                <span>{profileEditRule(member.role)}</span>
+                <span>{profileEditRule(member.role, !cohortLocked(member))}</span>
               </li>
             </>
           ) : (
@@ -520,7 +526,7 @@ export function MyPage() {
               </li>
               <li className="flex items-center gap-2.5">
                 <Pencil className="size-4 shrink-0" aria-hidden />
-                <span>{profileEditRule(member.role)}</span>
+                <span>{profileEditRule(member.role, !cohortLocked(member))}</span>
               </li>
             </>
           )}
@@ -566,6 +572,11 @@ export function MyPage() {
           </div>
           {!member.hasPassword && member.email && (
             <p className="text-[13px] leading-relaxed text-ink-3">비밀번호를 만들면 학교 메일로도 들어올 수 있어요. 같은 계정이에요.</p>
+          )}
+          {member.hasPassword && member.email && (
+            <p className="text-[13px] leading-relaxed text-ink-3">
+              비밀번호를 바꾸면 다른 기기(폰 앱 등)에서는 다시 로그인해야 해요.
+            </p>
           )}
         </div>
         <Link to="/terms" className={rowClass}>

@@ -22,6 +22,9 @@ public final class MeetupDtos {
     /** 모임 목적은 3개까지, 하나에 12자까지 */
     public static final int MAX_PURPOSES = 3;
 
+    /** 마실 종류는 3개까지 (많으면 목록에서 배지가 제목 칸을 밀어낸다) */
+    public static final int MAX_CATEGORIES = 3;
+
     /**
      * 단톡방 링크는 카카오톡 오픈채팅 주소만 받는다 (비우면 없음).
      * 성사되면 참여자에게 실명과 함께 보여서, 아무 주소나 받으면 피싱 링크가 될 수 있다
@@ -159,6 +162,7 @@ public final class MeetupDtos {
             String place,
 
             @NotEmpty(message = "무엇을 마실지 하나 이상 골라 주세요")
+            @Size(max = MAX_CATEGORIES, message = "무엇을 마실지는 3개까지 고를 수 있어요")
             List<@NotNull(message = "종류를 다시 골라 주세요") MeetupCategory> categories,
 
             @Size(max = MAX_PURPOSES, message = "모임 목적은 3개까지 고를 수 있어요")
@@ -214,6 +218,7 @@ public final class MeetupDtos {
             String place,
 
             @NotEmpty(message = "무엇을 마실지 하나 이상 골라 주세요")
+            @Size(max = MAX_CATEGORIES, message = "무엇을 마실지는 3개까지 고를 수 있어요")
             List<@NotNull(message = "종류를 다시 골라 주세요") MeetupCategory> categories,
 
             @Size(max = MAX_PURPOSES, message = "모임 목적은 3개까지 고를 수 있어요")

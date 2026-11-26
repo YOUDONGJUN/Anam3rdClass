@@ -87,20 +87,31 @@ public class JwtService {
         return encode(claims);
     }
 
-    /** 유효한 로그인 토큰이면 회원 id 와 토큰 버전 (버전이 없는 예전 토큰은 0) */
+    /** 유효한 로그인 토큰이면 회원 id 와 토큰 버전 (버전이 없는 예전 토큰은 0), 발급 시각 */
     public Optional<LoginToken> verify(String token) {
         try {
             Jwt jwt = decoder.decode(token);
             Object version = jwt.getClaims().get(VERSION_CLAIM);
             return Optional.of(new LoginToken(Long.parseLong(jwt.getSubject()),
-                    version instanceof Number n ? n.intValue() : 0));
+                    version instanceof Number n ? n.intValue() : 0,
+                    jwt.getIssuedAt() == null ? Instant.EPOCH : jwt.getIssuedAt()));
         } catch (JwtException | NumberFormatException e) {
             return Optional.empty();
         }
     }
 
     /** 로그인 토큰 내용: 누구의 몇 번째 토큰인지 */
-    public record LoginToken(long memberId, int version) {
+    /**
+     * 쓰는 동안 로그인을 늘려 줄지: 받은 지 하루가 지난 토큰이면 새 토큰을 준다 (JwtAuthenticationFilter).
+     * 매일 쓰는 원우가 30일째에 갑자기 로그아웃되지 않게. 30일 동안 안 쓰면 그대로 만료된다
+     */
+    public boolean shouldRenew(LoginToken token) {
+        return token.issuedAt().isBefore(clock.instant().minus(RENEW_AFTER));
+    }
+
+    private static final Duration RENEW_AFTER = Duration.ofDays(1);
+
+    public record LoginToken(long memberId, int version, Instant issuedAt) {
     }
 
     /** 카카오 로그인으로 시작한 가입 토큰. verifiedEmail 이 null 이면 아직 학교 이메일 인증 전 */

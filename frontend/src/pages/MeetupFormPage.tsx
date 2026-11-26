@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import {
   Check,
@@ -31,6 +31,8 @@ import {
   fitPeople,
   isReachedWith,
   type JoinedState,
+  MAX_AHEAD_DAYS,
+  MAX_CATEGORIES,
   MAX_PURPOSES,
   openChatError,
   optionsSummary,
@@ -42,6 +44,7 @@ import {
   toggleCategory,
   type PeopleValues,
 } from '../lib/meetup'
+import { confirmLeave, readDraft, useLeaveGuard, writeDraft } from '../lib/leaveGuard'
 import { mergePlaces } from '../lib/places'
 import { placePresets } from '../lib/schools'
 import { ceilTo10Minutes, formatDateTime, formatLeadTime, fromKstInputValue, kstAt, toKstInputValue } from '../lib/time'
@@ -96,6 +99,7 @@ function validateTimes(meetAt: Date | null, deadlineAt: Date | null): string | n
   if (!meetAt || !deadlineAt) return '모임 시간을 정해 주세요'
   const nowMs = Date.now()
   if (meetAt.getTime() <= nowMs) return '모임 시간은 지금 이후로 정해 주세요'
+  if (meetAt.getTime() > nowMs + MAX_AHEAD_DAYS * 86_400_000) return '3교시는 한 달 이내 일정만 열 수 있어요'
   if (deadlineAt.getTime() <= nowMs) return '모집 마감이 이미 지났어요. 마감을 늦춰 주세요'
   return null
 }
@@ -219,15 +223,19 @@ function CategoryPicker({ value, onChange }: { value: MeetupCategory[]; onChange
   return (
     <fieldset>
       <legend className="mb-1 text-[15px] font-semibold text-ink">무엇을 마실까요</legend>
-      <p className="mb-3 text-sm text-ink-3">여러 개 골라도 돼요</p>
+      <p className="mb-3 text-sm text-ink-3">{MAX_CATEGORIES}개까지 골라요</p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {CATEGORY_ORDER.map((c) => {
           const meta = CATEGORY[c]
           const active = value.includes(c)
+          // 3개를 골랐으면 나머지는 잠깐 막는다 ('아무거나'는 혼자라 언제나 고를 수 있다)
+          const full = !active && c !== 'ANYTHING' && value.filter((x) => x !== 'ANYTHING').length >= MAX_CATEGORIES
           return (
             <label
               key={c}
-              className={`relative flex min-h-12 cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-[15px] font-semibold transition-colors has-focus-visible:ring-2 has-focus-visible:ring-accent ${
+              className={`relative flex min-h-12 items-center gap-2.5 rounded-xl border px-3 py-2 text-[15px] font-semibold transition-colors has-focus-visible:ring-2 has-focus-visible:ring-accent ${
+                full ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'
+              } ${
                 active ? 'border-board bg-board text-on-board' : 'border-line-strong bg-surface text-ink hover:border-ink-3'
               }`}
             >
@@ -236,6 +244,7 @@ function CategoryPicker({ value, onChange }: { value: MeetupCategory[]; onChange
                 name="categories"
                 value={c}
                 checked={active}
+                disabled={full}
                 onChange={() => onChange(toggleCategory(value, c))}
                 className="sr-only"
               />
@@ -331,9 +340,12 @@ function MeetupForm({
   editing,
   current,
   host,
+  draftKey,
 }: {
   initial: FormValues & { id?: number; leadMinutes?: number; meetAtIso?: string }
   editing: boolean
+  /** 새로 열 때 쓰던 내용을 임시저장할 곳 (sessionStorage 키) */
+  draftKey?: string
   /** 수정할 때: 지금 참여 인원 · 성사 여부 */
   current?: JoinedState
   /** 수정할 때: 개설자 (대학원장이 고쳐도 대상은 개설자 학교·기수 기준) */
@@ -348,7 +360,7 @@ function MeetupForm({
   const places = mergePlaces(popular.data ?? [], presetPlaces)
   const placeListId = useId()
   // 열 때는 꼭 정할 것만 보이고 나머지(인원·대상·참여 방식·선택 항목)는 접어 둔다. 고칠 때는 다 펼친다
-  const [showOptions, setShowOptions] = useState(editing)
+  const [showOptions, setShowOptions] = useState(editing || initial.description !== '' || initial.openChatUrl !== '')
   const audienceOf: HostTag | null =
     host ?? (member ? { schoolName: member.school.shortName, cohortLabel: member.cohortLabel } : null)
   const choices = useMemo(() => deadlineChoices(initial.leadMinutes), [initial.leadMinutes])
@@ -363,6 +375,13 @@ function MeetupForm({
   const presets = useMemo(() => timePresets(now), [now])
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => setV((prev) => ({ ...prev, [key]: value }))
+  // 쓰던 내용이 있으면 나가기 전에 묻는다. 새로 여는 중이면 임시저장도 한다 (웹 브라우저 뒤로는 막을 수 없어서)
+  const dirty = JSON.stringify(v) !== JSON.stringify(initial)
+  const [saved, setSaved] = useState(false)
+  useLeaveGuard(dirty && !saved)
+  useEffect(() => {
+    if (!editing && draftKey) writeDraft(draftKey, dirty && !saved ? v : null)
+  }, [editing, draftKey, dirty, saved, v])
   /** 인원 입력은 바꿀 때마다 최소 ≤ 최대가 되게 맞춘다 */
   const setPeople = (patch: Partial<PeopleValues>) => setV((prev) => fitPeople({ ...prev, ...patch }))
 
@@ -400,6 +419,7 @@ function MeetupForm({
     setError(null)
     setErrorField(null)
     if (!v.title.trim()) return fail('제목을 입력해 주세요', 'title')
+    if (v.title.trim().length < 2) return fail('제목은 2자 이상 적어 주세요', 'title')
     if (v.categories.length === 0) return fail('무엇을 마실지 하나 이상 골라 주세요', 'categories')
 
     // 수정에서는 시간을 바꿨을 때만 검사한다 (마감이 지난 성사 3교시도 다른 칸은 고칠 수 있게)
@@ -441,6 +461,7 @@ function MeetupForm({
           audience: v.audience,
           options: { lateJoin: v.lateJoin, fee, feePrepaid: fee !== null && v.feePrepaid },
         })
+        setSaved(true)
         toast.show('수정했어요', 'ok')
         // 상세에서 왔으면 그 상세로 돌아간다 (새로 쌓으면 뒤로가기에 같은 상세가 두 번 남는다)
         if ((window.history.state?.idx ?? 0) > 0) navigate(-1)
@@ -463,6 +484,8 @@ function MeetupForm({
         fee,
         feePrepaid: fee !== null && v.feePrepaid,
       })
+      setSaved(true)
+      if (draftKey) writeDraft(draftKey, null)
       toast.show(
         v.audience === 'COHORT'
           ? '3교시를 열었어요! 우리 기수 단톡방에 공유해 보세요'
@@ -491,6 +514,8 @@ function MeetupForm({
               aria-invalid={invalid || undefined}
               className={inputClass}
               maxLength={40}
+              enterKeyHint="next"
+              onKeyDown={blockEnterSubmit}
               placeholder="예: 수업 끝나고 치맥 한잔?"
               value={v.title}
               onChange={(e) => set('title', e.target.value)}
@@ -523,6 +548,7 @@ function MeetupForm({
           className={inputClass}
           value={v.meetAt}
           min={toKstInputValue(now)}
+          max={toKstInputValue(new Date(now.getTime() + MAX_AHEAD_DAYS * 86_400_000))}
           onChange={(e) => set('meetAt', e.target.value)}
         />
 
@@ -558,6 +584,8 @@ function MeetupForm({
             <div className="flex flex-col gap-3">
               <input
                 id={id}
+                enterKeyHint="next"
+                onKeyDown={blockEnterSubmit}
                 aria-describedby={describedBy}
                 aria-invalid={invalid || undefined}
                 className={inputClass}
@@ -814,7 +842,7 @@ function MeetupForm({
       <FormError message={errorField ? null : error} />
 
       <div className="flex gap-2.5">
-        <Button variant="secondary" size="lg" onClick={() => navigate(-1)} className="flex-1 sm:flex-none">
+        <Button variant="secondary" size="lg" onClick={() => confirmLeave() && goBack(navigate)} className="flex-1 sm:flex-none">
           돌아가기
         </Button>
         <Button type="submit" size="lg" loading={pending} className="flex-[2] sm:flex-none sm:px-10">
@@ -902,7 +930,7 @@ function copyFrom(d: MeetupDetail, base: FormValues): FormValues {
     maxPeople: d.maxPeople ?? Math.max(6, d.minPeople ?? 2),
     unlimited: d.maxPeople === null,
     description: d.description,
-    openChatUrl: d.openChatUrl ?? '',
+    openChatUrl: d.hosting ? (d.openChatUrl ?? '') : '',
     audience: d.audience,
     lateJoin: d.lateJoin,
     hasFee: d.fee !== null,
@@ -911,13 +939,24 @@ function copyFrom(d: MeetupDetail, base: FormValues): FormValues {
   }
 }
 
+/** 제목·장소 칸에서 Enter 로 폼이 바로 제출되지 않게 (한글 조합 중 Enter 는 그대로) */
+function blockEnterSubmit(e: KeyboardEvent<HTMLInputElement>) {
+  if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.preventDefault()
+}
+
+/** 앞 화면으로. 이 화면으로 바로 들어왔으면(앞 화면이 없으면) 3교시 목록으로 */
+function goBack(navigate: ReturnType<typeof useNavigate>) {
+  if ((window.history.state?.idx ?? 0) > 0) navigate(-1)
+  else navigate('/', { replace: true })
+}
+
 function Header({ title, sub }: { title: string; sub: string }) {
   const navigate = useNavigate()
   return (
     <div className="mb-8">
       <button
         type="button"
-        onClick={() => navigate(-1)}
+        onClick={() => confirmLeave() && goBack(navigate)}
         className="mb-4 -ml-2 inline-flex h-10 items-center gap-1 rounded-lg px-2 text-[15px] font-semibold text-ink-2 hover:text-ink"
       >
         <ChevronLeft className="size-5" aria-hidden />
@@ -936,12 +975,33 @@ export function MeetupCreatePage() {
   return <NewMeetupPage audience={params.get('audience') === 'ALL' ? 'ALL' : 'SCHOOL'} />
 }
 
+const DRAFT_KEY = 'anam3.meetupDraft'
+
 function NewMeetupPage({ audience }: { audience: MeetupAudience }) {
-  const [initial] = useState(() => defaults(audience))
+  const [fresh, setFresh] = useState(0)
+  const [draft] = useState(() => readDraft<FormValues>(DRAFT_KEY))
+  const restored = draft !== null && fresh === 0
+  const [initial, setInitial] = useState(() => draft ?? defaults(audience))
   return (
     <div className="max-w-2xl">
       <Header title="3교시 열기" sub="안 모이면 조용히 사라져요. 부담 없이!" />
-      <MeetupForm initial={initial} editing={false} />
+      {restored && (
+        <p className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2">
+          쓰던 내용을 불러왔어요.
+          <button
+            type="button"
+            className="hit font-semibold text-accent-ink underline underline-offset-2"
+            onClick={() => {
+              writeDraft(DRAFT_KEY, null)
+              setInitial(defaults(audience))
+              setFresh((n) => n + 1)
+            }}
+          >
+            새로 쓰기
+          </button>
+        </p>
+      )}
+      <MeetupForm key={fresh} initial={initial} editing={false} draftKey={DRAFT_KEY} />
     </div>
   )
 }

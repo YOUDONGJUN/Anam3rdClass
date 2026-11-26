@@ -68,7 +68,9 @@ class AdminApiTest extends ApiTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("BANNED"));
 
-        get("/api/me", godae).andExpect(status().isUnauthorized());
+        get("/api/me", godae)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("BANNED"));
         kakaoLogin("godae").andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("BANNED"));
 
         post(member(id) + "/unban", manager, null).andExpect(status().isOk());

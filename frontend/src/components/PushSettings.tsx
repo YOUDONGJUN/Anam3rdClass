@@ -17,7 +17,7 @@ const ITEMS: Array<{ type: PushType; label: string; hint: string }> = [
   { type: 'SPOT', label: '빈자리', hint: '자리 나면 알림을 신청한 3교시에 자리가 나면' },
   { type: 'SETTLE', label: '정산', hint: '정산 요청·다시 알리기, 내가 계산한 정산이 끝나면' },
   { type: 'SCHOOL', label: '새 우리 학교 3교시', hint: '우리 학교 3교시가 열리면 (우리 기수만 3교시는 그 기수에게만)' },
-  { type: 'FEDERATION', label: '새 연합 3교시', hint: '다섯 학교 연합 3교시가 열리면' },
+  { type: 'FEDERATION', label: '새 연합 3교시', hint: '연합 3교시가 열리면' },
   { type: 'NOTICE', label: '새 공지', hint: '교수·대학원장이 올린 공지' },
 ]
 
@@ -42,15 +42,28 @@ export function PushSettings() {
   if (!isApp || !member || permission === null || permission === 'unavailable') return null
   const off = new Set(member.pushOff)
 
+  /** 먼저 바꿔 보여 주고 저장한다. 실패하면 되돌린다 (서버가 느려도 스위치가 잠기지 않게) */
+  function apply(next: Set<PushType>) {
+    if (!member) return
+    const before = member
+    updateMember({ ...member, pushOff: [...next] })
+    save.mutate([...next], {
+      onSuccess: updateMember,
+      onError: (e) => {
+        updateMember(before)
+        toast.show(e.message, 'error')
+      },
+    })
+  }
+
   function toggle(type: PushType) {
     const next = new Set(off)
     if (next.has(type)) next.delete(type)
     else next.add(type)
-    save.mutate([...next], {
-      onSuccess: updateMember,
-      onError: (e) => toast.show(e.message, 'error'),
-    })
+    apply(next)
   }
+
+  const allOff = ITEMS.every((item) => off.has(item.type))
 
   async function turnOn() {
     const state = await enablePush(sendPushToken).catch((): PushState => 'denied')
@@ -60,9 +73,20 @@ export function PushSettings() {
 
   return (
     <section className={`${cardClass} flex flex-col gap-3 px-5 py-5`}>
-      <div>
-        <h2 className="text-[17px] font-extrabold text-ink">알림</h2>
-        <p className="mt-0.5 text-sm text-ink-3">이 폰으로 받을 알림을 골라요. 꺼도 알림함에는 남아요.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-[17px] font-extrabold text-ink">알림</h2>
+          <p className="mt-0.5 text-sm text-ink-3">이 폰으로 받을 알림을 골라요. 꺼도 알림함에는 남아요.</p>
+        </div>
+        {permission !== 'denied' && (
+          <button
+            type="button"
+            className="hit shrink-0 text-sm font-semibold text-accent-ink underline underline-offset-2"
+            onClick={() => apply(allOff ? new Set() : new Set(ITEMS.map((item) => item.type)))}
+          >
+            {allOff ? '모두 켜기' : '모두 끄기'}
+          </button>
+        )}
       </div>
       {permission === 'denied' ? (
         <div className="flex flex-col gap-3 rounded-xl bg-surface-2 px-4 py-4">
@@ -87,7 +111,6 @@ export function PushSettings() {
                   type="checkbox"
                   role="switch"
                   checked={!off.has(item.type)}
-                  disabled={save.isPending}
                   onChange={() => toggle(item.type)}
                   className="size-6 shrink-0 accent-[var(--accent)]"
                 />

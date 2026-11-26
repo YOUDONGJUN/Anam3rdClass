@@ -119,7 +119,7 @@ function TaskList({ tasks, onGo }: { tasks: Task[]; onGo: (tab: Tab, only?: Memb
               <t.Icon className="size-4" aria-hidden />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block font-bold text-ink">{t.title}</span>
+              <span className="block font-bold text-balance text-ink">{t.title}</span>
               {t.detail && <span className="mt-0.5 block truncate text-sm text-ink-3">{t.detail}</span>}
             </span>
             <span className="flex shrink-0 items-center gap-0.5 text-sm font-semibold text-accent-ink">
@@ -344,7 +344,7 @@ function MemberStats({ list: all, multiSchool }: { list: AdminMember[]; multiSch
   const tiles = [
     { label: '원우', value: list.length },
     { label: '활동 중', value: active },
-    { label: '차단', value: list.filter((m) => m.status === 'BANNED').length },
+    { label: '이용 정지', value: list.filter((m) => m.status === 'BANNED').length },
     { label: '예전 회원', value: unlinked },
   ]
   return (
@@ -483,7 +483,7 @@ function MemberFilterBar({
         <FilterSelect label="상태" value={filters.status} onChange={(v) => set({ status: v as MemberFilters['status'] })}>
           <option value="all">전체 (탈퇴 빼고)</option>
           <option value="ACTIVE">활동 중</option>
-          <option value="BANNED">차단됨</option>
+          <option value="BANNED">이용 정지</option>
           <option value="WITHDRAWN">탈퇴</option>
         </FilterSelect>
       </div>
@@ -499,7 +499,7 @@ function StatusBadges({ m }: { m: AdminMember }) {
       {m.role !== 'USER' && <RoleTag role={m.role} />}
       {m.status === 'BANNED' && (
         <span className="shrink-0 rounded bg-danger-soft px-1.5 py-0.5 text-[11px] leading-none font-bold text-danger-ink">
-          차단됨
+          이용 정지
         </span>
       )}
       {m.status === 'WITHDRAWN' && (
@@ -834,18 +834,20 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
                 variant={banned ? 'secondary' : 'danger'}
                 loading={action.isPending}
                 onClick={() => {
-                  if (!banned && !window.confirm(`${m.name} 님의 이용을 막을까요?
+                  if (!banned && !window.confirm(`${m.name} 님의 이용을 정지할까요?
 
 • 바로 로그아웃되고 다시 로그인할 수 없어요
-• 그 사람이 연, 아직 모이기 전인 3교시는 취소되고 모집 중인 3교시에서는 빠져요`)) return
+• 그 사람이 연, 아직 모이기 전인 3교시는 취소되고 모이기 전인 3교시에서는 빠져요${
+  m.role === 'MANAGER' ? '\n• 교수 직책도 풀려요. 정지를 풀어도 직책은 돌아오지 않아요' : ''
+}`)) return
                   action.mutate(
                     { id: m.id, action: banned ? 'unban' : 'ban' },
-                    { onSuccess: () => toast.show(banned ? '차단을 풀었어요' : '차단했어요', 'ok'), onError: fail },
+                    { onSuccess: () => toast.show(banned ? '이용 정지를 풀었어요' : '이용을 정지했어요', 'ok'), onError: fail },
                   )
                 }}
               >
                 {banned ? <RotateCcw className="size-4" aria-hidden /> : <Ban className="size-4" aria-hidden />}
-                {banned ? '차단 풀기' : '차단'}
+                {banned ? '정지 풀기' : '이용 정지'}
               </Button>
             )}
           </div>
@@ -985,7 +987,7 @@ function Meetups() {
   return (
     <div className="flex flex-col gap-3">
       <p className="px-1 text-sm text-ink-3">
-        {isOwner ? '다섯 학교 · 무산·취소 포함 · 실명' : '우리 학교 · 무산·취소 포함 · 이름은 가려져요'}
+        {isOwner ? '모든 학교 · 무산·취소 포함 · 실명' : '우리 학교 · 무산·취소 포함 · 이름은 가려져요'}
       </p>
       <div className={`${cardClass} divide-y divide-line overflow-hidden`}>
         {data.map((m) => (
@@ -1067,7 +1069,7 @@ function ReportCard({ r, onOpenMember }: { r: Report; onOpenMember: (memberId: n
               <b className="text-ink">{r.memberName}</b>
             )}
             {r.memberAffiliation && ` · ${r.memberAffiliation}`}
-            {r.memberBanned && ' · 차단됨'}
+            {r.memberBanned && ' · 이용 정지'}
           </p>
         )}
         {r.targetSnapshot && (
@@ -1085,13 +1087,15 @@ function ReportCard({ r, onOpenMember }: { r: Report; onOpenMember: (memberId: n
             variant="danger"
             loading={action.isPending}
             onClick={() => {
-              if (!window.confirm(`${r.memberName} 님의 이용을 막을까요?
+              if (!window.confirm(`${r.memberName} 님의 이용을 정지할까요?
 
 • 바로 로그아웃되고 다시 로그인할 수 없어요
-• 그 사람이 연, 아직 모이기 전인 3교시는 취소되고 모집 중인 3교시에서는 빠져요`)) return
+• 그 사람이 연, 아직 모이기 전인 3교시는 취소되고 모이기 전인 3교시에서는 빠져요${
+  r.memberRole === 'MANAGER' ? '\n• 교수 직책도 풀려요. 정지를 풀어도 직책은 돌아오지 않아요' : ''
+}`)) return
               action.mutate(
                 { id: r.memberId!, action: 'ban' },
-                { onSuccess: () => toast.show('차단했어요', 'ok'), onError: (e) => toast.show(e.message, 'error') },
+                { onSuccess: () => toast.show('이용을 정지했어요', 'ok'), onError: (e) => toast.show(e.message, 'error') },
               )
             }}
           >
@@ -1163,7 +1167,7 @@ function Reports({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
         <p className="text-sm text-ink-3">
-          {isOwner ? '다섯 학교 신고' : '우리 학교 신고'} · 신고한 사람은 안 보여요
+          {isOwner ? '모든 학교 신고' : '우리 학교 신고'} · 신고한 사람은 안 보여요
         </p>
         {canFilter && (
           <div role="group" aria-label="신고 보기" className="flex gap-1.5">
@@ -1543,7 +1547,7 @@ function AddSchoolForm() {
     e.preventDefault()
     setError(null)
     addSchool.mutate(
-      { name: name.trim(), shortName: shortName.trim(), graduateSchool: '', latestCohort: 1, emailDomain: domain.trim() },
+      { name: name.trim(), shortName: shortName.trim(), graduateSchool: '', latestCohort: PLACEHOLDER_COHORT, emailDomain: domain.trim() }, // 기수를 정하기 전 — 홈의 할 일에 잡힌다
       {
         onSuccess: () => {
           setName('')
@@ -1646,7 +1650,7 @@ export function AdminPage() {
             {member && member.role !== 'USER' && <RoleTag role={member.role} />}
           </h1>
           <p className="mt-1 text-[15px] text-ink-2">
-            {member?.role === 'OWNER' ? '다섯 학교 전체' : `${member?.school.shortName}`}
+            {member?.role === 'OWNER' ? '모든 학교' : `${member?.school.shortName}`}
           </p>
         </div>
         <Segmented

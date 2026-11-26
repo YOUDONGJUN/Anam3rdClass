@@ -27,6 +27,11 @@ public interface MeetupWaitRepository extends JpaRepository<MeetupWait, Long> {
     @Query("delete from MeetupWait w where w.meetup.id = :meetupId")
     int deleteByMeetupId(@Param("meetupId") Long meetupId);
 
+    /** 모임 시간이 지난 3교시의 대기 (매일 정리) */
+    @Modifying
+    @Query("delete from MeetupWait w where w.meetup.id in (select m.id from Meetup m where m.meetAt < :now)")
+    int deleteForPastMeetups(@Param("now") java.time.Instant now);
+
     /** 탈퇴·이용 제한 때 */
     @Modifying
     @Query("delete from MeetupWait w where w.member.id = :memberId")

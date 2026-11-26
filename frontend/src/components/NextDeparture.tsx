@@ -16,7 +16,8 @@ import { cardClass } from './styles'
 
 /** 목록 맨 위 "다음 출발" — 가장 먼저 모이는 3교시를 역 출발 안내판처럼 크게 */
 export function NextDeparture({ meetup: m, now }: { meetup: MeetupSummary; now: Date }) {
-  const recruiting = isLive(m.status) && new Date(m.deadlineAt) > now
+  // 더 탈 수 있을 때만 마감까지 남은 시간 (만석이면 빼다 — 목록 한 줄과 같은 조건)
+  const recruiting = isLive(m.status) && m.joinable && new Date(m.deadlineAt) > now
   const day = formatDayLabel(m.meetAt, now)
   const date = formatDate(m.meetAt)
   const time = formatTime(m.meetAt)
@@ -49,6 +50,7 @@ export function NextDeparture({ meetup: m, now }: { meetup: MeetupSummary; now: 
           <h3 className="min-w-0 flex-1 pt-0.5 text-lg leading-snug font-extrabold tracking-[-0.02em] text-ink">
             <Link
               to={`/meetups/${m.id}`}
+              state={{ backLabel: '3교시 목록' }}
               className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
             >
               {m.title}

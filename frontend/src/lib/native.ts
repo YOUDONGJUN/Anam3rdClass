@@ -124,11 +124,11 @@ export async function pushPermission(): Promise<PushState> {
  * 이 폰으로 알림 받기. 처음이면 알림 권한을 묻는다 (안드로이드 13+).
  * 토큰이 나오면 onToken 으로 알려 준다 → 서버에 등록
  */
-export async function enablePush(onToken: (token: string) => void): Promise<PushState> {
+export async function enablePush(onToken: (token: string) => void, { ask = true }: { ask?: boolean } = {}): Promise<PushState> {
   const info = await appInfo()
   if (!info?.pushAvailable) return 'unavailable'
   let perm = await PushNotifications.checkPermissions()
-  if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
+  if (ask && (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale')) {
     perm = await PushNotifications.requestPermissions()
   }
   if (perm.receive !== 'granted') return 'denied'
@@ -232,4 +232,21 @@ export function startAppShell({ navigate, onPushReceived }: ShellHandlers): () =
   listen(PushNotifications.addListener('pushNotificationReceived', () => onPushReceived()))
 
   return () => cleanups.forEach((fn) => fn())
+}
+
+const PUSH_ASKED_KEY = 'anam3.pushAsked'
+
+/**
+ * 처음 3교시에 참여하거나 열었을 때 한 번만 알림 권한을 묻는다 — 왜 필요한지 알 때 묻는다.
+ * 로그인하자마자 설명 없이 묻지 않는다. 내 정보의 [알림 켜기]로 언제든 켤 수 있다
+ */
+export function askPushOnce() {
+  if (!isApp) return
+  try {
+    if (localStorage.getItem(PUSH_ASKED_KEY)) return
+    localStorage.setItem(PUSH_ASKED_KEY, '1')
+  } catch {
+    return
+  }
+  void enablePush(sendPushToken).catch(() => {})
 }

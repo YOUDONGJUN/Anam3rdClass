@@ -78,7 +78,7 @@ export function NoticesPage() {
         <div>
           <h1 className="text-[28px] leading-tight font-extrabold tracking-[-0.03em] text-ink">공지</h1>
           <p className="mt-1 text-[15px] text-ink-2">
-            {member?.role === 'OWNER' ? '다섯 학교 공지와 연합 공지' : '우리 학교 소식과 연합 공지'}
+            {member?.role === 'OWNER' ? '모든 학교 공지와 연합 공지' : '우리 학교 소식과 연합 공지'}
           </p>
         </div>
         {canWrite && (
@@ -168,7 +168,7 @@ export function NoticeDetailPage() {
             <OtherSchoolTag school={n.school} />
           </p>
         )}
-        <h1 className="text-[26px] leading-tight font-extrabold tracking-[-0.03em] text-ink">
+        <h1 className="text-[26px] leading-tight font-extrabold tracking-[-0.03em] text-balance text-ink">
           {n.pinned && <Pin className="mr-2 inline size-5 fill-accent align-[-2px] text-accent-ink" aria-label="상단 고정" />}
           {n.title}
         </h1>
@@ -326,7 +326,7 @@ function NoticeForm({ id, initial }: { id?: number; initial: { title: string; co
           <div className="flex flex-wrap gap-2">
             <TargetOption checked={target === 'ALL'} onSelect={() => setTarget('ALL')}>
               <Globe2 className="mr-1.5 size-4" aria-hidden />
-              연합 · 다섯 학교 모두
+              연합 · 모든 학교
             </TargetOption>
             {schools.map((s) => (
               <TargetOption key={s.id} checked={target === s.id} onSelect={() => setTarget(s.id)}>
@@ -335,7 +335,7 @@ function NoticeForm({ id, initial }: { id?: number; initial: { title: string; co
             ))}
           </div>
           <p className="text-sm text-ink-3">
-            {target === 'ALL' ? '다섯 학교 원우 모두에게 보이고 알림이 가요.' : '고른 학교 원우에게만 보이고 알림이 가요.'}
+            {target === 'ALL' ? '모든 학교 원우에게 보이고 알림이 가요.' : '고른 학교 원우에게만 보이고 알림이 가요.'}
           </p>
         </fieldset>
       ) : (

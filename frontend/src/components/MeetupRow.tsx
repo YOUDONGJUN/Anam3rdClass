@@ -2,9 +2,9 @@ import { Link } from 'react-router'
 import { MeetupOptionTags } from './MeetupOptionTags'
 import { Check, MapPin } from 'lucide-react'
 import type { MeetupSummary } from '../api/types'
-import { useMeetupAction } from '../api/queries'
+import { useMeetupAction, useMyMeetups } from '../api/queries'
 import { formatDayLabel, formatRemaining, formatTime } from '../lib/time'
-import { isLive, joinedLabel, lateJoinConfirm, seatsCaption } from '../lib/meetup'
+import { findOverlap, isLive, joinedLabel, lateJoinConfirm, overlapMessage, seatsCaption } from '../lib/meetup'
 import { CategoryBadges } from './CategoryBadge'
 import { AudienceBadge } from './CohortBadge'
 import { LineGauge } from './LineGauge'
@@ -18,6 +18,7 @@ import { useToast } from './toastContext'
 export function QuickJoin({ meetup, block = false }: { meetup: MeetupSummary; block?: boolean }) {
   const action = useMeetupAction()
   const toast = useToast()
+  const mine = useMyMeetups()
   return (
     <Button
       size={block ? 'lg' : 'sm'}
@@ -25,6 +26,11 @@ export function QuickJoin({ meetup, block = false }: { meetup: MeetupSummary; bl
       loading={action.isPending}
       onClick={() => {
         // 마감 뒤(중간 합류) 참여는 되돌릴 수 없어서 한 번 더 묻는다
+        const clash = findOverlap(mine.data ?? [], new Date(meetup.meetAt), meetup.id)
+        if (clash) {
+          toast.show(overlapMessage(clash), 'error')
+          return
+        }
         const warn = lateJoinConfirm(meetup)
         if (warn && !window.confirm(warn)) return
         action.mutate(

@@ -12,6 +12,8 @@ interface Props {
   onDepartmentChange: (value: number) => void
   /** 기수를 직접 고칠 수 없다 (원우는 가입한 날만 — 내 정보) */
   cohortLocked?: boolean
+  /** 지금 학과 이름 — 숨긴 학과면 목록에 없어서 따로 보여 준다 */
+  currentDepartmentLabel?: string | null
 }
 
 /** 기수(최신 → 1기)와 학과 선택. 가입 화면과 관리 화면(원우 프로필 고치기)에서 같이 쓴다 */
@@ -22,6 +24,7 @@ export function AffiliationFields({
   onCohortChange,
   onDepartmentChange,
   cohortLocked = false,
+  currentDepartmentLabel = null,
 }: Props) {
   const { data, isPending, isError } = useSignupOptions()
   const school = data?.schools.find((s) => s.id === schoolId)
@@ -72,6 +75,11 @@ export function AffiliationFields({
             <span className="ml-1.5 text-sm font-medium text-ink-3">{school.graduateSchool}</span>
           )}
         </legend>
+        {departmentId !== null && school && !school.departments.some((d) => d.id === departmentId) && (
+          <p className="mb-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2">
+            지금 학과: <b className="text-ink">{currentDepartmentLabel ?? '숨긴 학과'}</b> (지금은 고를 수 없는 학과예요)
+          </p>
+        )}
         <div className="grid gap-2">
           {(school?.departments ?? []).map((d) => {
             const active = departmentId === d.id

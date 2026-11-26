@@ -253,9 +253,9 @@ export function hiddenNamesNote(status: MeetupStatus): string {
   }
 }
 
-/** 참여비: 10000 → "1만 원", 15000 → "15,000원" */
+/** 참여비: 10000 → "10,000원" (정산 금액과 같은 표기) */
 export function formatFee(fee: number): string {
-  return fee % 10000 === 0 ? `${fee / 10000}만 원` : `${fee.toLocaleString('ko-KR')}원`
+  return `${fee.toLocaleString('ko-KR')}원`
 }
 
 /** "참여비 1만 원 · 선입금" */

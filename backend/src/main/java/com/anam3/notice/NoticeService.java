@@ -139,9 +139,12 @@ public class NoticeService {
         return notice.isFederated() ? viewer.isOwner() : viewer.manages(notice.getSchool().getId());
     }
 
-    /** 글쓴이, 대학원장, 그 학교 교수가 고치거나 지울 수 있다. 대학원장이 쓴 공지는 대학원장만 */
+    /**
+     * 글쓴이(지금도 교수·대학원장일 때), 대학원장, 그 학교 교수가 고치거나 지울 수 있다. 대학원장이 쓴 공지는 대학원장만.
+     * 해임된 교수는 예전에 쓴 공지라도 고치지 못한다
+     */
     private static boolean canEdit(LoginMember viewer, Notice notice) {
-        if (notice.isWrittenBy(viewer.id()) || viewer.isOwner()) {
+        if ((notice.isWrittenBy(viewer.id()) && viewer.isStaff()) || viewer.isOwner()) {
             return true;
         }
         return !notice.getAuthor().isOwner() && canManage(viewer, notice);

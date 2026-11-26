@@ -196,17 +196,22 @@ function Chip({
   children,
   disabled,
   label,
+  radio = false,
 }: {
   active: boolean
   onClick: () => void
   children: ReactNode
   disabled?: boolean
   label?: string
+  /** 하나만 고르는 묶음(role="radiogroup") 안이면 라디오로 읽힌다 */
+  radio?: boolean
 }) {
   return (
     <button
       type="button"
-      aria-pressed={active}
+      role={radio ? 'radio' : undefined}
+      aria-checked={radio ? active : undefined}
+      aria-pressed={radio ? undefined : active}
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
@@ -254,8 +259,9 @@ function CategoryPicker({ value, onChange }: { value: MeetupCategory[]; onChange
               >
                 <meta.Icon className="size-4" strokeWidth={2.4} aria-hidden />
               </span>
-              <span className="min-w-0 flex-1">{meta.label}</span>
-              {active && <Check className="size-4 shrink-0" strokeWidth={3} aria-hidden />}
+              {/* '하이볼·칵테일'이 '·'에서 끊기지 않게 잇는다. 좁은 폰에서는 고른 표시(✓) 대신 색으로 알린다 */}
+              <span className="min-w-0 flex-1 text-[14px] sm:text-[15px]">{meta.label.replaceAll('·', '\u2060·\u2060')}</span>
+              {active && <Check className="hidden size-4 shrink-0 sm:block" strokeWidth={3} aria-hidden />}
             </label>
           )
         })}
@@ -713,7 +719,7 @@ function MeetupForm({
                       label: '우리 기수만',
                       sub: `${audienceOf.schoolName} ${audienceOf.cohortLabel}만 보여요`,
                     },
-                    { value: 'ALL', Icon: Globe2, label: '연합', sub: '다섯 학교 누구나 · 연합 게시판에' },
+                    { value: 'ALL', Icon: Globe2, label: '연합', sub: '연합 학교 누구나 · 연합 게시판에' },
                   ] satisfies { value: MeetupAudience; Icon: LucideIcon; label: string; sub: string }[]
                 ).map(({ value, Icon, label, sub }) => {
                   const active = v.audience === value
@@ -757,10 +763,10 @@ function MeetupForm({
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[15px] font-semibold text-ink">참여비</span>
                 <div className="flex gap-1.5" role="radiogroup" aria-label="참여비">
-                  <Chip active={!v.hasFee} onClick={() => set('hasFee', false)}>
+                  <Chip radio active={!v.hasFee} onClick={() => set('hasFee', false)}>
                     없음
                   </Chip>
-                  <Chip active={v.hasFee} onClick={() => set('hasFee', true)}>
+                  <Chip radio active={v.hasFee} onClick={() => set('hasFee', true)}>
                     있음
                   </Chip>
                 </div>

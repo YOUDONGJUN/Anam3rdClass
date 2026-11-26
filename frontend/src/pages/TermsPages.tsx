@@ -272,6 +272,7 @@ export function TermsCheckbox({ checked, onChange }: { checked: boolean; onChang
         <input
           id="agree-terms"
           type="checkbox"
+          aria-label="(필수) 이용약관과 개인정보 처리방침에 동의해요"
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
           className="mt-0.5 size-5 shrink-0 cursor-pointer accent-[var(--accent)]"
@@ -325,7 +326,7 @@ export function TermsGate() {
           <div>
             <h1 className="text-xl font-extrabold text-ink">{member.name}님, 약관에 동의해 주세요</h1>
             <p className="mt-1.5 text-[15px] leading-relaxed text-ink-2">
-              이제 IT연합회 다섯 학교가 함께 써요. 서로 지킬 약속과 개인정보를 어떻게 다루는지 정리했어요.
+              이제 IT연합회 학교들이 함께 써요. 서로 지킬 약속과 개인정보를 어떻게 다루는지 정리했어요.
             </p>
           </div>
           <ul className="flex flex-col gap-1.5 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-ink-2">

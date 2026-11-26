@@ -157,6 +157,11 @@ const STEPS = [
   { title: '성사되면 공개', body: '참여자끼리 실명·단톡방 공개' },
 ]
 
+/** 1~10은 "다섯"처럼 우리말로, 그 밖은 숫자로 */
+function koreanCount(n: number): string {
+  return ['', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'][n] ?? String(n)
+}
+
 /** 저절로 로그아웃된 까닭 (로그인 만료 · 이용 제한) */
 function SignOutNotice() {
   const { notice, clearNotice } = useAuth()
@@ -210,9 +215,11 @@ export function WelcomePage() {
           <SignOutNotice />
           {slow && <p className="mb-4 rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2">서버를 깨우는 중이에요. 최대 1분 걸릴 수 있어요</p>}
           <div className="rounded-3xl border border-line bg-surface p-6 shadow-[0_12px_40px_-16px_rgb(0_0_0/0.18)] sm:p-7">
-            <h2 className="text-xl font-extrabold tracking-[-0.02em] text-ink">다섯 학교 대학원 원우끼리</h2>
+            <h2 className="text-xl font-extrabold tracking-[-0.02em] text-ink">
+              {schools.length > 0 ? `${koreanCount(schools.length)} 학교` : 'IT연합회'} 대학원 원우끼리
+            </h2>
             {schools.length > 0 && (
-              <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="함께하는 학교">
+              <ul className="mt-3 grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap [&>li>*]:w-full [&>li>*]:justify-center" aria-label="함께하는 학교">
                 {schools.map((s) => (
                   <li key={s.id}>
                     <SchoolBadge school={s} />

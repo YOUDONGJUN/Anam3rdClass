@@ -50,7 +50,11 @@ function SettlementDues() {
       <ul className="divide-y divide-line">
         {data.map((d) => (
           <li key={d.meetupId}>
-            <Link to={`/meetups/${d.meetupId}`} className="flex items-center gap-3 px-5 py-3.5 hover:bg-surface-2">
+            <Link
+              to={`/meetups/${d.meetupId}`}
+              state={{ backLabel: '내 3교시' }}
+              className="flex items-center gap-3 px-5 py-3.5 hover:bg-surface-2"
+            >
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[15px] font-bold text-ink">{d.title}</span>
                 <span className="mt-0.5 block truncate text-[13px] text-ink-3">
@@ -80,7 +84,15 @@ export function MyMeetupsPage() {
   // 무산됐어도 모임 시간 전이면 다가오는 쪽에 둔다 — 연 사람이 지금 인원으로 되살릴 수 있어서
   const ahead = (m: MeetupSummary) => isLive(m.status) || (m.status === 'FAILED' && time(m) > now.getTime())
   const upcoming = all.filter(ahead).sort((a, b) => time(a) - time(b))
-  const past = all.filter((m) => !ahead(m)).sort((a, b) => time(b) - time(a))
+  // 지난 탭: 지난 3교시를 최근 것부터, 아직 오지 않은 날짜로 잡혔다 취소된 3교시는 그 아래에
+  const past = all
+    .filter((m) => !ahead(m))
+    .sort((a, b) => {
+      const af = time(a) > now.getTime()
+      const bf = time(b) > now.getTime()
+      if (af !== bf) return af ? 1 : -1
+      return af ? time(a) - time(b) : time(b) - time(a)
+    })
   const list = tab === 'upcoming' ? upcoming : past
   const counted = (label: string, n: number) => (data ? `${label} ${n}` : label)
 
@@ -157,7 +169,7 @@ export function MyMeetupsPage() {
                     {tab === 'past' && (
                       <Link
                         to={`/meetups/new?from=${m.id}`}
-                        className="mt-1.5 inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-accent-ink hover:bg-surface-2"
+                        className="hit mt-1.5 inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-accent-ink hover:bg-surface-2"
                       >
                         <Copy className="size-4" aria-hidden />
                         다시 열기

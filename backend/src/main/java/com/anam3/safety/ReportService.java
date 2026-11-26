@@ -72,7 +72,7 @@ public class ReportService {
                         .orElseThrow(() -> ApiException.notFound("3교시를 찾을 수 없어요"));
                 Report r = new Report(reporter, Report.TargetType.MEETUP, meetup, null, meetup.getHost(),
                         meetup.getSchool(), req.reason(), detail, now);
-                r.snapshot(meetup.getTitle(), meetup.getDescription());
+                r.snapshot(meetup.getTitle(), joinLines(meetup.getDescription(), "장소: " + meetup.getPlace()));
                 yield r;
             }
             case NOTICE -> {
@@ -187,5 +187,11 @@ public class ReportService {
                 member == null ? null : member.getRole(),
                 member != null && member.getStatus() == MemberStatus.BANNED, SchoolTag.from(r.getSchool()),
                 viewer.isOwner() && r.isFromFeedback());
+    }
+
+    /** 신고 당시 내용: 비어 있지 않은 줄만 */
+    private static String joinLines(String... lines) {
+        return java.util.Arrays.stream(lines).filter(l -> l != null && !l.isBlank())
+                .collect(java.util.stream.Collectors.joining("\n"));
     }
 }

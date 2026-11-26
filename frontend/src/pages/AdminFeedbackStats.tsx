@@ -72,7 +72,7 @@ function Satisfaction({ data }: { data: FeedbackStats }) {
   return (
     <section aria-labelledby="sat-title" className={`${cardClass} min-w-0 flex-[2_1_22rem] px-5 py-5`}>
       <h3 id="sat-title" className="text-base font-extrabold text-ink">
-        만족도 · 다섯 학교와 연합
+        만족도 · 학교별과 연합
       </h3>
       {shares ? (
         <>

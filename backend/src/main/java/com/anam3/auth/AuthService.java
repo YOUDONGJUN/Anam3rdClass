@@ -289,6 +289,11 @@ public class AuthService {
 
     private SavedCode saveCode(SignupClaims claims, String email, String code) {
         School school = schoolService.requireForEmail(email);
+        // 학과가 하나도 없는 학교(막 추가한 학교)는 새로 가입하면 학과를 못 골라 막힌다 — 코드를 보내기 전에 알린다
+        if (!schoolService.hasActiveDepartment(school) && !members.existsByEmail(email)) {
+            throw ApiException.badRequest("SCHOOL_NOT_READY",
+                    school.getShortName() + "은 아직 가입 준비 중이에요. 학과가 등록되면 가입할 수 있어요");
+        }
         Instant now = clock.instant();
 
         verifications.deleteCreatedBefore(now.minus(Duration.ofDays(1)));

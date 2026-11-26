@@ -38,8 +38,9 @@ public class MeetupController {
     @GetMapping
     public List<MeetupSummary> list(@AuthenticationPrincipal LoginMember me,
             @RequestParam(defaultValue = "upcoming") String scope,
-            @RequestParam(defaultValue = "school") String board) {
-        return meetupService.list(me, scope, board);
+            @RequestParam(defaultValue = "school") String board,
+            @RequestParam(defaultValue = "30") int limit) {
+        return meetupService.list(me, scope, board, limit);
     }
 
     @PostMapping
@@ -96,6 +97,19 @@ public class MeetupController {
     @DeleteMapping("/{id}/wait")
     public MeetupDetail cancelWait(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
         return meetupService.cancelWait(me, id);
+    }
+
+    /** 내보내기 (연 사람 · 그 학교 교수 · 대학원장). ref: 참여 번호 */
+    @DeleteMapping("/{id}/participants/{ref}")
+    public MeetupDetail kick(@AuthenticationPrincipal LoginMember me, @PathVariable Long id, @PathVariable Long ref) {
+        return meetupService.kick(me, id, ref);
+    }
+
+    /** 연 사람 넘기기 (연 사람 · 대학원장) */
+    @PostMapping("/{id}/host")
+    public MeetupDetail transferHost(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @Valid @RequestBody com.anam3.safety.SafetyDtos.BlockRequest req) {
+        return meetupService.transferHost(me, id, req.ref());
     }
 
     /** 정원 늘리기 (연 사람 · 대학원장) */

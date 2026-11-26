@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Ban, Flag, X } from 'lucide-react'
 import { useBlock, useReport } from '../api/queries'
 import type { ReportReason, ReportTarget } from '../api/types'
@@ -9,6 +9,8 @@ import { useToast } from './toastContext'
 
 export interface ReportTargetInfo {
   type: ReportTarget
+  /** 사람이면 이름 (연 사람 메뉴의 확인 문구에 쓴다) */
+  name?: string
   /** MEETUP → 3교시 번호, NOTICE → 공지 번호, MEMBER → 참여 번호(PersonView.ref) */
   id: number
   /** 창 제목에 보일 이름: "3교시 ‘치맥 번개’", "김*대 · 61기 · 인융" */
@@ -24,11 +26,14 @@ export function ReportDialog({
   target,
   onClose,
   onReported,
+  hostTools,
 }: {
   target: ReportTargetInfo
   onClose: () => void
   /** 신고나 차단을 마쳤을 때 (닫기만 했을 때는 부르지 않는다) */
   onReported?: () => void
+  /** 연 사람 메뉴 (내보내기 · 연 사람 넘기기). close 를 받아 일을 마치면 창을 닫는다 */
+  hostTools?: (close: () => void) => ReactNode
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const report = useReport()
@@ -47,6 +52,12 @@ export function ReportDialog({
   function close() {
     ref.current?.close()
   }
+
+  // 연 사람 메뉴로 일을 마치면 창을 닫는다 (그리는 중에 창을 건드리지 않게 상태로 넘긴다)
+  const [finished, setFinished] = useState(false)
+  useEffect(() => {
+    if (finished) ref.current?.close()
+  }, [finished])
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -103,6 +114,12 @@ export function ReportDialog({
       </div>
 
       <form onSubmit={submit} className="flex flex-col gap-4 px-5 py-5" noValidate>
+        {hostTools && (
+          <div className="flex flex-col gap-2 border-b border-line pb-5">
+            <p className="text-[15px] font-bold">연 사람 메뉴</p>
+            {hostTools(() => setFinished(true))}
+          </div>
+        )}
         <fieldset>
           <legend className="mb-2 text-[15px] font-bold">어떤 문제가 있나요?</legend>
           <div className="grid grid-cols-2 gap-2">

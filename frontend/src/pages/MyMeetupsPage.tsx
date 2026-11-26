@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { ChevronRight, Copy, ReceiptText } from 'lucide-react'
-import { useMyMeetups, useMySettlements } from '../api/queries'
+import { Bell, ChevronRight, Copy, ReceiptText } from 'lucide-react'
+import { MINE_PAGE, useMyMeetups, useMySettlements, useMyWaits } from '../api/queries'
 import type { MeetupSummary } from '../api/types'
 import { BoardHero, BoardSheet, HeroTabs } from '../components/BoardHero'
 import { MeetupRow, MeetupRowSkeleton } from '../components/MeetupRow'
@@ -71,9 +72,34 @@ function SettlementDues() {
   )
 }
 
+/** 빈자리를 기다리는 3교시 — 자리가 나면 알림이 가고, 먼저 참여하는 원우가 탄다 */
+function WaitingList() {
+  const { data } = useMyWaits()
+  const now = useNow()
+  if (!data || data.length === 0) return null
+  return (
+    <section aria-labelledby="waits-title" className="mb-6">
+      <h2 id="waits-title" className="mb-2.5 flex items-center gap-2 px-1 text-[17px] font-extrabold text-ink">
+        <Bell className="size-4 text-accent-ink" aria-hidden />
+        빈자리 기다리는 중
+        <span className="text-sm font-semibold text-ink-3">{data.length}</span>
+      </h2>
+      <div className="flex flex-col gap-3">
+        {data.map((m) => (
+          <div key={m.id} className={`${cardClass} overflow-hidden`}>
+            <MeetupRow meetup={m} now={now} showDate backLabel="내 3교시" />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 /** 내가 열고 참여한 3교시 — 내 일정이 한 줄 노선처럼 이어진다 */
 export function MyMeetupsPage() {
-  const { data, isPending, isError, error, refetch } = useMyMeetups()
+  // 오래 쓴 원우는 100개가 넘는다 — '더 보기'로 늘린다
+  const [limit, setLimit] = useState(MINE_PAGE)
+  const { data, isPending, isError, error, refetch, isFetching } = useMyMeetups(limit)
   const now = useNow()
   // 고른 탭은 주소(?tab=past)에 남긴다 — 상세에 갔다가 뒤로 와도 보던 탭 그대로
   const [params, setParams] = useSearchParams()
@@ -112,6 +138,7 @@ export function MyMeetupsPage() {
 
       <BoardSheet>
         <SettlementDues />
+        {tab === 'upcoming' && <WaitingList />}
 
         <h2 className="mb-3.5 flex items-baseline justify-between gap-3 px-1">
           <span className="text-[17px] font-extrabold text-ink">내 노선</span>
@@ -179,6 +206,18 @@ export function MyMeetupsPage() {
                 </li>
               )
             })}
+            {tab === 'past' && (data?.length ?? 0) >= limit && (
+              <li className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  className={buttonClass('secondary')}
+                  disabled={isFetching}
+                  onClick={() => setLimit((n) => n + MINE_PAGE)}
+                >
+                  {isFetching ? '불러오는 중' : '지난 3교시 더 보기'}
+                </button>
+              </li>
+            )}
             {tab === 'upcoming' && (
               <li className="flex items-center gap-3">
                 <span className="flex w-6 shrink-0 justify-center" aria-hidden>

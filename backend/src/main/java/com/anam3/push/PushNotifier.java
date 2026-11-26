@@ -92,6 +92,19 @@ public class PushNotifier {
                 "한 명이 나갔어요 · " + headcount(meetup), path(meetup), tag(meetup, "people")));
     }
 
+    /** 내보내기: 내보낸 원우에게 */
+    public void kicked(Meetup meetup, Long memberId) {
+        push.send(List.of(memberId), new PushMessage(PushType.CHANGED, meetup.getTitle(),
+                "연 사람이 참여를 취소했어요 · 이 3교시에는 다시 참여할 수 없어요", path(meetup), tag(meetup, "changed")));
+    }
+
+    /** 연 사람 넘기기: 새 연 사람에게 (넘긴 사람 빼고 참여자에게도 알린다) */
+    public void hostChanged(Meetup meetup, Long previousHostId) {
+        Long next = meetup.getHost().getId();
+        push.send(List.of(next), new PushMessage(PushType.CHANGED, meetup.getTitle(),
+                "이 3교시의 연 사람이 됐어요 · 단톡방 링크와 시간을 챙겨 주세요", path(meetup), tag(meetup, "changed")));
+    }
+
     /** 성사: 참여자 모두에게 (성사시킨 사람 빼고) */
     public void reached(Meetup meetup, Long actorId) {
         push.send(others(meetup, actorId), new PushMessage(PushType.REACHED, meetup.getTitle(),

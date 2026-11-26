@@ -7,6 +7,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.anam3.admin.AdminAction;
+import com.anam3.admin.AdminActionLog;
 import com.anam3.auth.LoginMember;
 import com.anam3.common.ApiException;
 import com.anam3.common.ContentFilter;
@@ -42,14 +44,16 @@ public class NoticeService {
     private final MemberRepository members;
     private final SchoolService schools;
     private final PushNotifier notifier;
+    private final AdminActionLog actionLog;
     private final Clock clock;
 
     public NoticeService(NoticeRepository notices, MemberRepository members, SchoolService schools,
-            PushNotifier notifier, Clock clock) {
+            PushNotifier notifier, AdminActionLog actionLog, Clock clock) {
         this.notices = notices;
         this.members = members;
         this.schools = schools;
         this.notifier = notifier;
+        this.actionLog = actionLog;
         this.clock = clock;
     }
 
@@ -112,6 +116,9 @@ public class NoticeService {
     public void delete(LoginMember viewer, Long id) {
         Notice notice = load(id);
         checkEditable(viewer, notice);
+        if (!notice.isWrittenBy(viewer.id())) { // 교수·대학원장이 남의 공지를 지움 (신고 처리)
+            actionLog.record(viewer, AdminAction.Type.DELETE_NOTICE, notice.getAuthor(), null, notice.getTitle());
+        }
         notices.delete(notice);
     }
 

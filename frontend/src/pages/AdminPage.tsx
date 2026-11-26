@@ -24,6 +24,7 @@ import {
   X,
 } from 'lucide-react'
 import {
+  useAdminActions,
   useAdminMeetups,
   useAdminMemberAction,
   useAdminMembers,
@@ -64,10 +65,10 @@ import {
   type SortKey,
 } from '../lib/members'
 import { affiliation, ROLE_LABEL } from '../lib/person'
-import { formatRelative } from '../lib/time'
+import { formatDateTime, formatRelative } from '../lib/time'
 import { readDraft, writeDraft } from '../lib/leaveGuard'
 
-type Tab = 'home' | 'members' | 'reports' | 'meetups' | 'schools' | 'stats'
+type Tab = 'home' | 'members' | 'reports' | 'meetups' | 'schools' | 'stats' | 'actions'
 
 const PAGE_SIZE = 20
 
@@ -1195,6 +1196,66 @@ function Reports({
   )
 }
 
+// ---------------- 기록 (대학원장) ----------------
+
+/** 관리자 조치 기록: 교수·대학원장이 한 일 (최근 200건). 대상 이름을 누르면 그 원우를 연다 */
+function Actions({ onOpenMember }: { onOpenMember: (memberId: number) => void }) {
+  const { data, isPending, error, refetch } = useAdminActions()
+  const now = useNow()
+  if (isPending) return <Spinner />
+  if (!data) return <ErrorState message={error?.message ?? '불러오지 못했어요'} onRetry={() => refetch()} />
+  if (data.length === 0)
+    return (
+      <div className={cardClass}>
+        <EmptyState title="아직 기록이 없어요" body="이용 정지·교수 임명·지우기·신고 처리를 하면 여기 남아요." />
+      </div>
+    )
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="px-1 text-sm text-ink-3">교수·대학원장이 한 일 · 최근 200건</p>
+      <ul className={`${cardClass} divide-y divide-line overflow-hidden`}>
+        {data.map((a) => {
+          const targetId = a.targetAffiliation ? a.targetMemberId : null
+          return (
+            <li key={a.id} className="flex flex-col gap-0.5 px-4 py-3 sm:px-5">
+              <p className="text-[15px] leading-snug text-ink">
+                <b className="font-bold">{a.label}</b>
+                {a.targetName && (
+                  <>
+                    {'\u00a0· '}
+                    {targetId !== null ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenMember(targetId)}
+                        className="font-semibold underline decoration-line underline-offset-4 hover:decoration-ink"
+                      >
+                        {a.targetName}
+                      </button>
+                    ) : (
+                      <span className="font-semibold">{a.targetName}</span>
+                    )}
+                    {a.targetAffiliation && (
+                      <span className="whitespace-nowrap text-ink-3"> {a.targetAffiliation}</span>
+                    )}
+                  </>
+                )}
+              </p>
+              {a.detail && <p className="text-sm break-words text-ink-2">{a.detail}</p>}
+              <p className="text-[13px] text-ink-3">
+                {a.actorName} {ROLE_LABEL[a.actorRole]}
+                {'\u00a0· '}
+                <time dateTime={a.createdAt} className="whitespace-nowrap">
+                  {formatDateTime(a.createdAt, now)}
+                </time>
+              </p>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 // ---------------- 학교 · 학과 (바꾸기는 대학원장만) ----------------
 
 function SchoolInfoForm({ school }: { school: School }) {
@@ -1619,7 +1680,7 @@ function Schools() {
 }
 
 const MEMBER_FILTERS_KEY = 'anam3.adminMemberFilters'
-const TABS: readonly Tab[] = ['home', 'members', 'reports', 'meetups', 'schools', 'stats']
+const TABS: readonly Tab[] = ['home', 'members', 'reports', 'meetups', 'schools', 'stats', 'actions']
 
 export function AdminPage() {
   const { member } = useAuth()
@@ -1663,8 +1724,13 @@ export function AdminPage() {
             { value: 'members', label: '원우' },
             { value: 'meetups', label: '3교시' },
             { value: 'schools', label: '학교' },
-            // 3교시 후기 통계는 대학원장만
-            ...(owner ? [{ value: 'stats' as const, label: '통계' }] : []),
+            // 3교시 후기 통계 · 관리자 조치 기록은 대학원장만
+            ...(owner
+              ? [
+                  { value: 'stats' as const, label: '통계' },
+                  { value: 'actions' as const, label: '기록' },
+                ]
+              : []),
           ]}
         />
       </div>
@@ -1683,6 +1749,7 @@ export function AdminPage() {
           }}
         />
       )}
+      {tab === 'actions' && owner && <Actions onOpenMember={setOpenMemberId} />}
       {openMemberId !== null && <MemberDialogById id={openMemberId} onClose={closeMember} />}
     </div>
   )

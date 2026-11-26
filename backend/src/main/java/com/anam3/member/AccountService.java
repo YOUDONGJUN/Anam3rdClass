@@ -4,6 +4,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 
 import org.springframework.stereotype.Service;
@@ -15,6 +17,7 @@ import com.anam3.meetup.Meetup;
 import com.anam3.meetup.MeetupRepository;
 import com.anam3.meetup.MeetupWaitRepository;
 import com.anam3.meetup.ParticipationRepository;
+import com.anam3.member.MeDtos.ContactView;
 import com.anam3.member.MeDtos.MyProfileRequest;
 import com.anam3.push.PushNotifier;
 import com.anam3.push.PushService;
@@ -22,7 +25,7 @@ import com.anam3.safety.MemberBlockRepository;
 import com.anam3.school.Department;
 import com.anam3.school.SchoolService;
 
-/** 내 계정: 약관 동의, 내 정보 고치기, 랭킹 설정, 탈퇴 */
+/** 내 계정: 약관 동의, 내 정보 고치기, 요청할 곳, 랭킹 설정, 탈퇴 */
 @Service
 @Transactional
 public class AccountService {
@@ -54,7 +57,7 @@ public class AccountService {
         this.clock = clock;
     }
 
-    /** 예전 회원이 로그인한 뒤 약관에 동의한다 (새로 가입하는 사람은 가입할 때 동의한다) */
+    /** 예전 회원이나 약관이 바뀐 뒤 들어온 회원이 지금 약관에 동의한다 (새로 가입하는 사람은 가입할 때 동의한다) */
     public MemberResponse agreeTerms(LoginMember viewer) {
         Member member = load(viewer);
         if (!member.hasAgreedTerms()) {
@@ -107,6 +110,20 @@ public class AccountService {
             member.changeOwnProfile(name, member.getCohort(), department, clock.instant(), false);
         }
         return MemberResponse.from(member);
+    }
+
+    /**
+     * 이름·기수를 바꿔 달라고 요청할 곳: 우리 학교 교수(이름순)와 대학원장 (나는 빼고, 이메일은 주지 않는다).
+     * 누구에게 요청할지 알도록 이름은 가리지 않는다
+     */
+    @Transactional(readOnly = true)
+    public List<ContactView> contacts(LoginMember viewer) {
+        return members.findStaffFor(viewer.schoolId(), MemberRole.OWNER, MemberRole.MANAGER, MemberStatus.ACTIVE)
+                .stream()
+                .filter(m -> !m.getId().equals(viewer.id()))
+                .sorted(Comparator.comparing((Member m) -> m.isOwner()).thenComparing(Member::getName))
+                .map(ContactView::from)
+                .toList();
     }
 
     /** 랭킹에 안 나오기 켜고 끄기 */

@@ -27,6 +27,18 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
 
     List<Member> findAllByRole(MemberRole role);
 
+    /**
+     * 활동 중인 대학원장과, 그 학교 교수 (schoolId 가 null 이면 대학원장만).
+     * 새 신고 알림을 받을 사람, 내 정보의 "요청할 곳"에 쓴다
+     */
+    @Query("""
+            select m from Member m join fetch m.school
+            where m.status = :active
+              and (m.role = :owner or (m.role = :manager and m.school.id = :schoolId))
+            """)
+    List<Member> findStaffFor(@Param("schoolId") Long schoolId, @Param("owner") MemberRole owner,
+            @Param("manager") MemberRole manager, @Param("active") MemberStatus active);
+
     /** 로그인 확인·내 정보 (학교·학과까지 한 번에) */
     @Query("select m from Member m join fetch m.school left join fetch m.department where m.id = :id")
     Optional<Member> findWithSchool(@Param("id") Long id);

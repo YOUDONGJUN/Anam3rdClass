@@ -19,6 +19,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.anam3.admin.AdminAction;
+import com.anam3.admin.AdminActionLog;
 import com.anam3.auth.LoginMember;
 import com.anam3.common.ApiException;
 import com.anam3.common.ContentFilter;
@@ -84,6 +86,7 @@ public class MeetupService {
     private final NotificationService notifications;
     private final MeetupLeaveRepository leaves;
     private final MeetupKickRepository kicks;
+    private final AdminActionLog actionLog;
     private final Clock clock;
     /** 시간 겹침 검사 (app.meetup.overlap-check, 기본 켜짐) */
     private final boolean overlapCheck;
@@ -91,7 +94,8 @@ public class MeetupService {
     public MeetupService(MeetupRepository meetups, ParticipationRepository participations, MemberRepository members,
             MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, PushNotifier notifier,
             FeedbackService feedback, MeetupWaitRepository waits, SettlementService settlements,
-            NotificationService notifications, MeetupLeaveRepository leaves, MeetupKickRepository kicks, Clock clock,
+            NotificationService notifications, MeetupLeaveRepository leaves, MeetupKickRepository kicks,
+            AdminActionLog actionLog, Clock clock,
             @Value("${app.meetup.overlap-check:true}") boolean overlapCheck) {
         this.meetups = meetups;
         this.participations = participations;
@@ -106,6 +110,7 @@ public class MeetupService {
         this.notifications = notifications;
         this.leaves = leaves;
         this.kicks = kicks;
+        this.actionLog = actionLog;
         this.clock = clock;
         this.overlapCheck = overlapCheck;
     }
@@ -588,6 +593,9 @@ public class MeetupService {
         waits.deleteByMeetupId(id);
         participations.deleteByMeetupId(id);
         notifications.forgetMeetup(id); // 알림함에서 눌러도 열 화면이 없다 (아래 취소 알림은 3교시 목록으로 간다)
+        if (!meetup.isHostedBy(viewer.id())) { // 교수·대학원장이 남의 3교시를 지움 (신고 처리)
+            actionLog.record(viewer, AdminAction.Type.DELETE_MEETUP, meetup.getHost(), id, meetup.getTitle());
+        }
         meetups.delete(meetup);
         if (!people.isEmpty()) {
             notifier.canceled(meetup, people, viewer.id(), true);

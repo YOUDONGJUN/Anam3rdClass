@@ -201,6 +201,60 @@ class EmailAuthApiTest extends ApiTestSupport {
         emailLogin("lockout@korea.ac.kr", PASSWORD).andExpect(jsonPath("$.step").value("DONE"));
     }
 
+    private static String change(String current, String next) {
+        return """
+                {"currentPassword":"%s","newPassword":"%s"}
+                """.formatted(current, next);
+    }
+
+    @Test
+    void 지금_비밀번호로_바꾸면_다른_기기는_로그아웃되고_이_기기는_이어서_쓴다() throws Exception {
+        String phone = emailSignup("godae", "김고대", PASSWORD);
+        clock.advance(Duration.ofMinutes(1));
+        String web = read(emailLogin("godae@korea.ac.kr", PASSWORD), "$.token");
+
+        String fresh = read(put("/api/me/password", web, change(PASSWORD, "newpass2027"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.step").value("DONE"))
+                .andExpect(jsonPath("$.member.hasPassword").value(true)), "$.token");
+        get("/api/me", fresh).andExpect(status().isOk());
+        get("/api/me", web).andExpect(status().isUnauthorized());
+        get("/api/me", phone).andExpect(status().isUnauthorized());
+        emailLogin("godae@korea.ac.kr", PASSWORD).andExpect(jsonPath("$.code").value("LOGIN_FAILED"));
+        emailLogin("godae@korea.ac.kr", "newpass2027").andExpect(jsonPath("$.step").value("DONE"));
+    }
+
+    @Test
+    void 지금_비밀번호를_10번_틀리면_1시간_막힌다() throws Exception {
+        String token = emailSignup("godae", "김고대", PASSWORD);
+        put("/api/me/password", token, change("wrong1234", "newpass2027"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("WRONG_PASSWORD"));
+        // 같은 비밀번호, 규칙에 안 맞는 새 비밀번호는 틀린 횟수에 넣지 않는다
+        put("/api/me/password", token, change(PASSWORD, PASSWORD))
+                .andExpect(jsonPath("$.code").value("SAME_PASSWORD"));
+        put("/api/me/password", token, change(PASSWORD, "short1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(AuthDtos.PASSWORD_MESSAGE));
+        for (int i = 1; i < AuthService.HOURLY_PASSWORD_CHANGE_FAILURES; i++) {
+            put("/api/me/password", token, change("wrong" + i + "abc", "newpass2027"))
+                    .andExpect(jsonPath("$.code").value("WRONG_PASSWORD"));
+        }
+        put("/api/me/password", token, change(PASSWORD, "newpass2027"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("TOO_MANY"));
+        clock.advance(Duration.ofMinutes(61));
+        put("/api/me/password", token, change(PASSWORD, "newpass2027")).andExpect(status().isOk());
+    }
+
+    @Test
+    void 비밀번호가_없으면_지금_비밀번호로_바꿀_수_없다() throws Exception {
+        String token = signup("godae", "김고대", 61); // 카카오로 가입
+        put("/api/me/password", token, change("anam3rd2026", "newpass2027"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("NO_PASSWORD"));
+    }
+
     @Test
     void 탈퇴하면_이메일로도_못_들어오고_다시_가입할_수_있다() throws Exception {
         String session = emailSignup("godae", "김고대", PASSWORD);

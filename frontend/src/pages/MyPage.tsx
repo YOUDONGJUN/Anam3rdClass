@@ -10,6 +10,7 @@ import {
   Lock,
   LogOut,
   Mail,
+  MessageCircle,
   Minus,
   Pencil,
   ShieldCheck,
@@ -22,6 +23,8 @@ import {
   useAdminStats,
   useAuthConfig,
   useBlocks,
+  useChangePassword,
+  useContacts,
   usePayLinks,
   useRanking,
   useRankingSetting,
@@ -40,6 +43,8 @@ import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, Field, FormError, Segmented } from '../components/ui'
 import { cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
+import { contactLine } from '../lib/contacts'
+import { PASSWORD_RULE, passwordProblem } from '../lib/password'
 import {
   affiliation,
   canEditOwnName,
@@ -134,6 +139,129 @@ function BlockedPeople() {
 
 const rowClass = 'flex h-14 w-full items-center gap-3 px-5 text-left text-[15px] font-semibold text-ink hover:bg-surface-2'
 
+/** 이름·기수를 바꿔 달라고 요청할 곳 (원우: 우리 학교 교수·대학원장, 교수: 대학원장, 대학원장: 없음) */
+function useRequestTo(member: Member): string | null {
+  const contacts = useContacts(member.role !== 'OWNER')
+  return contacts.data ? contactLine(contacts.data, member.role) : null
+}
+
+/** 지금 비밀번호로 새 비밀번호 정하기. 다른 기기는 로그아웃되고 이 기기는 새 토큰으로 그대로 쓴다 */
+function PasswordSheet({ onClose }: { onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  const change = useChangePassword()
+  const toast = useToast()
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const dialog = ref.current
+    if (dialog && !dialog.open) dialog.showModal()
+  }, [])
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (!current) return setError('지금 비밀번호를 입력해 주세요')
+    const problem = passwordProblem(next, confirm)
+    if (problem) return setError(problem)
+    if (next === current) return setError('지금과 다른 비밀번호로 정해 주세요')
+    change.mutate(
+      { currentPassword: current, newPassword: next },
+      {
+        onSuccess: () => {
+          toast.show('비밀번호를 바꿨어요. 다른 기기에서는 다시 로그인해 주세요', 'ok')
+          ref.current?.close()
+        },
+        onError: (err) => setError(err.message),
+      },
+    )
+  }
+
+  return (
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      aria-labelledby="password-sheet-title"
+      className="m-auto max-h-[88dvh] w-[min(30rem,calc(100%-2rem))] overflow-y-auto rounded-3xl border border-line bg-surface p-0 text-ink backdrop:bg-black/45"
+    >
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-surface px-5 py-4">
+        <h2 id="password-sheet-title" className="text-lg font-extrabold">
+          비밀번호 바꾸기
+        </h2>
+        <button
+          type="button"
+          aria-label="닫기"
+          onClick={() => ref.current?.close()}
+          className="flex size-10 shrink-0 items-center justify-center rounded-lg text-ink-2 hover:bg-surface-2"
+        >
+          <X className="size-5" aria-hidden />
+        </button>
+      </div>
+      <form onSubmit={submit} className="flex flex-col gap-5 px-5 py-5" noValidate>
+        <Field label="지금 비밀번호">
+          {({ id }) => (
+            <input
+              id={id}
+              type="password"
+              autoComplete="current-password"
+              className={inputClass}
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label="새 비밀번호" hint={PASSWORD_RULE}>
+          {({ id, describedBy }) => (
+            <input
+              id={id}
+              type="password"
+              autoComplete="new-password"
+              aria-describedby={describedBy}
+              className={inputClass}
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+            />
+          )}
+        </Field>
+        <Field label="새 비밀번호 확인">
+          {({ id }) => (
+            <input
+              id={id}
+              type="password"
+              autoComplete="new-password"
+              className={inputClass}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+            />
+          )}
+        </Field>
+        <p className="-mt-1 text-sm text-balance text-ink-3">
+          바꾸면 다른 기기(폰 앱 등)에서는 다시 로그인해야 해요. 이 기기는 그대로예요.
+        </p>
+
+        <FormError message={error} />
+
+        <div className="flex gap-2.5">
+          <Button variant="secondary" className="flex-1" onClick={() => ref.current?.close()}>
+            닫기
+          </Button>
+          <Button type="submit" className="flex-[2]" loading={change.isPending}>
+            바꾸기
+          </Button>
+        </div>
+        <p className="text-center text-sm text-ink-3">
+          지금 비밀번호가 기억나지 않으면{' '}
+          <Link to="/password" className="font-semibold whitespace-nowrap text-accent-ink underline underline-offset-4">
+            학교 메일로 찾기
+          </Link>
+        </p>
+      </form>
+    </dialog>
+  )
+}
+
 /** 로그인 방법 하나: 켜져 있으면 체크 */
 function LoginMethod({ on, label }: { on: boolean; label: string }) {
   return (
@@ -168,6 +296,7 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
   }, [])
 
   const nameEditable = canEditOwnName(member.role)
+  const requestTo = useRequestTo(member)
   const lockedUntil = profileLockedUntil(member)
   const cohortFixed = cohortLocked(member)
   /** 원우 규칙 안내: 가입한 날엔 학과·기수를 자유롭게, 그 뒤로 학과만 30일에 한 번 */
@@ -242,6 +371,12 @@ function ProfileSheet({ member, onClose }: { member: Member; onClose: () => void
               학교 이메일로 본인 인증을 해서 이름은 바꿀 수 없어요.{' '}
               {member.role === 'MANAGER' ? '대학원장에게 요청해 주세요.' : '교수\u2060·\u2060대학원장에게 요청해 주세요.'}
             </p>
+            {requestTo && (
+              <p className="text-sm text-ink-3">
+                {'요청할\u00a0곳: '}
+                <b className="font-semibold text-ink-2">{requestTo}</b>
+              </p>
+            )}
           </div>
         )}
 
@@ -398,6 +533,21 @@ function RankingCard({ member }: { member: Member }) {
   )
 }
 
+/** 내 정보 카드: 이름·기수를 요청할 곳 (불러오기 전이나 없으면 안 보인다) */
+function RequestToItem({ member }: { member: Member }) {
+  const requestTo = useRequestTo(member)
+  if (!requestTo) return null
+  return (
+    <li className="flex items-start gap-2.5">
+      <MessageCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <span>
+        {'요청할\u00a0곳: '}
+        <b className="font-semibold text-on-board">{requestTo}</b>
+      </span>
+    </li>
+  )
+}
+
 /** 대학원장·교수: 관리 화면 바로가기 + 처리할 일 */
 function StaffShortcut() {
   const stats = useAdminStats()
@@ -428,6 +578,7 @@ export function MyPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
   const { hash } = useLocation()
 
   // "/me#pay-links" · "/me#ranking" 처럼 들어오면 그 칸으로 내려간다
@@ -529,6 +680,7 @@ export function MyPage() {
                 <Pencil className="size-4 shrink-0" aria-hidden />
                 <span>{profileEditRule(member.role, !cohortLocked(member))}</span>
               </li>
+              <RequestToItem member={member} />
             </>
           )}
         </ul>
@@ -565,18 +717,39 @@ export function MyPage() {
               <LoginMethod on={member.kakaoLinked} label="카카오" />
               <LoginMethod on={member.hasPassword} label="이메일" />
             </span>
-            {member.email && (
-              <Link to="/password" className="ml-auto text-sm font-semibold text-accent-ink underline underline-offset-4">
-                {member.hasPassword ? '비밀번호 바꾸기' : '비밀번호 만들기'}
-              </Link>
-            )}
+            {member.email &&
+              (member.hasPassword ? (
+                <button
+                  type="button"
+                  onClick={() => setChangingPassword(true)}
+                  className="hit ml-auto text-sm font-semibold text-accent-ink underline underline-offset-4"
+                >
+                  비밀번호 바꾸기
+                </button>
+              ) : (
+                <Link to="/password" className="ml-auto text-sm font-semibold text-accent-ink underline underline-offset-4">
+                  비밀번호 만들기
+                </Link>
+              ))}
           </div>
           {!member.hasPassword && member.email && (
             <p className="text-[13px] leading-relaxed text-ink-3">비밀번호를 만들면 학교 메일로도 들어올 수 있어요. 같은 계정이에요.</p>
           )}
           {member.hasPassword && member.email && (
             <p className="text-[13px] leading-relaxed text-ink-3">
-              비밀번호를 바꾸면 다른 기기(폰 앱 등)에서는 다시 로그인해야 해요.
+              비밀번호를 바꾸면 다른 기기(폰 앱 등)에서는 다시 로그인해야 해요. 잊었으면{' '}
+              <Link
+                to="/password"
+                className="font-semibold whitespace-nowrap text-accent-ink underline underline-offset-2"
+              >
+                학교 메일로 찾기
+              </Link>
+            </p>
+          )}
+          {/* 카카오 로그인 → 같은 학교 메일 인증이면 그 계정에 카카오가 이어진다 (AuthService.verifyEmail) */}
+          {member.hasPassword && !member.kakaoLinked && member.email && (
+            <p className="text-[13px] leading-relaxed text-ink-3">
+              로그아웃한 뒤 카카오로 로그인해 이 학교 메일을 인증하면 카카오로도 들어올 수 있어요. 같은 계정이에요.
             </p>
           )}
         </div>
@@ -631,6 +804,7 @@ export function MyPage() {
       <MadeBy className="pb-2 text-center" />
 
       {editing && <ProfileSheet member={member} onClose={() => setEditing(false)} />}
+      {changingPassword && <PasswordSheet onClose={() => setChangingPassword(false)} />}
     </div>
   )
 }

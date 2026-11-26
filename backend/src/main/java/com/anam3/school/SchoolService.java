@@ -12,6 +12,9 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.anam3.admin.AdminAction;
+import com.anam3.admin.AdminActionLog;
+import com.anam3.auth.LoginMember;
 import com.anam3.common.ApiException;
 import com.anam3.school.SchoolDtos.DepartmentRequest;
 import com.anam3.school.SchoolDtos.DepartmentView;
@@ -31,13 +34,15 @@ public class SchoolService {
     private final SchoolRepository schools;
     private final SchoolEmailDomainRepository domains;
     private final DepartmentRepository departments;
+    private final AdminActionLog actionLog;
     private final Clock clock;
 
     public SchoolService(SchoolRepository schools, SchoolEmailDomainRepository domains,
-            DepartmentRepository departments, Clock clock) {
+            DepartmentRepository departments, AdminActionLog actionLog, Clock clock) {
         this.schools = schools;
         this.domains = domains;
         this.departments = departments;
+        this.actionLog = actionLog;
         this.clock = clock;
     }
 
@@ -125,9 +130,9 @@ public class SchoolService {
         }
     }
 
-    // ---------------- 대학원장 전용 ----------------
+    // ---------------- 대학원장 전용 (바꾼 것은 관리자 조치 기록에 남는다) ----------------
 
-    public School addSchool(NewSchoolRequest req) {
+    public School addSchool(LoginMember actor, NewSchoolRequest req) {
         String domain = normalizeDomain(req.emailDomain());
         checkDomainFree(domain);
         if (schools.existsByName(req.name().strip())) {
@@ -137,25 +142,30 @@ public class SchoolService {
         School school = schools.save(new School(req.name().strip(), req.shortName().strip(),
                 blankToNull(req.graduateSchool()), req.latestCohort(), nextOrder, clock.instant()));
         domains.save(new SchoolEmailDomain(school, domain));
+        actionLog.record(actor, AdminAction.Type.ADD_SCHOOL, null, null, school.getName() + " · " + domain);
         return school;
     }
 
-    public School updateSchool(Long schoolId, SchoolRequest req) {
+    public School updateSchool(LoginMember actor, Long schoolId, SchoolRequest req) {
         School school = require(schoolId);
         school.update(req.name().strip(), req.shortName().strip(), blankToNull(req.graduateSchool()),
                 req.latestCohort());
+        actionLog.record(actor, AdminAction.Type.EDIT_SCHOOL, null, null,
+                school.getName() + " · 최신 " + req.latestCohort() + "기");
         return school;
     }
 
-    public SchoolEmailDomain addDomain(Long schoolId, String rawDomain) {
+    public SchoolEmailDomain addDomain(LoginMember actor, Long schoolId, String rawDomain) {
         School school = require(schoolId);
         String domain = normalizeDomain(rawDomain);
         checkDomainFree(domain);
-        return domains.save(new SchoolEmailDomain(school, domain));
+        SchoolEmailDomain saved = domains.save(new SchoolEmailDomain(school, domain));
+        actionLog.record(actor, AdminAction.Type.ADD_DOMAIN, null, null, school.getShortName() + " · " + domain);
+        return saved;
     }
 
     /** 도메인 빼기. 학교마다 하나는 남아야 한다 (이미 가입한 원우는 그대로) */
-    public void removeDomain(Long schoolId, Long domainId) {
+    public void removeDomain(LoginMember actor, Long schoolId, Long domainId) {
         SchoolEmailDomain domain = domains.findById(domainId)
                 .filter(d -> d.getSchool().getId().equals(schoolId))
                 .orElseThrow(() -> ApiException.notFound("이메일 도메인을 찾을 수 없어요"));
@@ -163,19 +173,28 @@ public class SchoolService {
             throw ApiException.badRequest("LAST_DOMAIN", "학교마다 이메일 도메인이 하나는 있어야 해요");
         }
         domains.delete(domain);
+        actionLog.record(actor, AdminAction.Type.REMOVE_DOMAIN, null, null,
+                domain.getSchool().getShortName() + " · " + domain.getDomain());
     }
 
-    public Department addDepartment(Long schoolId, DepartmentRequest req) {
+    public Department addDepartment(LoginMember actor, Long schoolId, DepartmentRequest req) {
         School school = require(schoolId);
-        return departments.save(new Department(school, req.name().strip(), req.shortName().strip(),
+        Department saved = departments.save(new Department(school, req.name().strip(), req.shortName().strip(),
                 blankToNull(req.graduateSchool()), departments.maxSortOrder(schoolId) + 1, clock.instant()));
+        actionLog.record(actor, AdminAction.Type.ADD_DEPARTMENT, null, null,
+                school.getShortName() + " · " + saved.getName());
+        return saved;
     }
 
-    public Department updateDepartment(Long departmentId, DepartmentRequest req) {
+    public Department updateDepartment(LoginMember actor, Long departmentId, DepartmentRequest req) {
         Department department = departments.findById(departmentId)
                 .orElseThrow(() -> ApiException.notFound("학과를 찾을 수 없어요"));
+        boolean wasActive = department.isActive();
         department.update(req.name().strip(), req.shortName().strip(), blankToNull(req.graduateSchool()),
                 req.active() == null ? department.isActive() : req.active());
+        String shown = wasActive == department.isActive() ? "" : department.isActive() ? " · 다시 보이기" : " · 숨기기";
+        actionLog.record(actor, AdminAction.Type.EDIT_DEPARTMENT, null, null,
+                department.getSchool().getShortName() + " · " + department.getName() + shown);
         return department;
     }
 

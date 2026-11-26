@@ -51,6 +51,8 @@ public class SecurityConfig {
                         .hasRole("OWNER")
                         // 3교시 후기 통계는 대학원장만 (교수는 후기 결과를 보지 않는다)
                         .requestMatchers("/api/admin/feedback-stats").hasRole("OWNER")
+                        // 관리자 조치 기록은 대학원장만 (교수들이 한 일을 대학원장이 돌아본다)
+                        .requestMatchers("/api/admin/actions").hasRole("OWNER")
                         // 교수·대학원장: 나머지 관리 화면
                         .requestMatchers("/api/admin/**").hasAnyRole("MANAGER", "OWNER")
                         .requestMatchers("/api/**").authenticated()

@@ -35,6 +35,14 @@ public class Member {
 
     public static final String WITHDRAWN_NAME = "탈퇴한 원우";
 
+    /**
+     * 지금 약관(이용약관·개인정보 처리방침) 버전. 이보다 낮은 버전에 동의한 회원은 다시 동의해야 쓸 수 있다
+     * (JwtAuthenticationFilter 가 TERMS_REQUIRED 로 막고, 화면은 동의 화면을 보여 준다).
+     * 약관을 크게 바꿔 모두에게 다시 동의를 받으려면 1 올린다 — 그러면 모든 회원이 다음 요청부터 다시 동의한다.
+     * 화면의 TERMS_UPDATED(TermsPages.tsx)도 함께 바꾼다
+     */
+    public static final int CURRENT_TERMS_VERSION = 1;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -81,6 +89,10 @@ public class Member {
     /** 이용약관·개인정보 처리방침에 동의한 시각. 예전 회원은 null → 다음 로그인 때 동의 화면 */
     @Column(name = "terms_agreed_at")
     private Instant termsAgreedAt;
+
+    /** 동의한 약관 버전 (0 = 아직 동의 안 함). CURRENT_TERMS_VERSION 보다 낮으면 다시 동의한다 */
+    @Column(name = "terms_version", nullable = false)
+    private int termsVersion;
 
     @Column(name = "withdrawn_at")
     private Instant withdrawnAt;
@@ -186,8 +198,14 @@ public class Member {
         this.passwordHash = null;
     }
 
+    /** 지금 약관에 동의했는지 (예전 버전에 동의했으면 false) */
     public boolean hasAgreedTerms() {
-        return termsAgreedAt != null;
+        return termsVersion >= CURRENT_TERMS_VERSION;
+    }
+
+    /** 예전 약관에는 동의했는데 약관이 바뀌어 다시 동의해야 하는지 */
+    public boolean mustReagreeTerms() {
+        return termsAgreedAt != null && !hasAgreedTerms();
     }
 
     public boolean isSameSchool(Long schoolId) {
@@ -259,8 +277,10 @@ public class Member {
         this.kakaoPayUrl = kakaoPayUrl;
     }
 
+    /** 지금 약관에 동의한다 */
     public void agreeTerms(Instant now) {
         this.termsAgreedAt = now;
+        this.termsVersion = CURRENT_TERMS_VERSION;
     }
 
     /**

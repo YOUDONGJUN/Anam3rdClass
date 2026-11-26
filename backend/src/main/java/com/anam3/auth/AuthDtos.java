@@ -121,6 +121,18 @@ public final class AuthDtos {
             String password) {
     }
 
+    /** 로그인한 채로 지금 비밀번호를 확인하고 새 비밀번호로 바꾼다 (메일 인증 없이) */
+    public record PasswordChangeRequest(
+            @NotBlank(message = "지금 비밀번호를 입력해 주세요")
+            @Size(max = 64, message = "지금 비밀번호를 확인해 주세요")
+            String currentPassword,
+
+            @NotBlank(message = PASSWORD_MESSAGE)
+            @Size(max = 64, message = PASSWORD_MESSAGE)
+            @Pattern(regexp = PASSWORD_PATTERN, message = PASSWORD_MESSAGE)
+            String newPassword) {
+    }
+
     /** 교수·대학원장이 원우의 이름·기수·학과를 고칠 때 */
     public record ProfileRequest(
             @NotBlank(message = "이름을 입력해 주세요")

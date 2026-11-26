@@ -96,6 +96,7 @@ public abstract class ApiTestSupport {
         jdbc.update("delete from meetups");
         jdbc.update("delete from notices");
         jdbc.update("delete from app_settings");
+        jdbc.update("delete from admin_actions");
         jdbc.update("delete from members where role <> 'OWNER'");
         jdbc.update("delete from departments where id not in (" + joined(seededDepartments) + ")");
         jdbc.update("delete from school_email_domains where id not in (" + joined(seededDomains) + ")");

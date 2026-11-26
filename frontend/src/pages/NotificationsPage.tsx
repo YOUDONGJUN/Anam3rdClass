@@ -12,6 +12,7 @@ import {
   TrainFront,
   Users,
   Armchair,
+  Flag,
   type LucideIcon,
 } from 'lucide-react'
 import { useNotifications, useReadAllNotifications, useUnreadNotifications } from '../api/queries'
@@ -32,6 +33,7 @@ const ICON: Record<PushType, LucideIcon> = {
   SCHOOL: TrainFront,
   FEDERATION: Globe2,
   NOTICE: Megaphone,
+  REPORT: Flag,
 }
 
 /**

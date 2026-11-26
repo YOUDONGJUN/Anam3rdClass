@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { EyeOff, Mail, MailCheck, ShieldCheck } from 'lucide-react'
 import { api, ApiError } from '../api/client'
@@ -12,7 +13,7 @@ import { SERVICE } from '../lib/credit'
 import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, FormError, Spinner } from '../components/ui'
 import { saveReturnPath, startKakaoLogin } from '../lib/kakao'
-import { isApp, kakaoAppToken } from '../lib/native'
+import { appInfo, isApp, kakaoAppToken } from '../lib/native'
 import { affiliation } from '../lib/person'
 import { useSlowServer } from '../lib/hooks'
 
@@ -31,6 +32,9 @@ function KakaoSymbol() {
 function KakaoLoginButton({ from }: { from: string }) {
   const config = useAuthConfig()
   const clientId = config.data?.kakaoClientId ?? null
+  // 카카오톡 앱 로그인은 카카오 키를 넣고 빌드한 안드로이드 앱만. 아이폰 앱 등은 웹처럼 카카오 로그인 창으로 간다
+  const info = useQuery({ queryKey: ['appInfo'], queryFn: appInfo, enabled: isApp, staleTime: Infinity })
+  const nativeKakao = isApp && info.data?.kakaoAvailable === true
   const kakaoStep = useKakaoStep()
   const [leaving, setLeaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,14 +57,14 @@ function KakaoLoginButton({ from }: { from: string }) {
     }
   }
 
-  if (config.isPending) return <Spinner label="불러오는 중" />
+  if (config.isPending || (isApp && info.isPending)) return <Spinner label="불러오는 중" />
   return (
     <div className="flex flex-col gap-3">
       <button
         type="button"
-        disabled={(!isApp && !clientId) || leaving}
+        disabled={(!nativeKakao && !clientId) || leaving}
         onClick={() => {
-          if (isApp) {
+          if (nativeKakao) {
             void appLogin()
             return
           }
@@ -71,7 +75,7 @@ function KakaoLoginButton({ from }: { from: string }) {
         className="inline-flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-kakao text-base font-semibold text-on-kakao transition-[filter,transform] select-none hover:brightness-95 active:scale-[0.98] disabled:opacity-50"
       >
         <KakaoSymbol />
-        {leaving ? (isApp ? '카카오 로그인 중…' : '카카오로 이동하는 중…') : '카카오로 시작하기'}
+        {leaving ? (nativeKakao ? '카카오 로그인 중…' : '카카오로 이동하는 중…') : '카카오로 시작하기'}
       </button>
       <Link
         to="/login/email"
@@ -83,7 +87,7 @@ function KakaoLoginButton({ from }: { from: string }) {
       </Link>
       <FormError message={error} />
       {config.isError && <FormError message="서버에 연결하지 못했어요. 새로고침해 주세요" />}
-      {config.data && !clientId && !isApp &&
+      {config.data && !clientId && !nativeKakao &&
         (config.data.devLogin ? (
           // 로컬 개발 서버: 키 없이도 아래 개발용 로그인으로 들어갈 수 있다
           <p className="text-center text-[13px] text-ink-3">카카오 키가 없어서 아래 개발용 로그인을 써요</p>

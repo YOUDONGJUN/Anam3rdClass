@@ -1,7 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
-// 안드로이드 앱 (Capacitor). 앱은 화면을 서버에서 불러온다 → 웹을 배포하면 앱에도 바로 반영된다.
+// 안드로이드·아이폰 앱 (Capacitor). 앱은 화면을 서버에서 불러온다 → 웹을 배포하면 앱에도 바로 반영된다.
 // 앱 안에 들어가는 건 native-shell/ (서버에 못 붙을 때 보이는 안내 화면)뿐이다.
+// 아이폰 앱은 Mac 에서만 빌드된다 → GitHub Actions(.github/workflows/ios.yml, docs/ios-sideload.md)
 //
 // 내 PC 서버로 시험할 때 (에뮬레이터에서 10.0.2.2 = 내 PC):
 //   CAP_SERVER_URL=http://10.0.2.2:8080 npx cap sync android
@@ -19,9 +20,15 @@ const config: CapacitorConfig = {
     url: serverUrl,
     cleartext: serverUrl.startsWith('http://'),
     errorPath: 'offline.html',
+    // 카카오톡 앱 로그인을 못 쓰는 앱(아이폰 등)은 앱 안에서 카카오 로그인 창을 연다.
+    // 여기 없는 주소는 앱 밖(브라우저)으로 열려서 로그인이 앱으로 돌아오지 못한다
+    allowNavigation: ['kauth.kakao.com', 'accounts.kakao.com'],
   },
   android: {
     // 서버·화면이 앱에서 열었는지 알 수 있게 (User-Agent 끝에 붙는다)
+    appendUserAgent: 'Anam3App',
+  },
+  ios: {
     appendUserAgent: 'Anam3App',
   },
   plugins: {

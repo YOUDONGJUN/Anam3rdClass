@@ -19,7 +19,8 @@
 | 앱 서명 인증서 SHA-256 | Play Console › 앱 무결성 › 앱 서명 (앱 서명 키 · 업로드 키 둘 다) | Render 환경변수 `ANDROID_CERT_SHA256` (쉼표로 여러 개) |
 
 카카오 키 해시는 서명 키마다 하나씩 넣어요:
-- 이 PC 디버그 키 (직접 설치하는 APK): `KN2aMifyyAatUQhjSR7MKquuWh4=`
+- 이 PC 디버그 키 (직접 설치하는 APK): `mJ4R2XhcsfzbWuZcukxdHpA4DDk=` (2026-11-27 새로 만든 `~/.android/debug.keystore`)
+  - 카카오 네이티브 앱 키 없이 빌드한 APK 는 카카오 로그인 창(웹)으로 로그인해서 키 해시가 없어도 돼요
 - 업로드 키 · Play 앱 서명 키: Play Console › 앱 무결성에 나오는 SHA-1 을 base64 로 바꾼 값
   (`python -c "import base64;print(base64.b64encode(bytes.fromhex('SHA1을 콜론 빼고')).decode())"`)
 

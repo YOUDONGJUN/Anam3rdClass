@@ -83,7 +83,7 @@ public class MeetupMapper {
      * @param settlement 정산 (함께한 사람에게만)
      */
     public MeetupDetail toDetail(Meetup m, List<Participation> participations, LoginMember viewer, boolean blocked,
-            FeedbackPrompt feedback, WaitInfo wait, SettlementInfo settlement, Instant now) {
+            FeedbackPrompt feedback, WaitInfo wait, SettlementInfo settlement, List<PersonView> leftPeople, Instant now) {
         boolean joined = participations.stream().anyMatch(p -> p.getMember().getId().equals(viewer.id()));
         boolean hosting = m.isHostedBy(viewer.id());
         boolean revealed = canSeeRealNames(m, viewer, joined);
@@ -131,7 +131,8 @@ public class MeetupMapper {
                 manages ? (int) wait.count() : null,
                 manages && open && m.getMaxPeople() != null && m.getMaxPeople() < MeetupService.MAX_SEATS,
                 settlement.canSettle(),
-                settlement.view());
+                settlement.view(),
+                leftPeople);
     }
 
     /** 다른 화면(정산)에서 사람을 보여줄 때. 공개 규칙은 3교시와 같다 */

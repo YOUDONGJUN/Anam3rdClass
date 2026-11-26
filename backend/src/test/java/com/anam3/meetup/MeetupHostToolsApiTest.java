@@ -96,4 +96,30 @@ class MeetupHostToolsApiTest extends ApiTestSupport {
         get("/api/me/meetups", host).andExpect(jsonPath("$", hasSize(3)));
         get("/api/meetups?scope=past&limit=0", host).andExpect(status().isOk()); // 0이면 1개로 본다
     }
+
+    @Test
+    void 성사된_뒤_나간_원우는_그때_함께_있던_원우가_신고하고_차단한다() throws Exception {
+        long id = createMeetup(host, 2, 6, IN_3H, IN_1H, null);
+        post("/api/meetups/" + id + "/join", anam, null).andExpect(jsonPath("$.status").value("CONFIRMED"));
+        post("/api/meetups/" + id + "/join", horang, null).andExpect(status().isOk());
+        clock.advance(Duration.ofMinutes(5));
+        delete("/api/meetups/" + id + "/join", horang).andExpect(status().isOk()); // 실명을 보고 나갔다
+        clock.advance(Duration.ofMinutes(5));
+        String choi = signup("choi", "최석탑", 61);
+        post("/api/meetups/" + id + "/join", choi, null).andExpect(status().isOk()); // 나간 뒤에 들어왔다
+
+        get("/api/meetups/" + id, choi).andExpect(jsonPath("$.leftPeople", hasSize(0)));
+        Number leftRef = read(get("/api/meetups/" + id, anam)
+                .andExpect(jsonPath("$.leftPeople", hasSize(1)))
+                .andExpect(jsonPath("$.leftPeople[0].name").value("박호랑")), "$.leftPeople[0].ref");
+
+        post("/api/reports", anam, """
+                {"targetType":"MEMBER","targetId":%d,"reason":"ABUSE","detail":"","left":true}
+                """.formatted(leftRef.longValue())).andExpect(status().isNoContent());
+        post("/api/blocks", anam, "{\"ref\":" + leftRef + ",\"left\":true}").andExpect(status().isCreated());
+        get("/api/blocks", anam).andExpect(jsonPath("$", hasSize(1))); // 차단 목록의 이름은 가려 보인다
+        // 함께 있지 않았던 사람은 그 기록으로 신고할 수 없다
+        String outsider = signup("sinchon", "이신촌", 61);
+        post("/api/blocks", outsider, "{\"ref\":" + leftRef + ",\"left\":true}").andExpect(status().isNotFound());
+    }
 }

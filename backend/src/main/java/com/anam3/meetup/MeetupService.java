@@ -30,6 +30,7 @@ import com.anam3.meetup.MeetupDtos.MeetupUpdateRequest;
 import com.anam3.meetup.MeetupMapper.WaitInfo;
 import com.anam3.meetup.MeetupDtos.OptionsChange;
 import com.anam3.meetup.MeetupDtos.PeopleChange;
+import com.anam3.meetup.MeetupDtos.PersonView;
 import com.anam3.meetup.MeetupDtos.ScheduleChange;
 import com.anam3.member.Member;
 import com.anam3.member.MemberRepository;
@@ -281,7 +282,7 @@ public class MeetupService {
         WaitInfo wait = new WaitInfo(!joined && waits.existsByMeetupIdAndMemberId(id, viewer.id()),
                 manages ? waits.countByMeetupId(id) : 0);
         return mapper.toDetail(meetup, people, viewer, blocked, feedback.prompt(meetup, viewer, joined, now), wait,
-                settlements.info(meetup, people, viewer, joined, now), now);
+                settlements.info(meetup, people, viewer, joined, now), leftPeople(meetup, people, viewer), now);
     }
 
     /** 수정은 개설자와 대학원장만 */
@@ -681,6 +682,30 @@ public class MeetupService {
         notifier.left(meetup);
         notifyIfSpotOpened(meetup, fullBefore, now);
         return detail(viewer, id, false);
+    }
+
+    /**
+     * 성사된 뒤 나간 원우 (실명을 보고 나갔다). 그때 함께 있던 원우(나간 때보다 먼저 참여한 원우, 연 사람)에게만 보인다.
+     * 다시 참여해 지금 참여자인 원우와 나 자신은 뺀다
+     */
+    private List<PersonView> leftPeople(Meetup meetup, List<Participation> people, LoginMember viewer) {
+        Participation mine = people.stream().filter(p -> p.getMember().getId().equals(viewer.id())).findFirst().orElse(null);
+        if (mine == null) {
+            return List.of();
+        }
+        Set<Long> current = new HashSet<>();
+        people.forEach(p -> current.add(p.getMember().getId()));
+        Set<Long> seen = new HashSet<>();
+        List<PersonView> out = new ArrayList<>();
+        for (MeetupLeave leave : leaves.findByMeetupIdOrderByLeftAtDesc(meetup.getId())) {
+            boolean together = meetup.isHostedBy(viewer.id()) || !mine.getCreatedAt().isAfter(leave.getLeftAt());
+            if (!together || current.contains(leave.getMemberId()) || !seen.add(leave.getMemberId())) {
+                continue;
+            }
+            members.findWithSchool(leave.getMemberId())
+                    .ifPresent(m -> out.add(mapper.personView(m, viewer, true, false, leave.getId())));
+        }
+        return out;
     }
 
     /** 이 원우와 차단한(당한) 사이인 사람이 people 안에 있는지 (people: 연 사람을 포함한 참여자) */

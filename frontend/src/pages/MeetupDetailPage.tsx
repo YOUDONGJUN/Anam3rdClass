@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   Copy,
   Crown,
+  Ellipsis,
   EyeOff,
   Flag,
   Globe2,
@@ -678,6 +679,39 @@ export function MeetupDetailPage() {
             />
           </section>
 
+          {/* 성사된 뒤 나간 원우: 실명을 보고 나간 사람도 신고·차단할 수 있게 (그때 함께 있던 원우에게만) */}
+          {m.leftPeople.length > 0 && (
+            <section className={`${cardClass} px-5 py-4`} aria-labelledby="left-people-title">
+              <h2 id="left-people-title" className="text-[15px] font-bold text-ink-2">
+                성사된 뒤 나간 원우
+              </h2>
+              <ul className="mt-2 flex flex-col divide-y divide-line">
+                {m.leftPeople.map((p) => (
+                  <li key={p.ref} className="flex items-center gap-2 py-2 text-[15px] text-ink-2">
+                    <PersonName person={p} wrap />
+                    <button
+                      type="button"
+                      aria-label={`${p.name} 신고·차단`}
+                      onClick={() =>
+                        p.ref !== null &&
+                        setReporting({
+                          type: 'MEMBER',
+                          id: p.ref,
+                          name: p.name,
+                          left: true,
+                          label: `${p.name} · ${affiliation(p.cohortLabel, p.departmentLabel)} · ${p.school.shortName}`,
+                        })
+                      }
+                      className="hit ml-auto flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink"
+                    >
+                      <Ellipsis className="size-4" aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {m.hosting && m.status !== 'CANCELED' && !m.openChatUrl && m.canEdit && (
             <div className={`${cardClass} px-5 py-4 text-[15px] text-ink-2`}>
               단톡방 링크는 성사되면 참여자에게만 보여요.{' '}
@@ -742,7 +776,7 @@ export function MeetupDetailPage() {
           target={reporting}
           onClose={() => setReporting(null)}
           hostTools={
-            reporting.type === 'MEMBER' && (m.canCancel || (m.hosting && m.canEdit))
+            reporting.type === 'MEMBER' && !reporting.left && (m.canCancel || (m.hosting && m.canEdit))
               ? (close) => (
                   <div className="flex gap-2">
                     {m.canCancel && (

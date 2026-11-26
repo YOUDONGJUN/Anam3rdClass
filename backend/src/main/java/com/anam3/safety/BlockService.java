@@ -29,20 +29,30 @@ public class BlockService {
     private final ParticipationRepository participations;
     private final MemberRepository members;
     private final Clock clock;
+    private final LeftMembers leftMembers;
 
     public BlockService(MemberBlockRepository blocks, ParticipationRepository participations,
-            MemberRepository members, Clock clock) {
+            MemberRepository members, Clock clock, LeftMembers leftMembers) {
         this.blocks = blocks;
         this.participations = participations;
         this.members = members;
         this.clock = clock;
+        this.leftMembers = leftMembers;
     }
 
     public BlockView block(LoginMember viewer, Long participationRef) {
-        Participation participation = participations.findById(participationRef)
-                .filter(p -> canSeeMeetupOf(p, viewer))
-                .orElseThrow(() -> ApiException.notFound("차단할 사람을 찾을 수 없어요"));
-        Member target = participation.getMember();
+        return block(viewer, participationRef, false);
+    }
+
+    /** left: ref 가 성사된 뒤 나간 원우의 기록 번호 */
+    public BlockView block(LoginMember viewer, Long ref, boolean left) {
+        Member target = left
+                ? leftMembers.find(viewer, ref).map(LeftMembers.Found::member)
+                        .orElseThrow(() -> ApiException.notFound("차단할 사람을 찾을 수 없어요"))
+                : participations.findById(ref)
+                        .filter(p -> canSeeMeetupOf(p, viewer))
+                        .map(Participation::getMember)
+                        .orElseThrow(() -> ApiException.notFound("차단할 사람을 찾을 수 없어요"));
         if (target.getId().equals(viewer.id())) {
             throw ApiException.badRequest("SELF_BLOCK", "나 자신은 차단할 수 없어요");
         }

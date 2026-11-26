@@ -48,9 +48,11 @@ public class ReportService {
     private final MemberRepository members;
     private final MeetupFeedbackRepository feedbacks;
     private final Clock clock;
+    private final LeftMembers leftMembers;
 
     public ReportService(ReportRepository reports, MeetupRepository meetups, ParticipationRepository participations,
-            NoticeRepository notices, MemberRepository members, MeetupFeedbackRepository feedbacks, Clock clock) {
+            NoticeRepository notices, MemberRepository members, MeetupFeedbackRepository feedbacks, Clock clock,
+            LeftMembers leftMembers) {
         this.reports = reports;
         this.meetups = meetups;
         this.participations = participations;
@@ -58,6 +60,7 @@ public class ReportService {
         this.members = members;
         this.feedbacks = feedbacks;
         this.clock = clock;
+        this.leftMembers = leftMembers;
     }
 
     public void report(LoginMember viewer, ReportRequest req) {
@@ -85,6 +88,13 @@ public class ReportService {
                 yield r;
             }
             case MEMBER -> {
+                if (Boolean.TRUE.equals(req.left())) {
+                    // 성사된 뒤 나간 원우 (실명을 보고 나갔다)
+                    LeftMembers.Found found = leftMembers.find(viewer, req.targetId())
+                            .orElseThrow(() -> ApiException.notFound("신고할 사람을 찾을 수 없어요"));
+                    yield new Report(reporter, Report.TargetType.MEMBER, found.meetup(), null, found.member(),
+                            found.member().getSchool(), req.reason(), detail, now);
+                }
                 Participation p = participations.findById(req.targetId())
                         .filter(x -> canSee(x.getMeetup(), viewer))
                         .orElseThrow(() -> ApiException.notFound("신고할 사람을 찾을 수 없어요"));

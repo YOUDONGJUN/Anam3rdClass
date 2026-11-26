@@ -11,6 +11,8 @@ import { useToast } from './toastContext'
 
 /** staffHint: 교수·대학원장에게 보일 설명 (없으면 hint) */
 const ITEMS: Array<{ type: PushType; label: string; hint: string; staffHint?: string }> = [
+  { type: 'CHAT', label: '톡방 새 메시지', hint: '내 3교시 톡방에 새 메시지가 오면 (톡방마다 끌 수도 있어요)' },
+  { type: 'MEMORY', label: '새 추억', hint: '함께한 3교시에 사진이 올라오면' },
   { type: 'JOIN', label: '내 3교시 참여·나감', hint: '내가 연 3교시에 누가 들어오거나 나가면' },
   { type: 'REACHED', label: '성사', hint: '참여한 3교시가 성사되면' },
   { type: 'DEADLINE', label: '모집 마감 30분 전', hint: '참여한 3교시에 아직 인원이 모자라면' },

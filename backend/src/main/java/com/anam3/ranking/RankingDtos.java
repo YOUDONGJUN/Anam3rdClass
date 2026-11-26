@@ -14,8 +14,9 @@ public final class RankingDtos {
      * 랭킹 한 판. period: month(이번 달, KST) | all(전체). scope: all(연합) | school(우리 학교).
      * since: 이번 달이면 1일 0시(KST), 전체면 null.
      */
+    /** schoolId: 학교 하나만 볼 때 그 학교 (대학원장은 다른 학교도 고른다) */
     public record RankingView(String period, String scope, Instant since, List<CategoryView> categories,
-            List<SchoolRow> schools) {
+            List<SchoolRow> schools, Long schoolId) {
     }
 
     /** 카테고리 하나: 상위 10명 + 내 기록 (기록이 없으면 null) */

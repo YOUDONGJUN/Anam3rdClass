@@ -6,7 +6,9 @@ import { Button, Spinner } from './components/ui'
 import { useSlowServer } from './lib/hooks'
 import { isStaff } from './lib/person'
 import { AdminPage } from './pages/AdminPage'
+import { ChatPage } from './pages/ChatPage'
 import { FeedPage } from './pages/FeedPage'
+import { MemoriesPage } from './pages/MemoriesPage'
 import { MeetupDetailPage } from './pages/MeetupDetailPage'
 import { MeetupCreatePage, MeetupEditPage } from './pages/MeetupFormPage'
 import { MyMeetupsPage } from './pages/MyMeetupsPage'
@@ -62,6 +64,12 @@ function GuestOnly({ children }: { children: ReactNode }) {
 function MeetupDetailRoute() {
   const { id } = useParams()
   return <MeetupDetailPage key={id} />
+}
+
+/** 다른 톡방으로 바로 가면(알림) 앞 톡방의 상태를 버린다 */
+function ChatRoute() {
+  const { id } = useParams()
+  return <ChatPage key={id} />
 }
 
 /** 교수·대학원장만 */
@@ -131,6 +139,8 @@ export function App() {
           <Route path="meetups/new" element={<MeetupCreatePage />} />
           <Route path="meetups/:id" element={<MeetupDetailRoute />} />
           <Route path="meetups/:id/edit" element={<MeetupEditPage />} />
+          <Route path="meetups/:id/chat" element={<ChatRoute />} />
+          <Route path="memories" element={<MemoriesPage />} />
           <Route path="notices" element={<NoticesPage />} />
           <Route path="notices/new" element={<NoticeCreatePage />} />
           <Route path="notices/:id" element={<NoticeDetailPage />} />

@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.anam3.auth.LoginMember;
 import com.anam3.common.ApiException;
+import com.anam3.memory.MemoryService;
 import com.anam3.meetup.Meetup;
 import com.anam3.meetup.MeetupRepository;
 import com.anam3.meetup.MeetupWaitRepository;
@@ -38,6 +39,7 @@ public class AccountService {
     private final PushNotifier notifier;
     private final MeetupWaitRepository waits;
     private final SchoolService schoolService;
+    private final MemoryService memories;
     private final Clock clock;
 
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("M월 d일", Locale.KOREAN)
@@ -45,8 +47,9 @@ public class AccountService {
 
     public AccountService(MemberRepository members, MeetupRepository meetups, ParticipationRepository participations,
             MemberBlockRepository blocks, PushService push, PushNotifier notifier, MeetupWaitRepository waits,
-            SchoolService schoolService, Clock clock) {
+            SchoolService schoolService, MemoryService memories, Clock clock) {
         this.members = members;
+        this.memories = memories;
         this.meetups = meetups;
         this.participations = participations;
         this.blocks = blocks;
@@ -165,6 +168,7 @@ public class AccountService {
         Instant now = clock.instant();
         releaseOpenMeetups(member, now);
         blocks.deleteAllOf(member.getId());
+        memories.forgetMember(member.getId()); // 올린 추억 사진도 지운다 (얼굴이 나온 사진이라)
         push.forget(member.getId()); // 이 사람 폰으로 더는 알림을 보내지 않는다
         member.withdraw(now);
     }

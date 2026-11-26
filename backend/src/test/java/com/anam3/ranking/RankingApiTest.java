@@ -2,6 +2,7 @@ package com.anam3.ranking;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -84,6 +85,30 @@ class RankingApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.schools[0].mine").value(true))
                 .andExpect(jsonPath("$.schools[1].rank").value(2))
                 .andExpect(jsonPath("$.schools[1].active").value(0));
+    }
+
+    @Test
+    void 대학원장은_학교를_골라_그_학교_원우끼리의_랭킹을_본다() throws Exception {
+        String godae = signup("godae", "김고대", 61);
+        String anam = signup("anam", "이안암", 61);
+        String sinchon = signup("sinchon@yonsei.ac.kr", "이신촌", 3, departmentId("YONSEI", "인컴"));
+        String yonsei2 = signup("baekyang@yonsei.ac.kr", "박백양", 3, departmentId("YONSEI", "인컴"));
+        String owner = ownerToken();
+        ride(godae, Duration.ofDays(1), "SCHOOL", anam, owner); // 대학원장도 고려대 3교시에 탔다
+        ride(sinchon, Duration.ofDays(1), "SCHOOL", yonsei2);
+        clock.set(T0.plus(Duration.ofDays(2)));
+        long yonsei = schoolId("YONSEI");
+
+        get("/api/rankings?scope=school&school=" + yonsei, owner)
+                .andExpect(jsonPath("$.schoolId").value(yonsei))
+                .andExpect(jsonPath(ATTEND + ".top", hasSize(2)))
+                .andExpect(jsonPath(ATTEND + ".top[*].school.code", contains("YONSEI", "YONSEI")))
+                .andExpect(jsonPath(ATTEND + ".mine").doesNotExist());
+
+        // 원우가 다른 학교를 고르면 무시하고 우리 학교
+        get("/api/rankings?scope=school&school=" + yonsei, godae)
+                .andExpect(jsonPath("$.schoolId").value(schoolId("KU")))
+                .andExpect(jsonPath(ATTEND + ".top[*].school.code", everyItem(org.hamcrest.Matchers.is("KU"))));
     }
 
     @Test

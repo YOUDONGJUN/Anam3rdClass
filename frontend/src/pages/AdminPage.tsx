@@ -591,20 +591,18 @@ function MembersGrid({ list, onOpen }: { list: AdminMember[]; onOpen: (m: AdminM
                 이메일
               </th>
               <SortHeader label="가입" sortKey="createdAt" sort={sort} onSort={onSort} className="text-right" />
+              <th scope="col" className="w-24 px-3 py-2.5">
+                <span className="sr-only">편집</span>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
+            {/* 줄 어디를 눌러도 관리 창이 열린다. 키보드는 끝의 [편집] 버튼으로 */}
             {rows.map((m) => (
-              <tr key={m.id} className="hover:bg-surface-2/70">
+              <tr key={m.id} onClick={() => onOpen(m)} className="group cursor-pointer hover:bg-surface-2/70">
                 <td className="max-w-56 px-3 py-2.5">
                   <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onOpen(m)}
-                      className="truncate font-semibold text-ink underline-offset-4 hover:underline"
-                    >
-                      {m.name}
-                    </button>
+                    <span className="truncate font-semibold text-ink">{m.name}</span>
                     <StatusBadges m={m} />
                   </span>
                 </td>
@@ -617,6 +615,20 @@ function MembersGrid({ list, onOpen }: { list: AdminMember[]; onOpen: (m: AdminM
                 <td className="tabular px-3 py-2.5 whitespace-nowrap text-ink-2">{m.cohortLabel}</td>
                 <td className="max-w-48 truncate px-3 py-2.5 text-ink-2">{m.email ?? '–'}</td>
                 <td className="px-3 py-2.5 text-right whitespace-nowrap text-ink-3">{formatRelative(m.createdAt)}</td>
+                <td className="px-3 py-1.5 text-right">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onOpen(m)
+                    }}
+                    aria-label={`${m.name} 편집`}
+                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-line-strong bg-surface px-2.5 text-[13px] font-semibold whitespace-nowrap text-ink-2 transition-colors group-hover:border-accent group-hover:text-accent-ink hover:bg-surface-2"
+                  >
+                    <Pencil className="size-3.5" aria-hidden />
+                    편집
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -627,14 +639,26 @@ function MembersGrid({ list, onOpen }: { list: AdminMember[]; onOpen: (m: AdminM
       <ul className={`${cardClass} divide-y divide-line overflow-hidden md:hidden`}>
         {rows.map((m) => (
           <li key={m.id}>
-            <button type="button" onClick={() => onOpen(m)} className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-surface-2">
-              <span className="flex flex-wrap items-center gap-1.5">
-                <span className="font-bold text-ink">{m.name}</span>
-                <SchoolBadge school={m.school} />
-                <StatusBadges m={m} />
+            <button
+              type="button"
+              onClick={() => onOpen(m)}
+              aria-label={`${m.name} 편집`}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2"
+            >
+              <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-bold text-ink">{m.name}</span>
+                  <SchoolBadge school={m.school} />
+                  <StatusBadges m={m} />
+                </span>
+                <span className="text-sm text-ink-2">{[m.departmentLabel, m.cohortLabel].filter(Boolean).join(' · ')}</span>
+                {m.email && <span className="truncate text-[13px] text-ink-3">{m.email}</span>}
               </span>
-              <span className="text-sm text-ink-2">{[m.departmentLabel, m.cohortLabel].filter(Boolean).join(' · ')}</span>
-              {m.email && <span className="truncate text-[13px] text-ink-3">{m.email}</span>}
+              <span className="flex shrink-0 items-center gap-0.5 text-[13px] font-semibold text-ink-3" aria-hidden>
+                <Pencil className="size-3.5" />
+                편집
+                <ChevronRight className="size-4" />
+              </span>
             </button>
           </li>
         ))}

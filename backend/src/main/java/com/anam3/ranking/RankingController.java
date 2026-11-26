@@ -20,10 +20,14 @@ public class RankingController {
         this.rankingService = rankingService;
     }
 
-    /** period: month(기본) | all · scope: all(연합, 기본) | school(우리 학교). 모르는 값은 기본으로 본다 */
+    /**
+     * period: month(기본) | all · scope: all(연합, 기본) | school(우리 학교). 모르는 값은 기본으로 본다.
+     * school: 대학원장이 학교별로 볼 때 그 학교 번호 (다른 사람은 무시하고 우리 학교)
+     */
     @GetMapping
     public RankingView ranking(@AuthenticationPrincipal LoginMember me,
-            @RequestParam(defaultValue = "month") String period, @RequestParam(defaultValue = "all") String scope) {
-        return rankingService.ranking(me, "all".equals(period), "school".equals(scope));
+            @RequestParam(defaultValue = "month") String period, @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(required = false) Long school) {
+        return rankingService.ranking(me, "all".equals(period), "school".equals(scope), school);
     }
 }

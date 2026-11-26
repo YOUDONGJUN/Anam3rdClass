@@ -80,6 +80,11 @@ export function isSlowNow() {
   return slowCount > 0
 }
 
+/** 서버가 /api/... 로 준 주소(내 PC 사진 저장소 등)에 서버 주소를 붙인다. https:// 로 시작하면 그대로 */
+export function absoluteUrl(url: string) {
+  return url.startsWith('/') ? BASE + url : url
+}
+
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
 export async function api<T>(path: string, options: { method?: Method; body?: unknown } = {}): Promise<T> {

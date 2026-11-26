@@ -29,7 +29,11 @@ public enum PushType {
     /** 정산 요청 · 다시 알리기 · 정산 끝 */
     SETTLE,
     /** 교수·대학원장: 새 신고. 신고한 사람: 내가 한 신고를 처리함 */
-    REPORT;
+    REPORT,
+    /** 내 3교시 톡방의 새 메시지 (알림함에는 쌓지 않는다) */
+    CHAT,
+    /** 함께한 3교시에 새 추억(사진)이 올라옴 */
+    MEMORY;
 
     /** "NOTICE,FEDERATION" → 종류 (모르는 이름은 건너뛴다) */
     public static Set<PushType> parseList(String csv) {

@@ -144,16 +144,23 @@ export function RankingPage() {
   const [params, setParams] = useSearchParams()
   const tab: Tab = params.get('tab') === 'school' ? 'school' : params.get('tab') === 'schools' ? 'schools' : 'all'
   const period: RankingPeriod = params.get('period') === 'all' ? 'all' : 'month'
+  // 대학원장은 학교를 골라 그 학교 원우끼리의 랭킹을 본다 (?school=번호, 없으면 우리 학교)
+  const owner = member?.role === 'OWNER'
+  const picked = owner ? Number(params.get('school')) || null : null
   // 학교 대항은 사람 범위와 상관없이 다섯 학교를 같이 본다
-  const { data, isPending, error, refetch } = useRanking(period, tab === 'school' ? 'school' : 'all')
-  const schoolName = member?.school.shortName ?? '우리 학교'
+  const { data, isPending, error, refetch } = useRanking(period, tab === 'school' ? 'school' : 'all', tab === 'school' ? picked : null)
+  const schools = data?.schools.map((r) => r.school).sort((a, b) => a.id - b.id) ?? []
+  const shownSchool = owner && data?.schoolId ? schools.find((s) => s.id === data.schoolId) : undefined
+  const schoolName = shownSchool?.shortName ?? member?.school.shortName ?? '우리 학교'
 
-  function go(next: { tab?: Tab; period?: RankingPeriod }) {
+  function go(next: { tab?: Tab; period?: RankingPeriod; school?: number | null }) {
     const t = next.tab ?? tab
     const p = next.period ?? period
+    const sc = next.school === undefined ? picked : next.school
     const q: Record<string, string> = {}
     if (t !== 'all') q.tab = t
     if (p !== 'month') q.period = p
+    if (t === 'school' && sc) q.school = String(sc)
     setParams(q, { replace: true })
   }
 
@@ -170,13 +177,34 @@ export function RankingPage() {
           onChange={(t) => go({ tab: t })}
           tabs={[
             { value: 'all', label: '연합', Icon: Globe2 },
-            { value: 'school', label: schoolName, Icon: School },
+            { value: 'school', label: owner ? '학교별' : schoolName, Icon: School },
             { value: 'schools', label: '학교 대항', Icon: Trophy },
           ]}
         />
       </BoardHero>
 
       <BoardSheet>
+        {owner && tab === 'school' && schools.length > 0 && (
+          <div role="radiogroup" aria-label="볼 학교" className="mb-4 flex flex-wrap gap-2 px-1">
+            {schools.map((sc) => {
+              const active = sc.id === (data?.schoolId ?? member?.school.id)
+              return (
+                <button
+                  key={sc.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => go({ school: sc.id })}
+                  className={`hit h-9 rounded-full border px-3.5 text-sm font-semibold transition-colors ${
+                    active ? 'border-accent bg-accent text-on-accent' : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-2'
+                  }`}
+                >
+                  {sc.shortName}
+                </button>
+              )
+            })}
+          </div>
+        )}
         <div className="mb-4 flex items-center justify-between gap-4 px-1">
           <h2 className="text-[19px] font-extrabold tracking-[-0.02em] text-ink">
             {tab === 'schools' ? '학교 대항' : tab === 'school' ? `${schoolName} 원우끼리` : '전체 학교'}

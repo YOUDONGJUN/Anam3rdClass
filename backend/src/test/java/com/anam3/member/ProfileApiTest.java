@@ -22,34 +22,40 @@ class ProfileApiTest extends ApiTestSupport {
     }
 
     @Test
-    void 원우는_학과_기수를_30일에_한_번_바꾼다() throws Exception {
+    void 원우는_가입한_날엔_학과_기수를_자유롭게_고치고_그_뒤로_학과는_30일에_한_번() throws Exception {
         String token = signup("godae", "김고대", 61);
         long bigdata = departmentId("KU", "빅융");
 
+        // 가입한 날: 몇 번이든 고치고, 30일 제한을 시작하지 않는다 (학과만 고쳐도 기수가 잠기지 않게)
+        put("/api/me/profile", token, profile(null, 61, bigdata))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.departmentShortLabel").value("빅융"))
+                .andExpect(jsonPath("$.profileEditableAt").doesNotExist());
         put("/api/me/profile", token, profile(null, 62, bigdata))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.cohort").value(62))
-                .andExpect(jsonPath("$.departmentId").value(bigdata))
-                .andExpect(jsonPath("$.departmentShortLabel").value("빅융"))
                 .andExpect(jsonPath("$.name").value("김고대"))
-                .andExpect(jsonPath("$.profileEditableAt").value("2026-04-01T09:00:00Z"));
+                .andExpect(jsonPath("$.profileEditableAt").doesNotExist());
 
-        // 바로 또 바꾸면 막는다 (언제부터 되는지 알려 준다)
-        put("/api/me/profile", token, profile(null, 61, bigdata))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("PROFILE_CHANGE_LIMIT"))
-                .andExpect(jsonPath("$.message").value("학과·기수는 30일에 한 번 바꿀 수 있어요. 4월 1일부터 다시 바꿀 수 있어요"));
-        get("/api/me", token).andExpect(jsonPath("$.cohort").value(62));
-
-        // 바뀐 게 없으면 그대로 성공 (횟수를 쓰지 않는다)
-        put("/api/me/profile", token, profile("김고대", 62, bigdata)).andExpect(status().isOk());
-
-        // 30일이 지나면 학과는 다시 (기수는 가입한 날만 — 아래 테스트)
-        clock.advance(Duration.ofDays(30));
+        // 다음 날부터 학과는 30일에 한 번
+        clock.advance(Duration.ofDays(1));
         put("/api/me/profile", token, profile(null, 62, departmentId("KU", "인융")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.departmentShortLabel").value("인융"))
-                .andExpect(jsonPath("$.profileEditableAt").value("2026-05-01T09:00:00Z"));
+                .andExpect(jsonPath("$.profileEditableAt").value("2026-04-02T09:00:00Z"));
+        put("/api/me/profile", token, profile(null, 62, bigdata))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PROFILE_CHANGE_LIMIT"))
+                .andExpect(jsonPath("$.message").value("학과는 30일에 한 번 바꿀 수 있어요. 4월 2일부터 다시 바꿀 수 있어요"));
+
+        // 바뀐 게 없으면 그대로 성공 (횟수를 쓰지 않는다)
+        put("/api/me/profile", token, profile("김고대", 62, departmentId("KU", "인융"))).andExpect(status().isOk());
+
+        clock.advance(Duration.ofDays(30));
+        token = login("godae"); // 로그인은 30일 뒤 다시
+        put("/api/me/profile", token, profile(null, 62, bigdata))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.departmentShortLabel").value("빅융"))
+                .andExpect(jsonPath("$.profileEditableAt").value("2026-05-02T09:00:00Z"));
     }
 
     @Test

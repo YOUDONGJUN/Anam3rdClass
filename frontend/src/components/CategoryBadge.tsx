@@ -34,13 +34,21 @@ export function CategoryBadges({
 }) {
   const list = sortCategories(categories)
   const label = categoryLabel(list)
+  // 예전에 4개 넘게 고른 3교시: 배지는 3개까지만 그리고 나머지는 +N (제목 칸을 밀어내지 않게)
+  const shown = list.slice(0, 3)
+  const more = list.length - shown.length
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
       <span className={`inline-flex shrink-0 items-center ${size === 'sm' ? '-space-x-1.5' : '-space-x-2'}`}>
-        {list.map((c) => (
+        {shown.map((c) => (
           <Dot key={c} category={c} size={size} />
         ))}
       </span>
+      {more > 0 && !withLabel && (
+        <span className="-ml-1 shrink-0 text-xs font-bold text-ink-3" aria-hidden>
+          +{more}
+        </span>
+      )}
       {withLabel ? <span className="min-w-0 text-sm font-semibold">{label}</span> : <span className="sr-only">{label}</span>}
     </span>
   )

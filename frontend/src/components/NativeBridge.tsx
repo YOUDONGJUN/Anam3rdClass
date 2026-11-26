@@ -30,10 +30,12 @@ export function NativeBridge() {
   )
 
   // 로그인하면(앱을 열 때마다) 이 폰의 알림 토큰을 서버에 알린다. 처음이면 알림 권한을 묻는다
+  // 약관 동의 전에는 서버가 등록을 받지 않는다(403) — 동의하면 그때 등록한다
+  const termsAgreed = member?.termsAgreed ?? false
   useEffect(() => {
-    if (!isApp || status !== 'authed' || memberId === null) return
+    if (!isApp || status !== 'authed' || memberId === null || !termsAgreed) return
     void enablePush(sendPushToken).catch(() => {})
-  }, [status, memberId])
+  }, [status, memberId, termsAgreed])
 
   return null
 }

@@ -23,6 +23,7 @@ import {
   loadSignupProgress,
   saveReturnPath,
   saveSignupProgress,
+  signupExpired,
   type SignupProgress,
 } from '../lib/kakao'
 
@@ -321,6 +322,17 @@ export function PasswordPage() {
 }
 
 function AuthFlow({ progress, onProgress }: { progress: SignupProgress; onProgress: (next: SignupProgress) => void }) {
+  // 가입 토큰(30분)이 이미 지났으면 다 쓰고 제출한 뒤에야 알게 하지 않는다
+  if (signupExpired(loadSignupProgress() ?? progress)) {
+    return (
+      <AuthFrame>
+        <div className="flex flex-col gap-4">
+          <FormError message="가입 시간(30분)이 지났어요. 처음부터 다시 해 주세요" />
+          <RestartLink via={progress.via} />
+        </div>
+      </AuthFrame>
+    )
+  }
   if (!progress.email) {
     return (
       <AuthFrame step={1} secondStep={progress.purpose === 'password' ? '새 비밀번호' : '이름·기수·학과'}>
@@ -367,7 +379,15 @@ function EmailStep({ progress, onVerified }: { progress: SignupProgress; onVerif
   /** 로그인한 채로 비밀번호를 만들 때는 내 학교 메일로만 */
   const fixedEmail = Boolean(progress.presetEmail)
   const emailRef = useRef<HTMLInputElement>(null)
-  const [sent, setSent] = useState<(EmailCodeSent & { resendAt: number }) | null>(null)
+  // 보낸 코드는 진행에 적어 둔다 (메일 앱에 다녀오는 사이 화면이 새로 열려도 입력칸이 그대로)
+  const [sent, setSentState] = useState<Pick<EmailCodeSent, 'email' | 'schoolName'> & { resendAt: number } | null>(
+    () => loadSignupProgress()?.codeSent ?? null,
+  )
+  function setSent(next: (Pick<EmailCodeSent, 'email' | 'schoolName'> & { resendAt: number }) | null) {
+    setSentState(next)
+    const saved = loadSignupProgress()
+    if (saved) saveSignupProgress({ ...saved, codeSent: next && { email: next.email, schoolName: next.schoolName, resendAt: next.resendAt } })
+  }
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [expired, setExpired] = useState<string | null>(null)
@@ -399,7 +419,7 @@ function EmailStep({ progress, onVerified }: { progress: SignupProgress; onVerif
         method: 'POST',
         body: { signupToken: progress.signupToken, email: email.trim() },
       })
-      setSent({ ...res, resendAt: Date.now() + res.resendAfterSeconds * 1000 })
+      setSent({ email: res.email, schoolName: res.schoolName, resendAt: Date.now() + res.resendAfterSeconds * 1000 })
       setCode('')
     } catch (err) {
       setExpired(expiredMessage(err))
@@ -509,7 +529,11 @@ function EmailStep({ progress, onVerified }: { progress: SignupProgress; onVerif
         ) : (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-2">
             <span>
-              <b className="text-ink">{sent.email}</b> 로 코드를 보냈어요. 스팸함도 확인해 주세요.
+              {/* 메일 주소와 조사를 붙여 '로'가 줄 첫머리에 홀로 오지 않게 */}
+              <span className="break-all">
+                <b className="text-ink">{sent.email}</b>로
+              </span>{' '}
+              코드를 보냈어요. 스팸함도 확인해 주세요.
             </span>
             {!fixedEmail && (
               <button
@@ -648,10 +672,10 @@ function PasswordStep({ progress }: { progress: SignupProgress }) {
       <div>
         <h1 className="text-xl font-extrabold text-ink">새 비밀번호를 정해요</h1>
         <p className="mt-1.5 text-[15px] leading-relaxed text-ink-2">
-          <b className="text-ink">{progress.email}</b>
+          <b className="break-all text-ink">{progress.email}</b>
           {progress.purpose === 'password'
             ? ' 인증을 마쳤어요.'
-            : ' 은 이미 가입된 메일이에요. 새로 가입하지 않고, 비밀번호를 정하면 그 계정으로 들어가요.'}
+            : '은 이미 가입된 메일이에요. 새로 가입하지 않고, 비밀번호를 정하면 그 계정으로 들어가요.'}
         </p>
       </div>
       <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
@@ -827,13 +851,14 @@ function ProfileStep({ progress }: { progress: SignupProgress }) {
         </p>
       )}
       <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
-        <Field label="이름" hint="실명으로 · 성사된 3교시 참여자에게만 보여요">
+        <Field label="이름" hint="실명으로 (한글·영문 2~20자) · 성사된 3교시 참여자에게만 보여요">
           {({ id, describedBy }) => (
             <input
               id={id}
               aria-describedby={describedBy}
               className={inputClass}
               autoComplete="name"
+              maxLength={20}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -850,9 +875,10 @@ function ProfileStep({ progress }: { progress: SignupProgress }) {
           <PasswordFields password={password} confirm={confirm} onPassword={setPassword} onConfirm={setConfirm} />
         )}
         <p className="rounded-xl bg-exit/25 px-4 py-3 text-sm leading-relaxed text-ink">
-          <b>이름·기수·학과는 가입 후 직접 못 바꿔요.</b>
+          <b>이름은 가입 후 직접 못 바꿔요.</b>
           <br />
-          수정은 교수·대학원장에게 요청해 주세요.
+          기수·학과는 가입한 오늘 안에 내 정보에서 고칠 수 있어요. 그 뒤로 학과는 30일에 한 번 바꾸고, 기수는
+          교수·대학원장에게 요청해요.
         </p>
         <TermsCheckbox checked={agree} onChange={setAgree} />
         <FormError message={error} />

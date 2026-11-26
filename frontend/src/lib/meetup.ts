@@ -53,8 +53,16 @@ export function categoryLabel(list: readonly MeetupCategory[]) {
 export function toggleCategory(list: readonly MeetupCategory[], c: MeetupCategory): MeetupCategory[] {
   if (list.includes(c)) return list.filter((x) => x !== c)
   if (c === 'ANYTHING') return ['ANYTHING']
-  return sortCategories([...list.filter((x) => x !== 'ANYTHING'), c])
+  const rest = list.filter((x) => x !== 'ANYTHING')
+  if (rest.length >= MAX_CATEGORIES) return [...list] // 3개까지
+  return sortCategories([...rest, c])
 }
+
+/** 마실 종류는 3개까지 (서버 MeetupDtos.MAX_CATEGORIES). 많으면 목록에서 배지가 제목 칸을 밀어낸다 */
+export const MAX_CATEGORIES = 3
+
+/** 3교시는 한 달 이내 일정만 (서버 MeetupService.MAX_AHEAD) */
+export const MAX_AHEAD_DAYS = 31
 
 /** 모임 목적 빠른 선택. 목록에 없으면 직접 적는다 */
 export const PURPOSE_PRESETS = ['친목', '잡담', '학업', '팀플 뒤풀이', '진로·커리어', '고민 상담'] as const

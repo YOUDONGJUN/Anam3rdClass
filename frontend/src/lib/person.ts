@@ -48,8 +48,9 @@ export function cohortLocked(member: Pick<Member, 'cohortEditableUntil'>, now: D
  * 내 정보 카드의 고치기 안내 한 줄. '교수·대학원장'처럼 '·'로 붙은 말은 '·' 앞뒤에 단어 잇기 문자를 넣어 끊기지 않게,
  * 문장 사이 ' · '는 앞을 붙는 공백으로 해서 줄 첫머리에 오지 않게 한다
  */
-export function profileEditRule(role: Role): string {
+export function profileEditRule(role: Role, signupDay = false): string {
   if (role === 'OWNER') return '이름\u2060·\u2060학과\u2060·\u2060기수를 언제든 고쳐요'
   if (role === 'MANAGER') return '학과\u2060·\u2060기수는 언제든\u00a0· 이름은 대학원장에게 요청'
+  if (signupDay) return '가입한 오늘은 학과\u2060·\u2060기수를 고칠 수 있어요\u00a0· 내일부터 학과만 30일에 한 번'
   return '학과는 30일에 한 번\u00a0· 기수\u2060·\u2060이름은 교수\u2060·\u2060대학원장에게 요청'
 }

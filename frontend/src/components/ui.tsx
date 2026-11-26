@@ -70,12 +70,14 @@ export function FormError({ message }: { message?: string | null }) {
   )
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+/** 불러오지 못했을 때. action: 다시 시도 대신 갈 곳 (지워진 글이면 목록으로) */
+export function ErrorState({ message, onRetry, action }: { message: string; onRetry?: () => void; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-4 px-6 py-16 text-center">
       <CircleAlert className="size-8 text-ink-3" aria-hidden />
-      <p className="text-[15px] text-ink-2">{message}</p>
-      {onRetry && (
+      <p className="text-[15px] text-balance text-ink-2">{message}</p>
+      {action}
+      {!action && onRetry && (
         <Button variant="secondary" size="sm" onClick={onRetry}>
           <RefreshCw className="size-4" aria-hidden />
           다시 시도

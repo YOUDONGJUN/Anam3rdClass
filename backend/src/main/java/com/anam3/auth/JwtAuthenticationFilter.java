@@ -14,6 +14,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.anam3.member.Member;
+import com.anam3.member.MemberStatus;
 import com.anam3.member.MemberRepository;
 
 /**
@@ -23,6 +24,8 @@ import com.anam3.member.MemberRepository;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String PREFIX = "Bearer ";
+    /** 늘린 로그인 토큰을 실어 보내는 응답 헤더 */
+    public static final String RENEWED_TOKEN_HEADER = "X-Renewed-Token";
 
     private final JwtService jwtService;
     private final MemberRepository members;
@@ -39,15 +42,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith(PREFIX)) {
             var token = jwtService.verify(header.substring(PREFIX.length()));
             // 비밀번호를 바꾸기 전에 받은 토큰(버전이 다름)은 받지 않는다
-            var member = token.flatMap(t -> members.findWithSchool(t.memberId()))
-                    .filter(Member::isActive)
+            var found = token.flatMap(t -> members.findWithSchool(t.memberId()))
                     .filter(m -> m.getTokenVersion() == token.get().version());
+            // 쓰는 도중 이용이 제한되면 "로그인이 필요해요"(401) 대신 까닭을 알린다
+            if (found.isPresent() && found.get().getStatus() == MemberStatus.BANNED) {
+                SecurityConfig.writeError(response, 403, "BANNED", "이용이 제한된 계정이에요. 교수·대학원장에게 문의해 주세요");
+                return;
+            }
+            var member = found.filter(Member::isActive);
             if (member.isPresent()) {
                 if (!member.get().hasAgreedTerms() && !allowedBeforeTerms(request)) {
                     SecurityConfig.writeError(response, 403, "TERMS_REQUIRED", "이용약관에 먼저 동의해 주세요");
                     return;
                 }
                 authenticate(member.get());
+                // 받은 지 하루가 지난 토큰이면 새 토큰을 실어 보낸다 — 화면이 바꿔 끼운다 (쓰는 동안 로그인 유지)
+                if (jwtService.shouldRenew(token.get())) {
+                    response.setHeader(RENEWED_TOKEN_HEADER, jwtService.issue(member.get()));
+                }
             }
         }
         chain.doFilter(request, response);

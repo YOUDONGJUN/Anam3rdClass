@@ -82,10 +82,26 @@ export interface SignupProgress {
   existing?: boolean
   /** 미리 채워 둘 학교 이메일 (로그인한 채로 비밀번호를 만들 때) */
   presetEmail?: string | null
+  /** 인증코드를 보낸 메일 — 메일 앱에 다녀오는 사이 화면이 새로 열려도 코드 입력칸을 되살린다 */
+  codeSent?: { email: string; schoolName: string; resendAt: number } | null
+  /** 지금 가입 토큰을 받은 때 (ms). 가입 토큰은 30분 동안만 쓴다 (서버 JwtService.SIGNUP_TTL) */
+  tokenAt?: number
+}
+
+/** 가입 토큰을 쓸 수 있는 시간 (서버 JwtService.SIGNUP_TTL) */
+export const SIGNUP_TTL_MS = 30 * 60_000
+
+/** 가입 토큰이 이미 만료됐는지 (받은 때를 모르는 예전 진행은 모른다고 보고 false) */
+export function signupExpired(progress: SignupProgress, now: number = Date.now()): boolean {
+  return progress.tokenAt !== undefined && now - progress.tokenAt > SIGNUP_TTL_MS
 }
 
 export function saveSignupProgress(progress: SignupProgress) {
-  session()?.setItem(SIGNUP_KEY, JSON.stringify(progress))
+  // 가입 토큰이 새로 바뀌었으면 받은 때를 새로 적는다 (메일 인증을 마치면 서버가 새 토큰을 준다)
+  const before = loadSignupProgress()
+  const tokenAt =
+    before && before.signupToken === progress.signupToken ? (before.tokenAt ?? progress.tokenAt) : Date.now()
+  session()?.setItem(SIGNUP_KEY, JSON.stringify({ ...progress, tokenAt }))
 }
 
 export function loadSignupProgress(): SignupProgress | null {

@@ -214,12 +214,13 @@ public class Member {
     }
 
     /** 내 정보에서 본인이 고친다 (이름은 대학원장만 바뀐다 — AccountService 가 먼저 본다). 고친 시각을 남긴다 */
-    public void changeOwnProfile(String name, int cohort, Department department, Instant now) {
+    /** startsLimit: 학과·기수가 바뀌면 30일 제한을 시작할지 (가입한 날 고친 것은 시작하지 않는다) */
+    public void changeOwnProfile(String name, int cohort, Department department, Instant now, boolean startsLimit) {
         boolean affiliationChanged = this.cohort != cohort || !sameDepartment(department);
         this.name = name;
         this.cohort = cohort;
         this.department = department;
-        if (affiliationChanged) {
+        if (affiliationChanged && startsLimit) {
             this.profileChangedAt = now;
         }
     }
@@ -279,11 +280,16 @@ public class Member {
         this.withdrawnAt = now;
     }
 
-    /** 학교 이메일 인증을 마친 뒤 이메일 로그인 비밀번호를 정한다 (BCrypt 로 바꾼 값) */
-    /** 이메일 로그인 비밀번호를 정하거나 바꾼다. 다른 기기의 로그인은 풀린다 (토큰 버전 +1) */
+    /**
+     * 학교 이메일 인증을 마친 뒤 이메일 로그인 비밀번호를 정하거나 바꾼다 (BCrypt 로 바꾼 값).
+     * 바꿀 때는 다른 기기의 로그인을 푼다 (토큰 버전 +1). 처음 만들 때는 그대로 둔다 — 카카오로 쓰던 폰 앱이 풀리지 않게
+     */
     public void setEmailPassword(String hash) {
+        boolean changing = this.emailPasswordHash != null;
         this.emailPasswordHash = hash;
-        this.tokenVersion++;
+        if (changing) {
+            this.tokenVersion++;
+        }
     }
 
     public int getTokenVersion() {

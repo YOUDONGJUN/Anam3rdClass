@@ -219,3 +219,13 @@ describe('되돌릴 수 없는 참여 · 단톡방 링크', () => {
     expect(openChatError('http://open.kakao.com/o/abc')).not.toBeNull()
   })
 })
+
+describe('마실 종류는 3개까지', () => {
+  it('3개를 고르면 더 붙지 않고, 아무거나는 혼자 고른다', () => {
+    const three = toggleCategory(toggleCategory(['BEER'], 'SOJU'), 'WINE')
+    expect(three).toHaveLength(3)
+    expect(toggleCategory(three, 'HIGHBALL')).toEqual(three)
+    expect(toggleCategory(three, 'ANYTHING')).toEqual(['ANYTHING'])
+    expect(toggleCategory(three, 'BEER')).toHaveLength(2)
+  })
+})

@@ -13,6 +13,7 @@ import { Button, FormError, Spinner } from '../components/ui'
 import { saveReturnPath, startKakaoLogin } from '../lib/kakao'
 import { isApp, kakaoAppToken } from '../lib/native'
 import { affiliation } from '../lib/person'
+import { useSlowServer } from '../lib/hooks'
 
 /** 카카오 심볼 (말풍선) */
 function KakaoSymbol() {
@@ -156,7 +157,22 @@ const STEPS = [
   { title: '성사되면 공개', body: '참여자끼리 실명·단톡방 공개' },
 ]
 
+/** 저절로 로그아웃된 까닭 (로그인 만료 · 이용 제한) */
+function SignOutNotice() {
+  const { notice, clearNotice } = useAuth()
+  if (!notice) return null
+  return (
+    <p role="status" className="mb-4 flex items-start justify-between gap-3 rounded-xl bg-accent-soft px-4 py-3 text-sm font-semibold text-accent-ink">
+      <span>{notice}</span>
+      <button type="button" onClick={clearNotice} aria-label="닫기" className="hit shrink-0 text-accent-ink/70 hover:text-accent-ink">
+        ✕
+      </button>
+    </p>
+  )
+}
+
 export function WelcomePage() {
+  const slow = useSlowServer()
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from ?? '/'
   const config = useAuthConfig()
@@ -191,6 +207,8 @@ export function WelcomePage() {
       {/* 로그인 */}
       <section className="flex flex-col px-4 pt-6 pb-10 sm:px-10 lg:min-h-dvh lg:justify-center lg:px-16 lg:py-12">
         <div className="mx-auto w-full max-w-sm">
+          <SignOutNotice />
+          {slow && <p className="mb-4 rounded-xl bg-surface-2 px-4 py-3 text-sm text-ink-2">서버를 깨우는 중이에요. 최대 1분 걸릴 수 있어요</p>}
           <div className="rounded-3xl border border-line bg-surface p-6 shadow-[0_12px_40px_-16px_rgb(0_0_0/0.18)] sm:p-7">
             <h2 className="text-xl font-extrabold tracking-[-0.02em] text-ink">다섯 학교 대학원 원우끼리</h2>
             {schools.length > 0 && (

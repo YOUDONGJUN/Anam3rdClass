@@ -67,8 +67,9 @@ public class AccountService {
      * 내 정보 고치기.
      * <ul>
      *   <li>이름: 대학원장만 바꾼다. 교수는 대학원장에게, 원우는 교수·대학원장에게 요청한다 (학교 이메일로 본인 인증을 하고 들어와서)</li>
-     *   <li>학과·기수: 교수·대학원장은 언제나, 원우는 30일에 한 번 (바뀐 게 없으면 횟수를 쓰지 않는다)</li>
-     *   <li>원우의 기수: 가입하고 하루 안에만 직접 고친다. 그 뒤로는 교수·대학원장에게 요청한다
+     *   <li>학과·기수: 교수·대학원장은 언제나</li>
+     *   <li>원우: 가입한 날(하루 안)에는 학과·기수를 몇 번이든 고친다 (잘못 고른 걸 바로잡는 때라 30일 제한을 걸지 않는다).
+     *       그 뒤로 학과는 30일에 한 번, 기수는 교수·대학원장에게 요청한다
      *       (기수를 바꿔 가며 다른 기수 전용 3교시에 들어가 실명을 보지 못하게)</li>
      *   <li>학과는 내 학교의 학과만, 기수는 1기 ~ 내 학교 최신 기수</li>
      * </ul>
@@ -89,19 +90,21 @@ public class AccountService {
         if (affiliationChanged) {
             Instant now = clock.instant();
             Instant cohortUntil = MemberResponse.cohortEditableUntil(member);
-            if (member.getCohort() != req.cohort() && cohortUntil != null && !now.isBefore(cohortUntil)) {
+            boolean signupDay = cohortUntil != null && now.isBefore(cohortUntil);
+            if (member.getCohort() != req.cohort() && cohortUntil != null && !signupDay) {
                 throw ApiException.forbidden("기수는 가입한 날에만 직접 고칠 수 있어요. 교수·대학원장에게 요청해 주세요");
             }
             Instant editableAt = MemberResponse.profileEditableAt(member);
-            if (editableAt != null && now.isBefore(editableAt)) {
+            if (!signupDay && editableAt != null && now.isBefore(editableAt)) {
                 throw ApiException.badRequest("PROFILE_CHANGE_LIMIT",
-                        "학과·기수는 30일에 한 번 바꿀 수 있어요. " + DAY.format(editableAt) + "부터 다시 바꿀 수 있어요");
+                        "학과는 30일에 한 번 바꿀 수 있어요. " + DAY.format(editableAt) + "부터 다시 바꿀 수 있어요");
             }
             schoolService.checkCohort(member.getSchool(), req.cohort());
             department = schoolService.requireDepartment(member.getSchool(), req.departmentId(), member.getDepartment());
-            member.changeOwnProfile(name, req.cohort(), department, now);
+            // 가입한 날 고친 것은 30일 제한을 시작하지 않는다
+            member.changeOwnProfile(name, req.cohort(), department, now, !signupDay);
         } else if (!name.equals(member.getName())) {
-            member.changeOwnProfile(name, member.getCohort(), department, clock.instant());
+            member.changeOwnProfile(name, member.getCohort(), department, clock.instant(), false);
         }
         return MemberResponse.from(member);
     }

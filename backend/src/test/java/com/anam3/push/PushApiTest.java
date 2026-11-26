@@ -158,6 +158,29 @@ class PushApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 참여비가_바뀌거나_단톡방_링크가_올라오면_참여자에게_알린다() throws Exception {
+        String host = signup("godae", "김고대", 61);
+        String anam = signup("anam", "이안암", 61);
+        registerDevice(anam, "anam-phone");
+        long id = createMeetup(host, 2, 6, Duration.ofDays(2), Duration.ofDays(1), null);
+        post("/api/meetups/" + id + "/join", anam, null).andExpect(status().isOk()); // 성사
+
+        String base = "{\"title\":\"치맥 번개\",\"description\":\"\",\"place\":\"안암역 앞\",\"categories\":[\"BEER\"],"
+                + "\"purposes\":[],\"openChatUrl\":\"%s\",\"options\":{\"lateJoin\":false,\"fee\":%s,\"feePrepaid\":%s}}";
+        put("/api/meetups/" + id, host, base.formatted("", 10000, true)).andExpect(status().isOk());
+        assertThat(last("anam-phone").body()).isEqualTo("참여비가 바뀌었어요 · 10,000원 · 선입금");
+
+        put("/api/meetups/" + id, host, base.formatted("https://open.kakao.com/o/abc", 10000, true))
+                .andExpect(status().isOk());
+        assertThat(last("anam-phone").body()).isEqualTo("단톡방 링크가 올라왔어요");
+
+        int before = pushes.to("anam-phone").size(); // 바뀐 게 없으면 알리지 않는다
+        put("/api/meetups/" + id, host, base.formatted("https://open.kakao.com/o/abc", 10000, true))
+                .andExpect(status().isOk());
+        assertThat(pushes.to("anam-phone")).hasSize(before);
+    }
+
+    @Test
     void 열린_3교시를_지우면_참여자에게_취소를_알린다() throws Exception {
         String host = signup("godae", "김고대", 61);
         String anam = signup("anam", "이안암", 61);

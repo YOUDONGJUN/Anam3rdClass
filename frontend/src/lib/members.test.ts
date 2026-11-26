@@ -154,3 +154,16 @@ describe('예전 회원 · 중복 가입 의심', () => {
     expect(findDuplicates(list)).toEqual([])
   })
 })
+
+describe('관리 홈의 할 일에서 온 거르기', () => {
+  it('중복 가입 의심 · 아직 안 들어온 예전 회원만 본다', () => {
+    const rows = [
+      member({ id: 1, name: '김고대' }),
+      member({ id: 2, name: '김고대', email: 'godae2@korea.ac.kr' }),
+      member({ id: 3, name: '이안암', kakaoLinked: false }),
+      member({ id: 4, name: '박호랑', kakaoLinked: true }),
+    ]
+    expect(filterMembers(rows, { ...EMPTY_FILTERS, only: 'duplicates' }).map((m) => m.id)).toEqual([1, 2])
+    expect(filterMembers(rows, { ...EMPTY_FILTERS, only: 'legacy' }).map((m) => m.id)).toEqual([3])
+  })
+})

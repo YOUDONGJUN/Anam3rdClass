@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import {
   ArrowDown,
   ArrowUp,
@@ -65,6 +65,7 @@ import {
 } from '../lib/members'
 import { affiliation, ROLE_LABEL } from '../lib/person'
 import { formatRelative } from '../lib/time'
+import { readDraft, writeDraft } from '../lib/leaveGuard'
 
 type Tab = 'home' | 'members' | 'reports' | 'meetups' | 'schools' | 'stats'
 
@@ -87,9 +88,11 @@ interface Task {
   detail?: string
   action: string
   tab: Tab
+  /** 원우 탭을 열 때 함께 거를 것 */
+  only?: MemberFilters['only']
 }
 
-function TaskList({ tasks, onGo }: { tasks: Task[]; onGo: (tab: Tab) => void }) {
+function TaskList({ tasks, onGo }: { tasks: Task[]; onGo: (tab: Tab, only?: MemberFilters['only']) => void }) {
   if (tasks.length === 0) {
     return (
       <div className={`${cardClass} flex items-center gap-3 px-5 py-4`}>
@@ -109,7 +112,7 @@ function TaskList({ tasks, onGo }: { tasks: Task[]; onGo: (tab: Tab) => void }) 
         <li key={t.key}>
           <button
             type="button"
-            onClick={() => onGo(t.tab)}
+            onClick={() => onGo(t.tab, t.only)}
             className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-surface-2"
           >
             <span className={`flex size-9 shrink-0 items-center justify-center rounded-full ${tone[t.tone]}`}>
@@ -130,7 +133,7 @@ function TaskList({ tasks, onGo }: { tasks: Task[]; onGo: (tab: Tab) => void }) 
   )
 }
 
-function AdminHome({ onGo }: { onGo: (tab: Tab) => void }) {
+function AdminHome({ onGo }: { onGo: (tab: Tab, only?: MemberFilters['only']) => void }) {
   const isOwner = useIsOwner()
   const stats = useAdminStats()
   const members = useAdminMembers()
@@ -196,6 +199,7 @@ function AdminHome({ onGo }: { onGo: (tab: Tab) => void }) {
           .join(', ') + (duplicates.length > 2 ? ` 외 ${duplicates.length - 2}건` : ''),
       action: '보기',
       tab: 'members',
+      only: 'duplicates',
     })
   if (isOwner && legacy.length > 0)
     tasks.push({
@@ -206,6 +210,7 @@ function AdminHome({ onGo }: { onGo: (tab: Tab) => void }) {
       detail: '예전 계정 · 처음 들어올 때 이어져요',
       action: '보기',
       tab: 'members',
+      only: 'legacy',
     })
 
   const kpis = [
@@ -558,6 +563,7 @@ function MembersGrid({ list, onOpen }: { list: AdminMember[]; onOpen: (m: AdminM
   const rows = sorted.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE)
 
   function onSort(key: SortKey) {
+    setPage(0)
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'name' ? 'asc' : 'desc' }))
   }
 
@@ -886,7 +892,18 @@ function Members() {
   const { data, isPending, error, refetch } = useAdminMembers()
   const schools = useAdminSchools()
   const isOwner = useIsOwner()
-  const [filters, setFilters] = useState<MemberFilters>(EMPTY_FILTERS)
+  // 거르기는 이 탭(세션)에 기억한다 — 3교시를 보고 뒤로 와도 그대로. 홈의 할 일에서 왔으면(?only=) 그것만
+  const [params, setParams] = useSearchParams()
+  const onlyParam = params.get('only')
+  const [filters, setFiltersState] = useState<MemberFilters>(() =>
+    onlyParam === 'duplicates' || onlyParam === 'legacy'
+      ? { ...EMPTY_FILTERS, only: onlyParam }
+      : (readDraft<MemberFilters>(MEMBER_FILTERS_KEY) ?? EMPTY_FILTERS),
+  )
+  const setFilters = (next: MemberFilters) => {
+    setFiltersState(next)
+    writeDraft(MEMBER_FILTERS_KEY, next)
+  }
   const [openId, setOpenId] = useState<number | null>(null)
 
   const filtered = useMemo(() => (data ? filterMembers(data, filters) : []), [data, filters])
@@ -903,11 +920,33 @@ function Members() {
   return (
     <div className="flex flex-col gap-5">
       <MemberFilterBar list={data} schools={schools.data} filters={filters} onChange={setFilters} />
+      {filters.only && (
+        <p className="-mt-2 flex items-center gap-2 text-sm font-semibold text-ink-2">
+          {filters.only === 'duplicates' ? '중복 가입 의심만 보는 중' : '아직 안 들어온 예전 회원만 보는 중'}
+          <button
+            type="button"
+            className="hit text-accent-ink underline underline-offset-2"
+            onClick={() => {
+              setFilters({ ...filters, only: undefined })
+              setParams(
+                (p) => {
+                  p.delete('only')
+                  return p
+                },
+                { replace: true },
+              )
+            }}
+          >
+            모두 보기
+          </button>
+        </p>
+      )}
       <MemberStats list={filtered} multiSchool={multiSchool} />
       {!isOwner && (
         <p className="px-1 text-sm text-ink-3">우리 학교 원우 · 이메일은 가려져요</p>
       )}
-      <MembersGrid list={filtered} onOpen={(m) => setOpenId(m.id)} />
+      {/* 거르기가 바뀌면 첫 쪽부터 (5쪽을 보다 검색하면 결과 뒤쪽만 보이지 않게) */}
+      <MembersGrid key={JSON.stringify(filters)} list={filtered} onOpen={(m) => setOpenId(m.id)} />
       {/* 목록이 새로 고쳐져도 같은 원우를 계속 보여준다 */}
       {opened && <MemberDialog key={opened.id} member={opened} onClose={() => setOpenId(null)} />}
     </div>
@@ -1575,9 +1614,17 @@ function Schools() {
   )
 }
 
+const MEMBER_FILTERS_KEY = 'anam3.adminMemberFilters'
+const TABS: readonly Tab[] = ['home', 'members', 'reports', 'meetups', 'schools', 'stats']
+
 export function AdminPage() {
   const { member } = useAuth()
-  const [tab, setTab] = useState<Tab>('home')
+  // 탭은 주소에 둔다 — 신고에서 3교시를 보고 뒤로 와도 그 탭으로
+  const [params, setParams] = useSearchParams()
+  const tabParam = params.get('tab') as Tab | null
+  const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : 'home'
+  const setTab = (next: Tab, only?: MemberFilters['only']) =>
+    setParams(next === 'home' ? {} : { tab: next, ...(only ? { only } : {}) }, { replace: true })
   /** 신고 탭에서 후기에서 온 신고만 보기 (대학원장) */
   const [feedbackOnly, setFeedbackOnly] = useState(false)
   /** 신고 카드에서 이름을 눌러 연 원우 */
@@ -1586,9 +1633,9 @@ export function AdminPage() {
   const stats = useAdminStats()
   const open = stats.data?.openReports ?? 0
   const owner = member?.role === 'OWNER'
-  const go = (next: Tab) => {
+  const go = (next: Tab, only?: MemberFilters['only']) => {
     setFeedbackOnly(false)
-    setTab(next)
+    setTab(next, only)
   }
   return (
     <div>

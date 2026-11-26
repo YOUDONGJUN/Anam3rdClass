@@ -7,6 +7,7 @@ import { PushNotifications } from '@capacitor/push-notifications'
 import { Share } from '@capacitor/share'
 import { SplashScreen } from '@capacitor/splash-screen'
 import { api } from '../api/client'
+import { confirmLeave } from './leaveGuard'
 
 export const isApp = Capacitor.isNativePlatform()
 
@@ -189,11 +190,14 @@ export function startAppShell({ navigate, onPushReceived }: ShellHandlers): () =
   // 안드로이드 뒤로가기: 열린 창 닫기 → 이전 화면 → 첫 화면이면 앱을 내린다
   listen(
     App.addListener('backButton', ({ canGoBack }) => {
-      const dialog = document.querySelector<HTMLDialogElement>('dialog[open]')
+      // 창 안에서 연 창(후기 창 → 신고 창)이면 맨 위 창만 닫는다
+      const dialogs = document.querySelectorAll<HTMLDialogElement>('dialog[open]')
+      const dialog = dialogs[dialogs.length - 1]
       if (dialog) {
         dialog.close()
         return
       }
+      if (!confirmLeave()) return // 쓰던 내용이 있으면 묻는다
       const path = window.location.pathname
       if (path === '/' || path === '/welcome') {
         void App.minimizeApp()

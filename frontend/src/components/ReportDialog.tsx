@@ -17,6 +17,8 @@ export interface ReportTargetInfo {
   label: string
   /** 3교시 후기에서 '아쉬웠어요' 뒤에 하는 사람 신고 (서버가 정말 그렇게 답했는지 확인하고 표시한다) */
   fromFeedback?: boolean
+  /** 성사된 뒤 나간 원우 (id 는 나간 기록 번호) */
+  left?: boolean
 }
 
 /**
@@ -64,7 +66,14 @@ export function ReportDialog({
     if (!reason) return setError('신고 이유를 골라 주세요')
     setError(null)
     report.mutate(
-      { targetType: target.type, targetId: target.id, reason, detail: detail.trim(), fromFeedback: target.fromFeedback },
+      {
+        targetType: target.type,
+        targetId: target.id,
+        reason,
+        detail: detail.trim(),
+        fromFeedback: target.fromFeedback,
+        left: target.left,
+      },
       {
         onSuccess: () => {
           toast.show('신고했어요. 교수·대학원장이 확인할게요', 'ok')
@@ -79,7 +88,7 @@ export function ReportDialog({
   function doBlock() {
     if (!window.confirm('차단할까요?\n\n• 서로가 연 3교시가 안 보여요\n• 서로의 3교시에 참여할 수 없어요')) return
     setError(null)
-    block.mutate(target.id, {
+    block.mutate({ ref: target.id, left: target.left }, {
       onSuccess: () => {
         toast.show('차단했어요. 내 정보에서 풀 수 있어요', 'ok')
         onReported?.()

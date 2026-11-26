@@ -426,7 +426,8 @@ function afterBlockChange(qc: QueryClient) {
 export function useBlock() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (ref: number) => api<Block>('/api/blocks', { method: 'POST', body: { ref } }),
+    mutationFn: ({ ref, left = false }: { ref: number; left?: boolean }) =>
+      api<Block>('/api/blocks', { method: 'POST', body: { ref, left } }),
     onSuccess: () => afterBlockChange(qc),
   })
 }

@@ -13,6 +13,9 @@ public interface MeetupLeaveRepository extends JpaRepository<MeetupLeave, Long> 
     @Query("select count(l) from MeetupLeave l where l.memberId = :memberId and l.leftAt > :since")
     long countSince(@Param("memberId") Long memberId, @Param("since") Instant since);
 
+    /** 이 3교시에서 나간 기록 (최근 것부터) */
+    java.util.List<MeetupLeave> findByMeetupIdOrderByLeftAtDesc(Long meetupId);
+
     @Modifying
     @Query("delete from MeetupLeave l where l.leftAt < :before")
     int deleteOlderThan(@Param("before") Instant before);

@@ -32,6 +32,22 @@ public class MeetupLeave {
     protected MeetupLeave() {
     }
 
+    public Long getId() {
+        return id;
+    }
+
+    public Long getMemberId() {
+        return memberId;
+    }
+
+    public Long getMeetupId() {
+        return meetupId;
+    }
+
+    public Instant getLeftAt() {
+        return leftAt;
+    }
+
     public MeetupLeave(Long memberId, Long meetupId, Instant leftAt) {
         this.memberId = memberId;
         this.meetupId = meetupId;

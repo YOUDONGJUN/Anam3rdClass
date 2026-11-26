@@ -250,6 +250,8 @@ export interface MeetupDetail extends MeetupSummary {
   canSettle: boolean
   /** 정산: 함께한 사람에게만 (없으면 null) */
   settlement: SettlementView | null
+  /** 성사된 뒤 나간 원우 (그때 함께 있던 원우에게만). ref 는 나간 기록 번호 — 신고·차단할 때 left 와 함께 보낸다 */
+  leftPeople: PersonView[]
 }
 
 /** 정산에서 한 사람 몫 (계산한 사람은 빼고) */
@@ -541,6 +543,8 @@ export interface ReportInput {
   detail: string
   /** 3교시 후기에서 '아쉬웠어요' 뒤 사람 신고 (서버가 정말 그렇게 답했는지 확인하고 표시한다) */
   fromFeedback?: boolean
+  /** targetId 가 나간 원우의 기록 번호(leftPeople.ref)인지 */
+  left?: boolean
 }
 
 /** 관리 화면 신고 한 줄. 신고한 사람은 보이지 않는다 */

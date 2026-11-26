@@ -31,11 +31,14 @@ public final class SafetyDtos {
             String detail,
 
             /** 3교시 후기에서 '아쉬웠어요' 뒤 사람 신고. 정말 그렇게 답했을 때만 표시가 붙는다 */
-            Boolean fromFeedback) {
+            Boolean fromFeedback,
+
+            /** MEMBER 신고에서 targetId 가 성사된 뒤 나간 원우의 기록 번호(leftPeople.ref)인지 */
+            Boolean left) {
     }
 
-    /** 차단하기: 3교시 상세 화면의 참여 번호(PersonView.ref) */
-    public record BlockRequest(@NotNull(message = "차단할 사람을 골라 주세요") Long ref) {
+    /** 차단하기: 3교시 상세 화면의 참여 번호(PersonView.ref). left=true 면 나간 원우의 기록 번호 */
+    public record BlockRequest(@NotNull(message = "차단할 사람을 골라 주세요") Long ref, Boolean left) {
     }
 
     /** 내가 차단한 사람 (이름은 가려서) */

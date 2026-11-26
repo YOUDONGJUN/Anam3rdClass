@@ -138,7 +138,12 @@ public final class MeetupDtos {
             /** 정산 만들기: 함께한 사람, 성사된 3교시가 모인 뒤 7일 안, 아직 정산이 없을 때 */
             boolean canSettle,
             /** 정산: 함께한 사람에게만 (없으면 null) */
-            SettlementView settlement) {
+            SettlementView settlement,
+            /**
+             * 성사된 뒤 나간 원우: 그때 함께 있던 원우(연 사람 포함)에게만, 신고·차단하라고 보여 준다.
+             * ref 는 나간 기록 번호 (신고·차단 요청에 left=true 와 함께 보낸다)
+             */
+            List<PersonView> leftPeople) {
     }
 
     /** 정원 늘리기 (빈자리 대기자를 태우려고). 지금 최대 인원보다 커야 한다 */

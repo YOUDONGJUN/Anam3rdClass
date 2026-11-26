@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, Link } from 'react-router'
-import { CircleUser, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, Ticket, TrainFront, Trophy, type LucideIcon } from 'lucide-react'
-import { useAdminStats, useMySettlements } from '../api/queries'
+import { Bell, CircleUser, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, Ticket, TrainFront, Trophy, type LucideIcon } from 'lucide-react'
+import { useAdminStats, useMySettlements, useUnreadNotifications } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from './toastContext'
 import { useSlowServer } from '../lib/hooks'
@@ -61,15 +61,18 @@ export function AppShell() {
   const openReports = staff ? stats.data?.openReports : undefined
   // 내가 보낼 정산이 있으면 내 3교시에 숫자
   const dues = useMySettlements(Boolean(member)).data?.length
+  // 안 읽은 알림 수 (웹은 1분마다, 앱은 푸시가 오면 바로 다시 센다)
+  const unread = useUnreadNotifications(Boolean(member)).data
 
   const feed: NavItem = { to: '/', label: '3교시', Icon: TrainFront, end: true }
   const mine: NavItem = { to: '/my-meetups', label: '내 3교시', Icon: Ticket, badge: dues, badgeLabel: '보낼 정산' }
+  const alerts: NavItem = { to: '/notifications', label: '알림', Icon: Bell, badge: unread, badgeLabel: '새 알림' }
   const notices: NavItem = { to: '/notices', label: '공지', Icon: Megaphone }
   const ranking: NavItem = { to: '/ranking', label: '랭킹', Icon: Trophy }
   const me: NavItem = { to: '/me', label: '내 정보', Icon: CircleUser }
   const admin: NavItem = { to: '/admin', label: '관리', Icon: ShieldCheck, badge: openReports }
   /** 데스크톱 왼쪽 레일: 관리까지 다 */
-  const railItems: NavItem[] = [feed, mine, notices, ranking, me]
+  const railItems: NavItem[] = [feed, mine, alerts, notices, ranking, me]
   if (staff) railItems.push(admin)
   // 관리 화면은 표·카드가 많아 더 넓게
   const wide = pathname.startsWith('/admin')
@@ -138,7 +141,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* 모바일: 상단 안내판 + 6호선 띠. 오른쪽은 랭킹 · (교수·대학원장) 관리 — 로그아웃은 잘못 누르기 쉬워 내 정보에만 */}
+        {/* 모바일: 상단 안내판 + 6호선 띠. 오른쪽은 랭킹 · (교수·대학원장) 관리 · 알림 — 로그아웃은 잘못 누르기 쉬워 내 정보에만 */}
         <header className="sticky top-0 z-30 bg-board pt-[env(safe-area-inset-top)] lg:hidden">
           <div className="flex h-14 items-center justify-between gap-3 px-4">
             <Brand />
@@ -146,6 +149,7 @@ export function AppShell() {
               <nav aria-label="바로가기" className="-mr-2 flex shrink-0 items-center gap-0.5">
                 <HeaderLink item={ranking} />
                 {staff && <HeaderLink item={admin} />}
+                <HeaderLink item={alerts} />
               </nav>
             )}
           </div>

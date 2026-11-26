@@ -76,6 +76,7 @@ public abstract class ApiTestSupport {
             seededDepartments = ids("select id from departments");
         }
         jdbc.update("delete from push_devices");
+        jdbc.update("delete from notifications");
         jdbc.update("update members set push_off = null, ranking_hidden = false, profile_changed_at = null, "
                 + "toss_id = null, kakaopay_url = null");
         jdbc.update("delete from reports");

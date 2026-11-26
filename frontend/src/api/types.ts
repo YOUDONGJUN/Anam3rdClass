@@ -71,6 +71,24 @@ export type PushType =
   | 'SPOT'
   | 'SETTLE'
 
+/** 알림함의 한 줄 (푸시와 같은 내용) */
+export interface NotificationItem {
+  id: number
+  type: PushType
+  /** 3교시 제목 */
+  title: string
+  body: string
+  /** 누르면 여는 화면 */
+  path: string
+  createdAt: string
+  read: boolean
+}
+
+export interface NotificationList {
+  items: NotificationItem[]
+  unreadCount: number
+}
+
 export interface Department {
   id: number
   name: string

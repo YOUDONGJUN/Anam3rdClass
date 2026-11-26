@@ -36,15 +36,18 @@ public class PushService {
     private final MemberRepository members;
     private final PushSender sender;
     private final PushDispatcher dispatcher;
+    private final NotificationService notifications;
     private final TransactionTemplate newTx;
     private final Clock clock;
 
     public PushService(PushDeviceRepository devices, MemberRepository members, PushSender sender,
-            PushDispatcher dispatcher, PlatformTransactionManager transactionManager, Clock clock) {
+            PushDispatcher dispatcher, NotificationService notifications,
+            PlatformTransactionManager transactionManager, Clock clock) {
         this.devices = devices;
         this.members = members;
         this.sender = sender;
         this.dispatcher = dispatcher;
+        this.notifications = notifications;
         this.newTx = new TransactionTemplate(transactionManager);
         this.newTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.clock = clock;
@@ -80,17 +83,22 @@ public class PushService {
         return MemberResponse.from(member);
     }
 
-    /** 탈퇴: 이 사람의 기기를 모두 지운다 */
+    /** 탈퇴: 이 사람의 기기와 알림함을 모두 지운다 */
     @Transactional
     public void forget(Long memberId) {
         devices.deleteAllOfMember(memberId);
+        notifications.forget(memberId);
     }
 
-    /** 이 회원들에게 (활동 중이고 이 종류를 끄지 않은 사람만) */
+    /**
+     * 이 회원들에게 (활동 중이고 이 종류를 끄지 않은 사람만).
+     * 알림함에도 담는다 — 기기가 없는 웹 사용자도, 이 종류의 푸시를 끈 사람도 알림함에서는 본다
+     */
     public void send(Collection<Long> memberIds, PushMessage message) {
         if (memberIds.isEmpty()) {
             return;
         }
+        notifications.record(memberIds, message);
         deliver(devices.findTargets(memberIds, MemberStatus.ACTIVE), message, Set.of());
     }
 

@@ -62,7 +62,7 @@ export function PushSettings() {
     <section className={`${cardClass} flex flex-col gap-3 px-5 py-5`}>
       <div>
         <h2 className="text-[17px] font-extrabold text-ink">알림</h2>
-        <p className="mt-0.5 text-sm text-ink-3">이 폰으로 받을 알림을 골라요.</p>
+        <p className="mt-0.5 text-sm text-ink-3">이 폰으로 받을 알림을 골라요. 꺼도 알림함에는 남아요.</p>
       </div>
       {permission === 'denied' ? (
         <div className="flex flex-col gap-3 rounded-xl bg-surface-2 px-4 py-4">

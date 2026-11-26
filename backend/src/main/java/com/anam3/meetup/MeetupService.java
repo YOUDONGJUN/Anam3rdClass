@@ -27,6 +27,7 @@ import com.anam3.meetup.MeetupDtos.PeopleChange;
 import com.anam3.meetup.MeetupDtos.ScheduleChange;
 import com.anam3.member.Member;
 import com.anam3.member.MemberRepository;
+import com.anam3.push.NotificationService;
 import com.anam3.push.PushNotifier;
 import com.anam3.safety.MemberBlockRepository;
 import com.anam3.safety.ReportRepository;
@@ -54,11 +55,13 @@ public class MeetupService {
     private final FeedbackService feedback;
     private final MeetupWaitRepository waits;
     private final SettlementService settlements;
+    private final NotificationService notifications;
     private final Clock clock;
 
     public MeetupService(MeetupRepository meetups, ParticipationRepository participations, MemberRepository members,
             MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, PushNotifier notifier,
-            FeedbackService feedback, MeetupWaitRepository waits, SettlementService settlements, Clock clock) {
+            FeedbackService feedback, MeetupWaitRepository waits, SettlementService settlements,
+            NotificationService notifications, Clock clock) {
         this.meetups = meetups;
         this.participations = participations;
         this.members = members;
@@ -69,6 +72,7 @@ public class MeetupService {
         this.feedback = feedback;
         this.waits = waits;
         this.settlements = settlements;
+        this.notifications = notifications;
         this.clock = clock;
     }
 
@@ -364,6 +368,7 @@ public class MeetupService {
         settlements.deleteFor(id);
         waits.deleteByMeetupId(id);
         participations.deleteByMeetupId(id);
+        notifications.forgetMeetup(id); // 알림함에서 눌러도 열 화면이 없다 (아래 취소 알림은 내 정보로 간다)
         meetups.delete(meetup);
         if (!people.isEmpty()) {
             notifier.canceled(meetup, people, viewer.id(), true);

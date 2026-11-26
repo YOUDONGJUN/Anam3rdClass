@@ -20,6 +20,7 @@ import type {
   NoticeDetail,
   NoticeInput,
   NoticeSummary,
+  NotificationList,
   PushType,
   RankingPeriod,
   RankingScope,
@@ -48,6 +49,40 @@ export const keys = {
   places: ['places'] as const,
   ranking: (period: RankingPeriod, scope: RankingScope) => ['ranking', period, scope] as const,
   mySettlements: ['my-settlements'] as const,
+  notifications: ['notifications'] as const,
+  unreadNotifications: ['notifications', 'unread'] as const,
+}
+
+// ---------------- 알림함 ----------------
+
+/** 종 아이콘 숫자: 1분마다, 탭으로 돌아올 때 다시 센다 (앱은 푸시가 오면 바로) */
+export function useUnreadNotifications(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.unreadNotifications,
+    queryFn: () => api<{ count: number }>('/api/me/notifications/unread-count'),
+    enabled,
+    refetchInterval: 60_000,
+    select: (d) => d.count,
+  })
+}
+
+/** 알림함: 최근 50개. 열어 둔 동안은 다시 불러오지 않는다 (새 알림 표시가 보는 중에 사라지지 않게) */
+export function useNotifications() {
+  return useQuery({
+    queryKey: keys.notifications,
+    queryFn: () => api<NotificationList>('/api/me/notifications'),
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+}
+
+/** 알림함을 열어 봤다: 모두 읽음 (종 아이콘 숫자만 바로 0으로) */
+export function useReadAllNotifications() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<void>('/api/me/notifications/read-all', { method: 'POST' }),
+    onSuccess: () => qc.setQueryData(keys.unreadNotifications, { count: 0 }),
+  })
 }
 
 // ---------------- 로그인 · 가입 (로그인 없이 호출) ----------------

@@ -53,6 +53,9 @@ app:
   push:
     firebase-service-account: ${FIREBASE_SERVICE_ACCOUNT:}
     reminders: true
+  meetup:
+    # 내가 열었거나 참여한 3교시끼리 모임 시간이 2시간 안이면 열기·참여를 막는다
+    overlap-check: true
   # 스토어 심사용 계정 (학교 메일이 없는 심사관이 이메일 + 비밀번호로 로그인). 둘 다 넣었을 때만 만든다
   review:
     email: ${REVIEW_EMAIL:}

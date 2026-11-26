@@ -14,10 +14,12 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useCreateMeetup, useMeetup, usePopularPlaces, useUpdateMeetup } from '../api/queries'
+import { ApiError } from '../api/client'
+import { useCreateMeetup, useMeetup, useMyMeetups, usePopularPlaces, useUpdateMeetup } from '../api/queries'
 import type { MeetupAudience, MeetupCategory, MeetupDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { LineGauge } from '../components/LineGauge'
+import { OverlapNote } from '../components/OverlapNote'
 import { Button, ErrorState, Field, FormError, Spinner } from '../components/ui'
 import { cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
@@ -25,6 +27,7 @@ import {
   addPurposes,
   CATEGORY,
   CATEGORY_ORDER,
+  findOverlap,
   fitPeople,
   isReachedWith,
   type JoinedState,
@@ -32,6 +35,7 @@ import {
   optionsSummary,
   PURPOSE_MAX_LENGTH,
   PURPOSE_PRESETS,
+  overlapMessage,
   peopleError,
   peopleRule,
   toggleCategory,
@@ -371,6 +375,10 @@ function MeetupForm({
   const maxPeople = v.unlimited ? null : v.maxPeople
   const joined = current?.joined ?? 1
   const reachedNow = isReachedWith(minPeople, joined)
+  // 시간을 고르는 순간 내 다른 3교시와 겹치는지 알려 준다 (고칠 때는 시간을 바꿨을 때만, 이 3교시 자신은 빼고)
+  const mine = useMyMeetups()
+  const timeTouched = !editing || v.meetAt !== initial.meetAt
+  const clash = timeTouched && meetAt ? findOverlap(mine.data ?? [], meetAt, initial.id ?? null) : null
 
   /** 틀린 칸으로 화면을 옮기고 그 칸에 커서를 둔다 (접혀 있던 옵션은 먼저 펼친다) */
   function fail(message: string, field: ErrorField) {
@@ -400,6 +408,7 @@ function MeetupForm({
       if (timeError) return fail(timeError, 'time')
     }
     if (!meetAt || !deadlineAt) return fail('모임 시간을 정해 주세요', 'time')
+    if (clash) return fail(overlapMessage(clash), 'time')
     if (!v.place.trim()) return fail('장소를 입력해 주세요', 'place')
     const peopleProblem = peopleError(minPeople, maxPeople, current)
     if (peopleProblem) {
@@ -458,6 +467,8 @@ function MeetupForm({
       )
       navigate(`/meetups/${d.id}`, { replace: true })
     } catch (err) {
+      // 그사이 다른 3교시에 참여해서 시간이 겹치게 됐으면 시간 칸으로 데려간다
+      if (err instanceof ApiError && err.code === 'TIME_OVERLAP') return fail(err.message, 'time')
       setShowOptions(true) // 접어 둔 칸의 문제일 수 있어서 펼쳐 보여 준다
       setError(err instanceof Error ? err.message : '저장하지 못했어요')
     }
@@ -526,7 +537,9 @@ function MeetupForm({
             {reachedNow ? '에 모집 마감' : '까지 안 모이면 조용히 사라져요'}
           </p>
         )}
-        {errorField === 'time' && <FieldAlert message={error} />}
+        {/* 겹치면 시간을 고르는 순간 알려 준다. 그 밖의 시간 오류는 저장할 때 */}
+        {clash && <OverlapNote meetup={clash} />}
+        {errorField === 'time' && !(clash && error === overlapMessage(clash)) && <FieldAlert message={error} />}
       </fieldset>
 
       <div data-field="place">

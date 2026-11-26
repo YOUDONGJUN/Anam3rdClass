@@ -22,6 +22,19 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
     @Query("delete from Participation p where p.meetup.id = :meetupId")
     int deleteByMeetupId(@Param("meetupId") Long meetupId);
 
+    /**
+     * 이 원우가 열었거나 참여한 3교시 중 모임 시간이 from ~ to 사이(양 끝 제외)인 것 (취소 제외, exceptId 는 뺀다).
+     * 시간이 겹치는 3교시를 찾는다
+     */
+    @Query("""
+            select p.meetup from Participation p
+            where p.member.id = :memberId and p.meetup.canceled = false
+              and p.meetup.meetAt > :from and p.meetup.meetAt < :to and p.meetup.id <> :exceptId
+            order by p.meetup.meetAt asc
+            """)
+    List<Meetup> findNearby(@Param("memberId") Long memberId, @Param("from") java.time.Instant from,
+            @Param("to") java.time.Instant to, @Param("exceptId") Long exceptId);
+
     /** 남이 연, 아직 열려 있는 3교시 중 이 원우가 참여한 것 (번호만 — 잠가서 새로 읽는다) */
     @Query("""
             select p.meetup.id from Participation p

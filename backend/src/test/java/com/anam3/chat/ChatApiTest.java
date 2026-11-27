@@ -358,6 +358,138 @@ class ChatApiTest extends ApiTestSupport {
         assertThat(((Number) read(after, "$.reads[1]")).longValue()).isGreaterThan(first);
     }
 
+    // ---------- 답장 · 공감 · 공지 ----------
+
+    private long joinNoticeId() {
+        return jdbc.queryForObject("select max(id) from chat_messages where kind = 'JOIN'", Long.class);
+    }
+
+    @Test
+    void 답장하면_원래_메시지를_함께_보인다() throws Exception {
+        twoJoined();
+        long question = sayId(host, "몇 시에 와요?");
+        post(url(), anam, "{\"body\":\"9시요\",\"replyToId\":" + question + "}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.reply.id").value(question))
+                .andExpect(jsonPath("$.reply.sender").value("김*대"))
+                .andExpect(jsonPath("$.reply.mine").value(false))
+                .andExpect(jsonPath("$.reply.preview").value("몇 시에 와요?"));
+        // 이모티콘으로도 답장한다
+        post(url(), host, "{\"sticker\":\"tiger-going\",\"replyToId\":" + question + "}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.reply.mine").value(true));
+        get(url(), host).andExpect(jsonPath("$.messages[1].reply.sender").value("김고대"))
+                .andExpect(jsonPath("$.messages[1].reply.mine").value(true))
+                .andExpect(jsonPath("$.messages[0].reply").value(nullValue()));
+        long tiger = ((Number) read(get(url(), host), "$.messages[2].id")).longValue();
+        post(url(), anam, "{\"body\":\"ㅋㅋ\",\"replyToId\":" + tiger + "}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.reply.preview").value("(이모티콘) 가는 중"));
+
+        // 원래 메시지를 지우면 "지운 메시지예요". 지운 메시지 · 안내 줄에는 답장할 수 없다
+        delete(url() + "/" + question, host).andExpect(status().isNoContent());
+        get(url(), anam).andExpect(jsonPath("$.messages[1].reply.preview").value("지운 메시지예요"));
+        post(url(), anam, "{\"body\":\"네\",\"replyToId\":" + question + "}").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("REPLY_GONE"));
+        post("/api/meetups/" + meetupId + "/join", horang, null).andExpect(status().isOk());
+        post(url(), anam, "{\"body\":\"반가워요\",\"replyToId\":" + joinNoticeId() + "}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("REPLY_GONE"));
+    }
+
+    @Test
+    void 공감은_메시지마다_하나씩_누르고_몇_명인지_보인다() throws Exception {
+        twoJoined();
+        post("/api/meetups/" + meetupId + "/join", horang, null).andExpect(status().isOk());
+        long id = sayId(host, "내일 봬요");
+        put(url() + "/" + id + "/reaction", anam, "{\"reaction\":\"HEART\"}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.reactions", hasSize(1)))
+                .andExpect(jsonPath("$.reactions[0].reaction").value("HEART"))
+                .andExpect(jsonPath("$.reactions[0].count").value(1))
+                .andExpect(jsonPath("$.reactions[0].mine").value(true));
+        put(url() + "/" + id + "/reaction", horang, "{\"reaction\":\"LIKE\"}").andExpect(status().isOk());
+        put(url() + "/" + id + "/reaction", host, "{\"reaction\":\"HEART\"}").andExpect(status().isOk());
+        // 공감 순서대로 (누가 눌렀는지는 보이지 않는다)
+        get(url() + "/" + id, host).andExpect(jsonPath("$.reactions", hasSize(2)))
+                .andExpect(jsonPath("$.reactions[0].reaction").value("HEART"))
+                .andExpect(jsonPath("$.reactions[0].count").value(2))
+                .andExpect(jsonPath("$.reactions[0].mine").value(true))
+                .andExpect(jsonPath("$.reactions[1].reaction").value("LIKE"))
+                .andExpect(jsonPath("$.reactions[1].mine").value(false));
+
+        // 다른 것을 누르면 바뀌고, null 이면 빠진다
+        put(url() + "/" + id + "/reaction", anam, "{\"reaction\":\"LOL\"}").andExpect(status().isOk());
+        put(url() + "/" + id + "/reaction", horang, "{\"reaction\":null}").andExpect(status().isOk());
+        get(url() + "/" + id, host).andExpect(jsonPath("$.reactions", hasSize(2)))
+                .andExpect(jsonPath("$.reactions[0].reaction").value("HEART"))
+                .andExpect(jsonPath("$.reactions[0].count").value(1))
+                .andExpect(jsonPath("$.reactions[1].reaction").value("LOL"));
+        assertThat(jdbc.queryForObject("select count(*) from chat_reactions", Long.class)).isEqualTo(2);
+
+        // 없는 공감 · 안내 줄 · 함께하지 않는 원우는 안 된다
+        put(url() + "/" + id + "/reaction", anam, "{\"reaction\":\"PEPE\"}").andExpect(status().isBadRequest());
+        put(url() + "/" + joinNoticeId() + "/reaction", anam, "{\"reaction\":\"HEART\"}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("REACTION"));
+        put(url() + "/" + id + "/reaction", outsider, "{\"reaction\":\"HEART\"}").andExpect(status().isForbidden());
+        get(url() + "/999999", host).andExpect(status().isNotFound());
+
+        // 지우면 공감도 보이지 않고 더 누를 수 없다
+        delete(url() + "/" + id, host).andExpect(status().isNoContent());
+        get(url() + "/" + id, anam).andExpect(jsonPath("$.reactions", hasSize(0)));
+        put(url() + "/" + id + "/reaction", anam, "{\"reaction\":\"HEART\"}").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 연_사람은_메시지_하나를_톡방_공지로_올린다() throws Exception {
+        twoJoined();
+        long place = sayId(host, "고대 정문 앞에서 봬요");
+        long other = sayId(anam, "넵");
+        get(url(), anam).andExpect(jsonPath("$.pinned").value(nullValue()))
+                .andExpect(jsonPath("$.canPin").value(false));
+        get(url(), host).andExpect(jsonPath("$.canPin").value(true));
+
+        put(url() + "/pin", anam, "{\"messageId\":" + place + "}").andExpect(status().isForbidden());
+        put(url() + "/pin", host, "{\"messageId\":" + place + "}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.pinned.id").value(place))
+                .andExpect(jsonPath("$.pinned.preview").value("고대 정문 앞에서 봬요"));
+        get(url(), anam).andExpect(jsonPath("$.pinned.id").value(place))
+                .andExpect(jsonPath("$.pinned.sender").value("김*대"));
+
+        // 새로 올리면 앞의 것은 내려간다 (원우 메시지도 올릴 수 있다)
+        put(url() + "/pin", host, "{\"messageId\":" + other + "}").andExpect(jsonPath("$.pinned.id").value(other));
+        assertThat(jdbc.queryForObject("select count(*) from chat_messages where pinned_at is not null", Long.class))
+                .isEqualTo(1);
+        get(url() + "/updates?after=" + other, anam).andExpect(jsonPath("$.pinned.id").value(other));
+
+        // 지우면 공지도 내려간다
+        delete(url() + "/" + other, anam).andExpect(status().isNoContent());
+        get(url(), host).andExpect(jsonPath("$.pinned").value(nullValue()));
+        put(url() + "/pin", host, "{\"messageId\":" + other + "}").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PIN"));
+
+        // 내리기
+        put(url() + "/pin", host, "{\"messageId\":" + place + "}").andExpect(status().isOk());
+        put(url() + "/pin", host, "{\"messageId\":null}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.pinned").value(nullValue()));
+        get(url(), anam).andExpect(jsonPath("$.pinned").value(nullValue()));
+
+        // 취소된 3교시는 못 올린다
+        post("/api/meetups/" + meetupId + "/cancel", host, null).andExpect(status().isOk());
+        get(url(), host).andExpect(jsonPath("$.canPin").value(false));
+        put(url() + "/pin", host, "{\"messageId\":" + place + "}").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 답장_공감_공지가_있는_3교시도_대학원장이_지울_수_있다() throws Exception {
+        twoJoined();
+        long first = sayId(host, "첫 메시지");
+        long reply = ((Number) read(post(url(), anam, "{\"body\":\"답장\",\"replyToId\":" + first + "}")
+                .andExpect(status().isOk()), "$.id")).longValue();
+        post(url(), host, "{\"body\":\"답장의 답장\",\"replyToId\":" + reply + "}").andExpect(status().isOk());
+        put(url() + "/" + first + "/reaction", anam, "{\"reaction\":\"HEART\"}").andExpect(status().isOk());
+        put(url() + "/pin", host, "{\"messageId\":" + reply + "}").andExpect(status().isOk());
+
+        delete("/api/meetups/" + meetupId, ownerToken()).andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject("select count(*) from chat_messages", Long.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from chat_reactions", Long.class)).isZero();
+    }
+
     // ---------- 사진 ----------
 
     /** 사진 올릴 주소를 받아 그 주소로 올린다 */

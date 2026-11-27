@@ -17,6 +17,15 @@ describe('실시간 연결 읽기', () => {
     expect(parseSseBlock('event:chat-reads\ndata:{"meetupId":4}')).toEqual({ type: 'chat-reads', meetupId: 4 })
   })
 
+  it('공감 · 공지가 바뀌었다', () => {
+    expect(parseSseBlock('event:chat-change\ndata:{"meetupId":4,"messageId":9}')).toEqual({
+      type: 'chat-change',
+      meetupId: 4,
+      messageId: 9,
+    })
+    expect(parseSseBlock('event:chat-change\ndata:{"meetupId":4}')).toEqual({ type: 'chat-change', meetupId: 4, messageId: null })
+  })
+
   it('주석(ping)과 모르는 이름은 건너뛴다', () => {
     expect(parseSseBlock(':ping')).toBeNull()
     expect(parseSseBlock('event:ready\ndata:{}')).toBeNull()

@@ -10,6 +10,8 @@ export type LiveEvent =
   | { type: 'chat-read'; meetupId: number }
   /** 다른 원우가 톡방을 더 읽었다 — 메시지 옆 "안 읽은 사람 수"를 다시 센다 */
   | { type: 'chat-reads'; meetupId: number }
+  /** 공감(messageId 의 메시지) · 톡방 공지(messageId 없음)가 바뀌었다 */
+  | { type: 'chat-change'; meetupId: number; messageId: number | null }
   /** 연결이 (다시) 붙었다 — 끊긴 사이 놓친 것을 다시 읽는다 */
   | { type: 'connected' }
 
@@ -57,12 +59,16 @@ export function parseSseBlock(block: string): LiveEvent | null {
     if (field === 'event') name = value
     else if (field === 'data') data.push(value)
   }
-  if (name !== 'chat' && name !== 'chat-read' && name !== 'chat-reads') return null
+  if (name !== 'chat' && name !== 'chat-read' && name !== 'chat-reads' && name !== 'chat-change') return null
   try {
     const body = JSON.parse(data.join('\n') || '{}') as Record<string, unknown>
     const meetupId = Number(body.meetupId)
     if (!Number.isFinite(meetupId)) return null
     if (name === 'chat-read' || name === 'chat-reads') return { type: name, meetupId }
+    if (name === 'chat-change') {
+      const messageId = Number(body.messageId)
+      return { type: name, meetupId, messageId: body.messageId == null || !Number.isFinite(messageId) ? null : messageId }
+    }
     return { type: 'chat', meetupId, messageId: Number(body.messageId), deleted: body.deleted === true }
   } catch {
     return null

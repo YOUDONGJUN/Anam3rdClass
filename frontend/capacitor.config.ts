@@ -39,6 +39,11 @@ const config: CapacitorConfig = {
       backgroundColor: BOARD,
       showSpinner: false,
     },
+    Keyboard: {
+      // 아이폰: 키보드가 올라오면 앱 화면을 키보드 위까지만 줄인다 (화면이 밀려 올라가지 않게).
+      // 키보드 위 ∧ ∨ 완료 막대는 톡방에서만 숨긴다 (lib/native.ts setKeyboardBar)
+      resize: 'native',
+    },
     PushNotifications: {
       // 앱을 보고 있을 때 온 알림도 알림창에 띄운다
       presentationOptions: ['badge', 'sound', 'alert'],

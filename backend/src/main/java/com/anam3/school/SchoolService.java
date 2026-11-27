@@ -67,7 +67,7 @@ public class SchoolService {
                         Collectors.mapping(DepartmentView::from, Collectors.toList())));
         return all().stream()
                 .map(s -> new SchoolView(s.getId(), s.getCode(), s.getName(), s.getShortName(), s.getGraduateSchool(),
-                        s.getLatestCohort(), s.getPlace(), domainsBySchool.getOrDefault(s.getId(), List.of()),
+                        s.getLatestCohort(), s.getPlace(), s.getCampus(), domainsBySchool.getOrDefault(s.getId(), List.of()),
                         departmentsBySchool.getOrDefault(s.getId(), List.of())))
                 .toList();
     }
@@ -142,6 +142,7 @@ public class SchoolService {
         School school = schools.save(new School(req.name().strip(), req.shortName().strip(),
                 blankToNull(req.graduateSchool()), req.latestCohort(), nextOrder, clock.instant()));
         school.changePlace(blankToNull(req.place()));
+        school.changeCampus(req.campus());
         domains.save(new SchoolEmailDomain(school, domain));
         actionLog.record(actor, AdminAction.Type.ADD_SCHOOL, null, null, school.getName() + " · " + domain);
         return school;
@@ -154,6 +155,9 @@ public class SchoolService {
         // 동네 이름: 보내지 않으면(예전 화면) 그대로, 빈칸이면 지운다 (공식 이름으로 보인다)
         if (req.place() != null) {
             school.changePlace(blankToNull(req.place()));
+        }
+        if (req.campus() != null) {
+            school.changeCampus(req.campus());
         }
         actionLog.record(actor, AdminAction.Type.EDIT_SCHOOL, null, null,
                 school.getName() + " · 최신 " + req.latestCohort() + "기");

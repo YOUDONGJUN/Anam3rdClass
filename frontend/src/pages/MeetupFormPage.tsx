@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import {
   Check,
@@ -16,12 +16,12 @@ import {
 } from 'lucide-react'
 import { ApiError } from '../api/client'
 import { useCreateMeetup, useMeetup, useMyMeetups, usePopularPlaces, useUpdateMeetup } from '../api/queries'
-import type { MeetupAudience, MeetupCategory, MeetupDetail } from '../api/types'
+import type { GeoPoint, MeetupAudience, MeetupCategory, MeetupDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { LineGauge } from '../components/LineGauge'
 import { OverlapNote } from '../components/OverlapNote'
 import { Button, ErrorState, Field, FormError, Spinner } from '../components/ui'
-import { buttonClass, cardClass, inputClass } from '../components/styles'
+import { cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import {
   addPurposes,
@@ -45,8 +45,8 @@ import {
   type PeopleValues,
 } from '../lib/meetup'
 import { confirmLeave, readDraft, useLeaveGuard, writeDraft } from '../lib/leaveGuard'
-import { MAP_PROVIDERS } from '../lib/map'
 import { mergePlaces } from '../lib/places'
+import { PlacePicker } from '../components/PlacePicker'
 import { placePresets } from '../lib/schools'
 import { ceilTo10Minutes, formatDateTime, formatLeadTime, fromKstInputValue, kstAt, toKstInputValue } from '../lib/time'
 
@@ -76,6 +76,10 @@ interface FormValues {
   meetAt: string
   deadline: string
   place: string
+  /** 장소 검색에서 고른 위치 (직접 쓴 장소는 null) */
+  location: GeoPoint | null
+  /** 장소의 지역 (서울 성북구). 위치가 있을 때만 */
+  region: string | null
   minPeople: number
   /** 최소 인원 없음 — 몇 명이 오든 진행 (최소 인원 무시) */
   noMinimum: boolean
@@ -365,7 +369,6 @@ function MeetupForm({
   const popular = usePopularPlaces()
   const presetPlaces = placePresets(member?.school.code)
   const places = mergePlaces(popular.data ?? [], presetPlaces)
-  const placeListId = useId()
   // 열 때는 꼭 정할 것만 보이고 나머지(인원·대상·참여 방식·선택 항목)는 접어 둔다. 고칠 때는 다 펼친다
   const [showOptions, setShowOptions] = useState(editing || initial.description !== '' || initial.openChatUrl !== '')
   const audienceOf: HostTag | null =
@@ -460,6 +463,8 @@ function MeetupForm({
           title: v.title,
           description: v.description,
           place: v.place,
+          location: v.location ?? null,
+          region: v.location ? (v.region ?? null) : null,
           categories: v.categories,
           purposes: v.purposes,
           openChatUrl: v.openChatUrl,
@@ -479,6 +484,8 @@ function MeetupForm({
         title: v.title,
         description: v.description,
         place: v.place,
+        location: v.location ?? null,
+        region: v.location ? (v.region ?? null) : null,
         categories: v.categories,
         purposes: v.purposes,
         meetAt: meetAt.toISOString(),
@@ -584,53 +591,19 @@ function MeetupForm({
       <div data-field="place">
         <Field
           label="어디서"
-          hint="장소 이름을 입력하면 카카오맵·네이버지도에서 검색할 수 있어요"
+          hint="찾아서 고르면 가까운 순에 나와요"
           error={errorField === 'place' ? error : null}
         >
           {({ id, describedBy, invalid }) => (
-            <div className="flex flex-col gap-3">
-              <input
-                id={id}
-                enterKeyHint="next"
-                onKeyDown={blockEnterSubmit}
-                aria-describedby={describedBy}
-                aria-invalid={invalid || undefined}
-                className={inputClass}
-                maxLength={60}
-                list={placeListId}
-                autoComplete="off"
-                placeholder={`예: ${presetPlaces[0] ?? '역'} 앞 치킨집`}
-                value={v.place}
-                onChange={(e) => set('place', e.target.value)}
-              />
-              {v.place.trim() && (
-                <div className="flex flex-wrap gap-2">
-                  {MAP_PROVIDERS.map((provider) => (
-                    <a
-                      key={provider.label}
-                      href={provider.url(v.place)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={buttonClass('secondary', 'sm')}
-                    >
-                      {provider.label}에서 검색
-                    </a>
-                  ))}
-                </div>
-              )}
-              <datalist id={placeListId}>
-                {places.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
-              <div className="flex flex-wrap gap-2">
-                {places.map((p) => (
-                  <Chip key={p} active={v.place === p} onClick={() => set('place', p)}>
-                    {p}
-                  </Chip>
-                ))}
-              </div>
-            </div>
+            <PlacePicker
+              id={id}
+              describedBy={describedBy}
+              invalid={invalid}
+              placeholder={`예: ${presetPlaces[0] ?? '역'} 앞 치킨집`}
+              value={{ place: v.place, location: v.location ?? null, region: v.region ?? null }}
+              onChange={(next) => setV((prev) => ({ ...prev, ...next }))}
+              suggestions={places}
+            />
           )}
         </Field>
       </div>
@@ -898,6 +871,8 @@ function defaults(audience: MeetupAudience): FormValues {
     meetAt: toKstInputValue(first),
     deadline: first.getTime() - 10 * 60_000 > now.getTime() ? '10' : '0',
     place: '',
+    location: null,
+    region: null,
     minPeople: 3,
     noMinimum: false,
     maxPeople: 6,
@@ -925,6 +900,8 @@ function fromDetail(d: MeetupDetail): FormValues & { id: number; leadMinutes: nu
     meetAt: toKstInputValue(new Date(d.meetAt)),
     deadline: DEADLINES.find((c) => c.minutes === leadMinutes)?.value ?? 'keep',
     place: d.place,
+    location: d.location ?? null,
+    region: d.region ?? null,
     minPeople: d.minPeople ?? 2,
     noMinimum: d.minPeople === null,
     maxPeople: d.maxPeople ?? Math.max(6, d.minPeople ?? 2, d.participantCount),
@@ -947,6 +924,8 @@ function copyFrom(d: MeetupDetail, base: FormValues): FormValues {
     categories: d.categories,
     purposes: d.purposes,
     place: d.place,
+    location: d.location ?? null,
+    region: d.region ?? null,
     minPeople: d.minPeople ?? 2,
     noMinimum: d.minPeople === null,
     maxPeople: d.maxPeople ?? Math.max(6, d.minPeople ?? 2),

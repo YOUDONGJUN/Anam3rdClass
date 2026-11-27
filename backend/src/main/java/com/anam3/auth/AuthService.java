@@ -46,6 +46,7 @@ import com.anam3.common.Emails;
 import com.anam3.common.RateLimiter;
 import com.anam3.common.RateLimits;
 import com.anam3.member.Member;
+import com.anam3.sanction.SanctionService;
 import com.anam3.member.MemberRepository;
 import com.anam3.member.MemberResponse;
 import com.anam3.member.MemberRole;
@@ -567,6 +568,9 @@ public class AuthService {
     AuthStep done(Member member) {
         if (!member.isActive()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "BANNED", "이용이 제한된 계정이에요. 관리자에게 문의해 주세요");
+        }
+        if (member.isSuspendedAt(clock.instant())) {
+            throw SanctionService.suspended(member.getSuspendedUntil());
         }
         return AuthStep.done(jwtService.issue(member), MemberResponse.from(member));
     }

@@ -22,17 +22,19 @@ public final class AdminDtos {
      * 원우 그리드 한 줄. 이메일은 대학원장에게만 그대로, 교수에게는 가려서 보낸다 (ho**@korea.ac.kr).
      * 로그인 방법: kakaoLinked(카카오) · hasPassword(학교 이메일 + 비밀번호). 둘 다 없으면 아직 안 들어온 예전 회원이다
      * (탈퇴한 원우도 둘 다 false).
+     * strikes: 지금까지 받은 경고 수 (취소한 것 빼고) · suspendedUntil: 기간 정지가 끝나는 때 (지났으면 null)
      */
     public record AdminMemberView(Long id, String name, String email, SchoolTag school, int cohort,
             String cohortLabel, Long departmentId, String departmentLabel, String departmentShortLabel,
-            MemberRole role, MemberStatus status, boolean kakaoLinked, boolean hasPassword, Instant createdAt) {
+            MemberRole role, MemberStatus status, boolean kakaoLinked, boolean hasPassword, Instant createdAt,
+            int strikes, Instant suspendedUntil) {
 
-        public static AdminMemberView from(Member m, boolean showEmail) {
+        public static AdminMemberView from(Member m, boolean showEmail, int strikes, Instant now) {
             return new AdminMemberView(m.getId(), m.getName(), showEmail ? m.getEmail() : Emails.mask(m.getEmail()),
                     SchoolTag.from(m.getSchool()), m.getCohort(), m.cohortLabel(),
                     m.getDepartment() == null ? null : m.getDepartment().getId(), m.departmentLabel(),
                     m.departmentShortLabel(), m.getRole(), m.getStatus(), m.getKakaoId() != null, m.hasEmailPassword(),
-                    m.getCreatedAt());
+                    m.getCreatedAt(), strikes, m.isSuspendedAt(now) ? m.getSuspendedUntil() : null);
         }
     }
 

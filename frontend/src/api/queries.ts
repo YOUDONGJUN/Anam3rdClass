@@ -17,6 +17,7 @@ import type {
   FeedbackInput,
   FeedbackPending,
   FeedbackStats,
+  GeoPoint,
   Member,
   MeetupCreateInput,
   MeetupMemories,
@@ -30,17 +31,23 @@ import type {
   NoticeInput,
   NoticeSummary,
   NotificationList,
+  PlaceSearchResult,
+  PlaceSuggestion,
   PushType,
   RankingPeriod,
   RankingScope,
   RankingView,
   Report,
   ReportInput,
+  ReportReason,
   Role,
+  SanctionNotice,
+  SanctionView,
   School,
   SettlementDue,
   SettlementInput,
   SignupOptions,
+  WarnResult,
 } from './types'
 import { askPushOnce } from '../lib/native'
 import { uploadPhotos } from './uploads'
@@ -315,8 +322,20 @@ export function usePayLinks() {
 export function usePopularPlaces() {
   return useQuery({
     queryKey: keys.places,
-    queryFn: () => api<string[]>('/api/meetups/places'),
+    queryFn: () => api<PlaceSuggestion[]>('/api/meetups/places'),
     staleTime: 5 * 60_000,
+  })
+}
+
+/** 장소 검색 (카카오 로컬, 우리 학교 근처부터). 찾는 말이 비면 찾지 않는다 */
+export function usePlaceSearch(q: string) {
+  const query = q.trim()
+  return useQuery({
+    queryKey: ['place-search', query],
+    queryFn: () => api<PlaceSearchResult>(`/api/places/search?q=${encodeURIComponent(query)}`),
+    enabled: query.length > 0,
+    staleTime: 10 * 60_000,
+    retry: false,
   })
 }
 
@@ -441,8 +460,8 @@ function afterBlockChange(qc: QueryClient) {
 export function useBlock() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ ref, left = false }: { ref: number; left?: boolean }) =>
-      api<Block>('/api/blocks', { method: 'POST', body: { ref, left } }),
+    mutationFn: ({ ref, left = false, chat = false }: { ref: number; left?: boolean; chat?: boolean }) =>
+      api<Block>('/api/blocks', { method: 'POST', body: { ref, left, chat } }),
     onSuccess: () => afterBlockChange(qc),
   })
 }
@@ -589,6 +608,8 @@ export interface SchoolInput {
   latestCohort: number
   /** 화면 이름의 동네 (빈칸이면 공식 이름) */
   place: string
+  /** 캠퍼스 위치. 보내지 않으면 그대로 */
+  campus?: GeoPoint | null
 }
 
 export interface DepartmentInput {
@@ -659,6 +680,51 @@ export function useSchoolAdmin() {
       onSuccess: done,
     }),
   }
+}
+
+/** 경고 주기 (단계는 서버가 쌓인 수로 정한다). reportId 가 있으면 그 신고도 처리 완료 */
+export function useWarnMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id: number; reason: ReportReason; note: string; reportId?: number | null }) =>
+      api<WarnResult>(`/api/admin/members/${id}/warn`, { method: 'POST', body: input }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.admin }),
+  })
+}
+
+/** 한 원우의 제재 기록 */
+export function useMemberSanctions(id: number) {
+  return useQuery({
+    queryKey: [...keys.admin, 'sanctions', id],
+    queryFn: () => api<SanctionView[]>(`/api/admin/members/${id}/sanctions`),
+  })
+}
+
+/** 잘못 준 경고 취소 */
+export function useRevokeSanction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (sanctionId: number) => api<SanctionView[]>(`/api/admin/sanctions/${sanctionId}/revoke`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.admin }),
+  })
+}
+
+/** 경고 받은 원우: 아직 확인하지 않은 경고 (없으면 null) */
+export function useSanctionNotice(enabled: boolean) {
+  return useQuery({
+    queryKey: ['sanction-notice'],
+    queryFn: async () => (await api<SanctionNotice | null>('/api/me/sanction-notice')) ?? null,
+    enabled,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useAckSanction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api<void>(`/api/me/sanction-notice/${id}/ack`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['sanction-notice'] }),
+  })
 }
 
 export function useAdminMemberAction() {

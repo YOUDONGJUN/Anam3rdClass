@@ -23,6 +23,9 @@ import com.anam3.admin.AdminDtos.RoleRequest;
 import com.anam3.admin.AdminDtos.StatsView;
 import com.anam3.auth.AuthDtos.ProfileRequest;
 import com.anam3.auth.LoginMember;
+import com.anam3.sanction.SanctionDtos.SanctionView;
+import com.anam3.sanction.SanctionDtos.WarnRequest;
+import com.anam3.sanction.SanctionDtos.WarnResult;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
 import com.anam3.meetup.MeetupService;
 import com.anam3.notice.NoticeDtos.NoticeDetail;
@@ -82,6 +85,25 @@ public class AdminController {
     @PostMapping("/members/{id}/unban")
     public AdminMemberView unban(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
         return adminService.unban(me, id);
+    }
+
+    /** 경고 주기 (단계는 쌓인 수로 정해진다) */
+    @PostMapping("/members/{id}/warn")
+    public WarnResult warn(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @Valid @RequestBody WarnRequest req) {
+        return adminService.warn(me, id, req);
+    }
+
+    /** 한 원우의 제재 기록 */
+    @GetMapping("/members/{id}/sanctions")
+    public List<SanctionView> sanctions(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
+        return adminService.sanctions(me, id);
+    }
+
+    /** 잘못 준 경고 취소 */
+    @PostMapping("/sanctions/{id}/revoke")
+    public List<SanctionView> revokeSanction(@AuthenticationPrincipal LoginMember me, @PathVariable Long id) {
+        return adminService.revokeSanction(me, id);
     }
 
     @PutMapping("/members/{id}/profile")

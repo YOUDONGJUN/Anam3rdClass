@@ -3,6 +3,7 @@ import { MeetupOptionTags } from './MeetupOptionTags'
 import { Check, MapPin } from 'lucide-react'
 import type { MeetupSummary } from '../api/types'
 import { useMeetupAction, useMyMeetups } from '../api/queries'
+import { formatDistance } from '../lib/geo'
 import { formatDayLabel, formatRemaining, formatTime } from '../lib/time'
 import { findOverlap, isLive, joinedLabel, lateJoinConfirm, overlapMessage, seatsCaption } from '../lib/meetup'
 import { CategoryBadges } from './CategoryBadge'
@@ -85,6 +86,7 @@ export function MeetupRow({
   hideTime = false,
   backLabel,
   now,
+  distance = null,
 }: {
   meetup: MeetupSummary
   showDate?: boolean
@@ -92,6 +94,8 @@ export function MeetupRow({
   /** 상세의 뒤로 버튼 이름 (이 목록 이름) */
   backLabel?: string
   now: Date
+  /** 기준점(내 위치 · 우리 학교)에서 장소까지 거리(m). 모르면 null */
+  distance?: number | null
 }) {
   const live = isLive(meetup.status)
   // 정원이 차서 못 들어가면 마감까지 남은 시간은 보이지 않는다 ('만석'과 부딪히지 않게)
@@ -129,6 +133,13 @@ export function MeetupRow({
           <p className="flex max-w-full min-w-0 items-center gap-1">
             <MapPin className="size-3.5 shrink-0 text-ink-3" aria-hidden />
             <span className="truncate">{meetup.place}</span>
+            {distance !== null && (
+              <span className="tabular shrink-0 font-semibold whitespace-nowrap text-ink-3">
+                <span aria-hidden>· </span>
+                <span className="sr-only">, 거리 </span>
+                {formatDistance(distance)}
+              </span>
+            )}
           </p>
           {meetup.purposes.length > 0 && <PurposeTags purposes={meetup.purposes} />}
           <MeetupOptionTags meetup={meetup} />

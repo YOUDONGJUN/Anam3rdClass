@@ -559,12 +559,15 @@ export function MeetupDetailPage() {
               <dt className="sr-only">장소</dt>
               <MapPin className="mt-1.5 size-4 shrink-0 text-ink-3" aria-hidden />
               <dd className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                <span className="min-w-0 font-semibold break-words text-ink">{m.place}</span>
+                <span className="min-w-0 font-semibold break-words text-ink">
+                  {m.place}
+                  {m.region && <span className="ml-1.5 text-[13px] font-medium whitespace-nowrap text-ink-3">{m.region}</span>}
+                </span>
                 <span className="flex gap-1.5">
                   {MAP_PROVIDERS.map((p) => (
                     <a
                       key={p.label}
-                      href={p.url(m.place)}
+                      href={p.url(m.place, m.location)}
                       target="_blank"
                       rel="noreferrer"
                       className="hit inline-flex h-7 items-center gap-0.5 rounded-lg border border-line-strong bg-surface pr-1.5 pl-2 text-[12px] font-semibold text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"

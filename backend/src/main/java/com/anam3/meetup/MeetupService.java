@@ -5,12 +5,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +35,7 @@ import com.anam3.meetup.MeetupMapper.WaitInfo;
 import com.anam3.meetup.MeetupDtos.OptionsChange;
 import com.anam3.meetup.MeetupDtos.PeopleChange;
 import com.anam3.meetup.MeetupDtos.PersonView;
+import com.anam3.meetup.MeetupDtos.PlaceSuggestion;
 import com.anam3.meetup.MeetupDtos.ScheduleChange;
 import com.anam3.member.Member;
 import com.anam3.member.MemberRepository;
@@ -129,7 +132,7 @@ public class MeetupService {
         }
         checkFee(req.fee(), req.feePrepaid());
         List<String> purposes = purposes(req.purposes());
-        ContentFilter.check(req.title(), req.description(), req.place(), String.join(" ", purposes));
+        ContentFilter.check(req.title(), req.description(), req.place(), String.join(" ", purposes), req.region());
 
         Member host = loadMember(viewer);
         MeetupAudience audience = req.audience() == null ? MeetupAudience.SCHOOL : req.audience();
@@ -137,6 +140,7 @@ public class MeetupService {
                 req.place().strip(), req.categories(), purposes, req.meetAt(), req.deadlineAt(), req.minPeople(),
                 req.maxPeople(), blankToNull(req.openChatUrl()), now));
         meetup.applyOptions(Boolean.TRUE.equals(req.lateJoin()), req.fee(), Boolean.TRUE.equals(req.feePrepaid()));
+        meetup.changeLocation(req.location(), blankToNull(req.region()));
         participations.save(new Participation(meetup, host, now));
         notifier.opened(meetup); // 연합이면 다섯 학교, 아니면 우리 학교(우리 기수만이면 그 기수)
         return detail(viewer, meetup.getId());
@@ -299,7 +303,7 @@ public class MeetupService {
         }
         checkOpen(meetup);
         List<String> purposes = purposes(req.purposes());
-        ContentFilter.check(req.title(), req.description(), req.place(), String.join(" ", purposes));
+        ContentFilter.check(req.title(), req.description(), req.place(), String.join(" ", purposes), req.region());
         Instant now = clock.instant();
         Instant meetAtBefore = meetup.getMeetAt();
         String placeBefore = meetup.getPlace();
@@ -329,6 +333,12 @@ public class MeetupService {
         }
         meetup.update(req.title().strip(), clean(req.description()), req.place().strip(), req.categories(),
                 purposes, blankToNull(req.openChatUrl()), now);
+        // 장소 위치: 새로 골랐으면 그것, 안 보냈으면 장소 이름이 그대로일 때만 예전 위치를 둔다
+        if (req.location() != null) {
+            meetup.changeLocation(req.location(), blankToNull(req.region()));
+        } else if (!placeBefore.equals(meetup.getPlace())) {
+            meetup.changeLocation(null, null);
+        }
         notifier.changed(meetup, viewer.id(), !meetAtBefore.equals(meetup.getMeetAt()),
                 !placeBefore.equals(meetup.getPlace()),
                 !Objects.equals(feeBefore, meetup.getFee()) || prepaidBefore != meetup.isFeePrepaid(),
@@ -396,11 +406,27 @@ public class MeetupService {
         return detail(viewer, id);
     }
 
-    /** 우리 학교 3교시에서 많이 쓴 장소 (3교시 열기 화면의 추천) */
+    /**
+     * 우리 학교 3교시에서 많이 쓴 장소 (3교시 열기 화면의 추천).
+     * 그 장소를 검색해서 고른 적이 있으면 가장 최근 위치를 같이 준다 (추천을 눌러도 가까운 순에 나오게)
+     */
     @Transactional(readOnly = true)
-    public List<String> popularPlaces(LoginMember viewer) {
+    public List<PlaceSuggestion> popularPlaces(LoginMember viewer) {
         Instant since = clock.instant().minus(PLACE_WINDOW);
-        return meetups.findPopularPlaces(viewer.schoolId(), viewer.cohort(), since, PageRequest.of(0, PLACE_LIMIT));
+        List<String> names = meetups.findPopularPlaces(viewer.schoolId(), viewer.cohort(), since,
+                PageRequest.of(0, PLACE_LIMIT));
+        if (names.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Meetup> located = new HashMap<>();
+        for (Meetup m : meetups.findLocatedByPlaces(viewer.schoolId(), viewer.cohort(), names)) {
+            located.putIfAbsent(m.getPlace(), m); // 최근 것부터 온다
+        }
+        return names.stream().map(name -> {
+            Meetup m = located.get(name);
+            return m == null ? new PlaceSuggestion(name, null, null)
+                    : new PlaceSuggestion(name, m.getLocation(), m.getRegion());
+        }).toList();
     }
 
     /** 꽉 찼던 3교시에 자리가 났으면 기다리던 사람 모두에게 알린다 (먼저 참여한 사람이 탄다) */

@@ -18,6 +18,8 @@
 	<string>톡방·추억에 올릴 사진을 고를 때 사진 보관함을 써요.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>사진을 저장할 때 사진 보관함에 넣어요.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>3교시 목록을 가까운 순으로 볼 때 내 위치를 써요. 위치는 폰 안에서만 쓰고 서버에 보내지 않아요.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

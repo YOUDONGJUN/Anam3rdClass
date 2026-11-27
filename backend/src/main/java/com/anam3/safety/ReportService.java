@@ -3,7 +3,10 @@ package com.anam3.safety;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import org.springframework.data.domain.PageRequest;
@@ -14,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.anam3.admin.AdminAction;
 import com.anam3.admin.AdminActionLog;
 import com.anam3.auth.LoginMember;
+import com.anam3.chat.ChatMessage;
 import com.anam3.common.ApiException;
 import com.anam3.feedback.MeetupFeedback.Rating;
 import com.anam3.feedback.MeetupFeedbackRepository;
@@ -32,6 +36,7 @@ import com.anam3.notice.NoticeService;
 import com.anam3.push.PushNotifier;
 import com.anam3.safety.SafetyDtos.ReportRequest;
 import com.anam3.safety.SafetyDtos.ReportView;
+import com.anam3.sanction.MemberSanctionRepository;
 import com.anam3.school.SchoolDtos.SchoolTag;
 
 /**
@@ -55,10 +60,13 @@ public class ReportService {
     private final AdminActionLog actionLog;
     private final Clock clock;
     private final LeftMembers leftMembers;
+    private final ChatMessageTargets chatMessages;
+    private final MemberSanctionRepository sanctions;
 
     public ReportService(ReportRepository reports, MeetupRepository meetups, ParticipationRepository participations,
             NoticeRepository notices, MemberRepository members, MeetupFeedbackRepository feedbacks,
-            PushNotifier notifier, AdminActionLog actionLog, Clock clock, LeftMembers leftMembers) {
+            PushNotifier notifier, AdminActionLog actionLog, Clock clock, LeftMembers leftMembers,
+            ChatMessageTargets chatMessages, MemberSanctionRepository sanctions) {
         this.reports = reports;
         this.meetups = meetups;
         this.participations = participations;
@@ -69,6 +77,8 @@ public class ReportService {
         this.actionLog = actionLog;
         this.clock = clock;
         this.leftMembers = leftMembers;
+        this.chatMessages = chatMessages;
+        this.sanctions = sanctions;
     }
 
     public void report(LoginMember viewer, ReportRequest req) {
@@ -96,6 +106,16 @@ public class ReportService {
                 yield r;
             }
             case MEMBER -> {
+                if (Boolean.TRUE.equals(req.chat())) {
+                    // 톡방 메시지: 보낸 원우가 대상 (그 뒤에 나갔어도). 메시지 내용을 남긴다 — 교수·대학원장은 톡방을 볼 수 없다
+                    ChatMessage message = chatMessages.find(viewer, req.targetId())
+                            .orElseThrow(() -> ApiException.notFound("신고할 메시지를 찾을 수 없어요"));
+                    Member sender = message.getMember();
+                    Report r = new Report(reporter, Report.TargetType.MEMBER, message.getMeetup(), null, sender,
+                            sender.getSchool(), req.reason(), detail, now);
+                    r.snapshot(ChatMessageTargets.title(message), ChatMessageTargets.body(message));
+                    yield r;
+                }
                 if (Boolean.TRUE.equals(req.left())) {
                     // 성사된 뒤 나간 원우 (실명을 보고 나갔다)
                     LeftMembers.Found found = leftMembers.find(viewer, req.targetId())
@@ -146,7 +166,51 @@ public class ReportService {
                 .map(Member::getId)
                 .filter(id -> !id.equals(reporterId) && (target == null || !id.equals(target.getId())))
                 .toList();
-        notifier.reportFiled(to, report.getReason().label());
+        // 서로 다른 원우 여럿이 같은 사람을 신고하면 "주의"로 알린다 (자동 제재는 하지 않는다 — 사람이 확인한다)
+        int reporters = target == null ? 0
+                : reporterCounts(List.of(target.getId()), clock.instant()).getOrDefault(target.getId(), 0);
+        if (reporters == FLAG_REPORTERS) {
+            notifier.reportFlagged(to, reporters);
+        } else {
+            notifier.reportFiled(to, report.getReason().label());
+        }
+    }
+
+    /** "주의" 표시: 최근 30일 동안 서로 다른 원우 이만큼이 같은 사람을 신고 */
+    public static final int FLAG_REPORTERS = 3;
+    private static final Duration FLAG_WINDOW = Duration.ofDays(30);
+
+    private Map<Long, Integer> reporterCounts(Collection<Long> memberIds, Instant now) {
+        Map<Long, Integer> result = new HashMap<>();
+        if (memberIds.isEmpty()) {
+            return result;
+        }
+        for (Object[] row : reports.countReporters(memberIds, now.minus(FLAG_WINDOW))) {
+            result.put((Long) row[0], ((Number) row[1]).intValue());
+        }
+        return result;
+    }
+
+    private Map<Long, Integer> strikeCounts(Collection<Long> memberIds) {
+        Map<Long, Integer> result = new HashMap<>();
+        if (memberIds.isEmpty()) {
+            return result;
+        }
+        for (Object[] row : sanctions.countActive(memberIds)) {
+            result.put((Long) row[0], ((Number) row[1]).intValue());
+        }
+        return result;
+    }
+
+    /** 신고 화면 한 줄에 붙이는 신고당한 사람의 지금 상태 */
+    private record TargetState(Map<Long, Integer> reporters, Map<Long, Integer> strikes, Instant now) {
+    }
+
+    private TargetState stateOf(List<Report> found) {
+        List<Long> ids = found.stream().map(Report::getMember).filter(Objects::nonNull).map(Member::getId)
+                .distinct().toList();
+        Instant now = clock.instant();
+        return new TargetState(reporterCounts(ids, now), strikeCounts(ids), now);
     }
 
     /** 관리 화면: 대학원장은 모든 신고, 교수는 자기 학교 신고. 처리 안 된 것부터 */
@@ -155,7 +219,8 @@ public class ReportService {
         List<Report> found = viewer.isOwner()
                 ? reports.findForOwner(PageRequest.of(0, 200))
                 : reports.findForSchool(viewer.schoolId(), MemberRole.USER, PageRequest.of(0, 200));
-        return found.stream().map(r -> view(r, viewer)).toList();
+        TargetState state = stateOf(found);
+        return found.stream().map(r -> view(r, viewer, state)).toList();
     }
 
     /** 처리 완료(resolved=true) / 다시 열기(false) */
@@ -179,7 +244,7 @@ public class ReportService {
                 notifier.reportResolved(reporterId, report.getId());
             }
         }
-        return view(report, viewer);
+        return view(report, viewer, stateOf(List.of(report)));
     }
 
     /** 관리 화면 현황: 처리 안 된 신고 수 */
@@ -196,6 +261,14 @@ public class ReportService {
     }
 
     /** 대학원장은 모두, 교수는 자기 학교의 일반 원우가 대상인 신고만 (교수·대학원장이 대상이면 대학원장만) */
+    /** 이 교수·대학원장이 처리할 수 있는 신고 (경고를 줄 때) */
+    @Transactional(readOnly = true)
+    public Report manageable(LoginMember viewer, Long reportId) {
+        return reports.findById(reportId)
+                .filter(r -> canManage(viewer, r))
+                .orElseThrow(() -> ApiException.notFound("신고를 찾을 수 없어요"));
+    }
+
     private static boolean canManage(LoginMember viewer, Report report) {
         if (viewer.isOwner()) {
             return true;
@@ -218,7 +291,7 @@ public class ReportService {
     }
 
     /** 후기에서 온 신고라는 표시는 대학원장에게만 (교수에게는 신고한 사람을 짐작할 단서를 주지 않는다) */
-    private static ReportView view(Report r, LoginMember viewer) {
+    private static ReportView view(Report r, LoginMember viewer, TargetState state) {
         Meetup meetup = r.getMeetup();
         Notice notice = r.getNotice();
         Member member = r.getMember();
@@ -232,7 +305,10 @@ public class ReportService {
                 member == null ? null : member.getId(), member == null ? null : member.getName(), affiliation,
                 member == null ? null : member.getRole(),
                 member != null && member.getStatus() == MemberStatus.BANNED, SchoolTag.from(r.getSchool()),
-                viewer.isOwner() && r.isFromFeedback());
+                viewer.isOwner() && r.isFromFeedback(),
+                member == null ? 0 : state.reporters().getOrDefault(member.getId(), 0),
+                member == null ? 0 : state.strikes().getOrDefault(member.getId(), 0),
+                member != null && member.isSuspendedAt(state.now()) ? member.getSuspendedUntil() : null);
     }
 
     /** 신고 당시 내용: 비어 있지 않은 줄만 */

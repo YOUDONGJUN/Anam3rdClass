@@ -34,11 +34,17 @@ public final class SafetyDtos {
             Boolean fromFeedback,
 
             /** MEMBER 신고에서 targetId 가 성사된 뒤 나간 원우의 기록 번호(leftPeople.ref)인지 */
-            Boolean left) {
+            Boolean left,
+
+            /** MEMBER 신고에서 targetId 가 톡방 메시지 번호인지 — 보낸 원우를 신고하고 메시지 내용을 기록에 남긴다 */
+            Boolean chat) {
     }
 
-    /** 차단하기: 3교시 상세 화면의 참여 번호(PersonView.ref). left=true 면 나간 원우의 기록 번호 */
-    public record BlockRequest(@NotNull(message = "차단할 사람을 골라 주세요") Long ref, Boolean left) {
+    /**
+     * 차단하기: 3교시 상세 화면의 참여 번호(PersonView.ref). left=true 면 나간 원우의 기록 번호,
+     * chat=true 면 톡방 메시지 번호 (보낸 원우를 차단)
+     */
+    public record BlockRequest(@NotNull(message = "차단할 사람을 골라 주세요") Long ref, Boolean left, Boolean chat) {
     }
 
     /** 내가 차단한 사람 (이름은 가려서) */
@@ -48,7 +54,7 @@ public final class SafetyDtos {
 
     /** 관리 화면 신고 한 줄. 신고한 사람은 보여주지 않는다 */
     public record ReportView(Long id, Report.TargetType targetType, Report.Reason reason, String detail,
-            /** 신고 당시 제목·내용 (3교시·공지). 사람 신고는 null */
+            /** 신고 당시 제목·내용 (3교시·공지·톡방 메시지). 그 밖의 사람 신고는 null */
             String targetSnapshot,
             Report.Status status, Instant createdAt, Instant resolvedAt,
             /** 3교시 신고, 사람 신고(그 3교시) */
@@ -61,7 +67,13 @@ public final class SafetyDtos {
             MemberRole memberRole, boolean memberBanned,
             SchoolTag school,
             /** 3교시 후기에서 한 신고 — 대학원장에게만 true 로 내려간다 (교수에게는 늘 false) */
-            boolean fromFeedback) {
+            boolean fromFeedback,
+            /** 최근 30일 동안 신고당한 사람을 신고한 서로 다른 원우 수 (3명 이상이면 화면에 "주의") */
+            int reporterCount,
+            /** 신고당한 사람이 지금까지 받은 경고 수 (취소한 것 빼고) — 다음 경고가 몇 단계인지 */
+            int memberStrikes,
+            /** 신고당한 사람의 기간 정지가 끝나는 때 (정지 중이 아니면 null) */
+            Instant memberSuspendedUntil) {
     }
 
     public record ResolveRequest(@NotNull Boolean resolved) {

@@ -1,6 +1,7 @@
 package com.anam3.meetup;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -152,4 +153,14 @@ public interface MeetupRepository extends JpaRepository<Meetup, Long> {
             """)
     List<String> findPopularPlaces(@Param("schoolId") Long schoolId, @Param("cohort") int cohort,
             @Param("since") Instant since, Pageable pageable);
+
+    /** 장소 추천의 위치: 이 이름들로 열면서 장소 검색에서 위치를 고른 3교시 (최근 것부터) */
+    @Query("""
+            select m from Meetup m
+            where m.school.id = :schoolId and m.canceled = false and m.place in :names and m.lat is not null
+              and (m.onlyCohort is null or m.onlyCohort = :cohort)
+            order by m.createdAt desc
+            """)
+    List<Meetup> findLocatedByPlaces(@Param("schoolId") Long schoolId, @Param("cohort") int cohort,
+            @Param("names") Collection<String> names);
 }

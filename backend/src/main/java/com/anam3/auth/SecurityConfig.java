@@ -1,6 +1,7 @@
 package com.anam3.auth;
 
 import java.io.IOException;
+import java.time.Clock;
 import java.util.List;
 
 import jakarta.servlet.DispatcherType;
@@ -30,7 +31,7 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtService jwtService,
-            MemberRepository members) throws Exception {
+            MemberRepository members, Clock clock) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable) // 쿠키가 아닌 Authorization 헤더 방식이라 CSRF 대상 아님
                 .cors(cors -> {
@@ -67,7 +68,7 @@ public class SecurityConfig {
                                 writeError(res, 401, "UNAUTHORIZED", "로그인이 필요해요"))
                         .accessDeniedHandler((req, res, ex) ->
                                 writeError(res, 403, "FORBIDDEN", "권한이 없어요")))
-                .addFilterBefore(new JwtAuthenticationFilter(jwtService, members),
+                .addFilterBefore(new JwtAuthenticationFilter(jwtService, members, clock),
                         UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

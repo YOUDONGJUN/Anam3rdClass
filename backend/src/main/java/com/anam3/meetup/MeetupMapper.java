@@ -73,7 +73,8 @@ public class MeetupMapper {
                 m.getMeetAt(), m.getDeadlineAt(), m.getMinPeople(), m.getMaxPeople(), m.getParticipantCount(),
                 m.statusAt(now), joinableBy(m, viewer, now), joined, m.isHostedBy(viewer.id()),
                 person(m.getHost(), viewer, revealed, true, null), m.getOnlyCohort(), m.audience(),
-                SchoolTag.from(m.getSchool()), m.isLateJoin(), m.getFee(), m.isFeePrepaid());
+                SchoolTag.from(m.getSchool()), m.isLateJoin(), m.getFee(), m.isFeePrepaid(), m.getLocation(),
+                m.getRegion());
     }
 
     /**
@@ -132,7 +133,9 @@ public class MeetupMapper {
                 manages && open && m.getMaxPeople() != null && m.getMaxPeople() < MeetupService.MAX_SEATS,
                 settlement.canSettle(),
                 settlement.view(),
-                leftPeople);
+                leftPeople,
+                m.getLocation(),
+                m.getRegion());
     }
 
     /** 다른 화면(정산)에서 사람을 보여줄 때. 공개 규칙은 3교시와 같다 */

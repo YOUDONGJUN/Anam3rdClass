@@ -30,14 +30,16 @@ public class BlockService {
     private final MemberRepository members;
     private final Clock clock;
     private final LeftMembers leftMembers;
+    private final ChatMessageTargets chatMessages;
 
     public BlockService(MemberBlockRepository blocks, ParticipationRepository participations,
-            MemberRepository members, Clock clock, LeftMembers leftMembers) {
+            MemberRepository members, Clock clock, LeftMembers leftMembers, ChatMessageTargets chatMessages) {
         this.blocks = blocks;
         this.participations = participations;
         this.members = members;
         this.clock = clock;
         this.leftMembers = leftMembers;
+        this.chatMessages = chatMessages;
     }
 
     public BlockView block(LoginMember viewer, Long participationRef) {
@@ -46,7 +48,15 @@ public class BlockService {
 
     /** left: ref 가 성사된 뒤 나간 원우의 기록 번호 */
     public BlockView block(LoginMember viewer, Long ref, boolean left) {
-        Member target = left
+        return block(viewer, ref, left, false);
+    }
+
+    /** chat: ref 가 톡방 메시지 번호 (보낸 원우를 차단, 그 뒤에 나갔어도) */
+    public BlockView block(LoginMember viewer, Long ref, boolean left, boolean chat) {
+        Member target = chat
+                ? chatMessages.find(viewer, ref).map(m -> m.getMember())
+                        .orElseThrow(() -> ApiException.notFound("차단할 사람을 찾을 수 없어요"))
+                : left
                 ? leftMembers.find(viewer, ref).map(LeftMembers.Found::member)
                         .orElseThrow(() -> ApiException.notFound("차단할 사람을 찾을 수 없어요"))
                 : participations.findById(ref)

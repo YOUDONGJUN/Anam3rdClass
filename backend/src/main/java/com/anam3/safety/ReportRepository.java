@@ -50,4 +50,12 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
             """)
     long countForSchool(@Param("schoolId") Long schoolId, @Param("status") Report.Status status,
             @Param("user") MemberRole user);
+
+    /** "주의" 표시: 이 사람들을 since 뒤에 신고한 서로 다른 원우 수 — [회원 번호, 수] */
+    @Query("""
+            select r.member.id, count(distinct r.reporter.id) from Report r
+            where r.member.id in :memberIds and r.createdAt >= :since group by r.member.id
+            """)
+    List<Object[]> countReporters(@Param("memberIds") java.util.Collection<Long> memberIds,
+            @Param("since") Instant since);
 }

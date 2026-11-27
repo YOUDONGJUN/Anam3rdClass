@@ -9,6 +9,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import com.anam3.common.GeoPoint;
+
 /**
  * 가입할 수 있는 학교 (IT연합회: 고려대·연세대·성균관대·서강대·한양대).
  * 이 학교 이메일 도메인(SchoolEmailDomain)으로만 인증코드를 받을 수 있다.
@@ -40,6 +42,13 @@ public class School {
     /** SW·AI융합대학원 */
     @Column(name = "graduate_school", length = 40)
     private String graduateSchool;
+
+    /** 캠퍼스 위치: 내 위치 없이 "가까운 순"을 볼 때의 기준, 장소 검색에서 학교 근처 먼저. 없으면 null */
+    @Column
+    private Double lat;
+
+    @Column
+    private Double lng;
 
     /** 가입할 때 고를 수 있는 가장 최근 기수 (새 기수가 들어오면 대학원장이 올린다) */
     @Column(name = "latest_cohort", nullable = false)
@@ -73,6 +82,17 @@ public class School {
 
     public void changePlace(String place) {
         this.place = place;
+    }
+
+    /** 캠퍼스 위치 (null 이면 지운다) */
+    public void changeCampus(GeoPoint campus) {
+        this.lat = campus == null ? null : campus.lat();
+        this.lng = campus == null ? null : campus.lng();
+    }
+
+    /** 캠퍼스 위치 (없으면 null) */
+    public GeoPoint getCampus() {
+        return GeoPoint.of(lat, lng);
     }
 
     public Long getId() {

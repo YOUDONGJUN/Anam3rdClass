@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
+import com.anam3.common.GeoPoint;
 import com.anam3.push.PushType;
 import com.anam3.school.SchoolDtos.SchoolTag;
 
@@ -16,12 +17,13 @@ import com.anam3.school.SchoolDtos.SchoolTag;
  * profileEditableAt: 원우가 학과·기수를 다시 고칠 수 있는 때 (30일에 한 번). null 이거나 지났으면 지금 고칠 수 있다
  * rankingHidden: 랭킹에 안 나오기
  * tossId · kakaoPayUrl: 정산에 쓰는 송금 링크 (없으면 null)
+ * campus: 우리 학교 캠퍼스 위치 — 내 위치 없이 "가까운 순"을 볼 때의 기준 (없으면 null)
  */
 public record MemberResponse(Long id, String email, SchoolTag school, String graduateSchool, String name, int cohort,
         String cohortLabel, Long departmentId, String departmentLabel, String departmentShortLabel, MemberRole role,
         boolean termsAgreed, boolean termsChanged, boolean kakaoLinked, boolean hasPassword, List<PushType> pushOff,
         Instant profileEditableAt, Instant cohortEditableUntil, boolean rankingHidden, String tossId,
-        String kakaoPayUrl) {
+        String kakaoPayUrl, GeoPoint campus) {
 
     /** 원우가 학과·기수를 다시 고치려면 이만큼 기다린다 */
     public static final Duration PROFILE_CHANGE_INTERVAL = Duration.ofDays(30);
@@ -38,7 +40,8 @@ public record MemberResponse(Long id, String email, SchoolTag school, String gra
                 m.getDepartment() == null ? null : m.getDepartment().getId(), m.departmentLabel(),
                 m.departmentShortLabel(), m.getRole(), m.hasAgreedTerms(), m.mustReagreeTerms(), m.isKakaoLinked(),
                 m.hasEmailPassword(), List.copyOf(m.getPushOff()), profileEditableAt(m), cohortEditableUntil(m),
-                m.isRankingHidden(), m.getTossId(), m.getKakaoPayUrl());
+                m.isRankingHidden(), m.getTossId(), m.getKakaoPayUrl(),
+                m.getSchool() == null ? null : m.getSchool().getCampus());
     }
 
     /** 원우가 기수를 직접 고칠 수 있는 마지막 때 (지났으면 교수·대학원장에게 요청). 교수·대학원장은 null = 언제나 */

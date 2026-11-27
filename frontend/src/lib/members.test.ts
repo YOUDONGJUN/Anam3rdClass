@@ -27,6 +27,8 @@ function member(over: Partial<AdminMember>): AdminMember {
     departmentShortLabel: '인융',
     role: 'USER',
     status: 'ACTIVE',
+    strikes: 0,
+    suspendedUntil: null,
     kakaoLinked: true,
     hasPassword: false,
     createdAt: '2026-11-01T00:00:00Z',

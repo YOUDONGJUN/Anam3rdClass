@@ -31,6 +31,8 @@ public class AdminAction {
     public enum Type {
         BAN("이용 정지"),
         UNBAN("정지 풀기"),
+        WARN("경고"),
+        REVOKE_SANCTION("경고 취소"),
         APPOINT("교수 임명"),
         DISMISS("교수 해임"),
         EDIT_PROFILE("정보 고치기"),

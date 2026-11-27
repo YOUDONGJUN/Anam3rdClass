@@ -256,6 +256,25 @@ public class PushNotifier {
                 "/admin?tab=reports", "report-new"));
     }
 
+    /** 같은 원우를 서로 다른 원우 여럿이 신고함 (자동 제재는 하지 않는다 — 먼저 확인해 달라고) */
+    public void reportFlagged(List<Long> staffIds, int reporters) {
+        push.send(staffIds, new PushMessage(PushType.REPORT, "주의 신고",
+                "원우 " + reporters + "명이 같은 원우를 신고했어요. 먼저 확인해 주세요", "/admin?tab=reports", "report-flag"));
+    }
+
+    /**
+     * 경고·정지: 받은 원우에게. 정지면 앱이 바로 로그아웃되고, 기간이 끝난 뒤 열면 경고 창이 다시 보인다.
+     * until: 기간 정지가 끝나는 때 (경고·영구 정지는 null)
+     */
+    public void sanctioned(Long memberId, String kindLabel, String reasonLabel, Instant until) {
+        String body = until != null
+                ? "경고가 쌓여 " + kindLabel + "됐어요 · " + WHEN.format(until.atZone(SEOUL)) + "까지"
+                : "영구 정지".equals(kindLabel)
+                        ? "경고가 쌓여 이용이 영구 정지됐어요"
+                        : "운영 규칙 위반으로 경고를 받았어요 · " + reasonLabel;
+        push.send(List.of(memberId), new PushMessage(PushType.REPORT, "운영진 경고", body, "/", "sanction"));
+    }
+
     /** 신고를 처리함: 신고한 사람에게. 어떻게 처리했는지는 알리지 않는다 */
     public void reportResolved(Long reporterId, Long reportId) {
         push.send(List.of(reporterId), new PushMessage(PushType.REPORT, "내가 한 신고",

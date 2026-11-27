@@ -41,7 +41,7 @@ public class Member {
      * 약관을 크게 바꿔 모두에게 다시 동의를 받으려면 1 올린다 — 그러면 모든 회원이 다음 요청부터 다시 동의한다.
      * 화면의 TERMS_UPDATED(TermsPages.tsx)도 함께 바꾼다
      */
-    public static final int CURRENT_TERMS_VERSION = 1;
+    public static final int CURRENT_TERMS_VERSION = 2;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -82,6 +82,10 @@ public class Member {
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 10)
     private MemberStatus status;
+
+    /** 기간 정지가 끝나는 때 (경고가 쌓여 7일 · 30일). 지나면 저절로 풀린다. 영구 정지는 status = BANNED */
+    @Column(name = "suspended_until")
+    private Instant suspendedUntil;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -364,6 +368,27 @@ public class Member {
 
     public void unban() {
         this.status = MemberStatus.ACTIVE;
+    }
+
+    /** 기간 정지 (이미 더 길게 정지돼 있으면 그대로) */
+    public void suspendUntil(Instant until) {
+        if (suspendedUntil == null || until.isAfter(suspendedUntil)) {
+            this.suspendedUntil = until;
+        }
+    }
+
+    /** 기간 정지를 풀거나 다시 정한다 (null 이면 풀기) */
+    public void changeSuspension(Instant until) {
+        this.suspendedUntil = until;
+    }
+
+    /** 지금 기간 정지 중인지 */
+    public boolean isSuspendedAt(Instant now) {
+        return suspendedUntil != null && now.isBefore(suspendedUntil);
+    }
+
+    public Instant getSuspendedUntil() {
+        return suspendedUntil;
     }
 
     public Long getId() {

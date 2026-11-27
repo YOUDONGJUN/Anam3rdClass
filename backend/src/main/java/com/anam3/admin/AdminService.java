@@ -21,7 +21,13 @@ import com.anam3.member.MemberRepository;
 import com.anam3.member.MemberRole;
 import com.anam3.member.MemberStatus;
 import com.anam3.notice.NoticeRepository;
+import com.anam3.safety.Report;
 import com.anam3.safety.ReportService;
+import com.anam3.sanction.MemberSanction;
+import com.anam3.sanction.SanctionDtos.SanctionView;
+import com.anam3.sanction.SanctionDtos.WarnRequest;
+import com.anam3.sanction.SanctionDtos.WarnResult;
+import com.anam3.sanction.SanctionService;
 import com.anam3.school.Department;
 import com.anam3.school.School;
 import com.anam3.school.SchoolService;
@@ -45,11 +51,12 @@ public class AdminService {
     private final ReportService reportService;
     private final AccountService accountService;
     private final AdminActionLog actionLog;
+    private final SanctionService sanctionService;
     private final Clock clock;
 
     public AdminService(MemberRepository members, MeetupRepository meetups, NoticeRepository notices,
             SchoolService schoolService, ReportService reportService, AccountService accountService,
-            AdminActionLog actionLog, Clock clock) {
+            AdminActionLog actionLog, SanctionService sanctionService, Clock clock) {
         this.members = members;
         this.meetups = meetups;
         this.notices = notices;
@@ -57,6 +64,7 @@ public class AdminService {
         this.reportService = reportService;
         this.accountService = accountService;
         this.actionLog = actionLog;
+        this.sanctionService = sanctionService;
         this.clock = clock;
     }
 
@@ -70,7 +78,11 @@ public class AdminService {
     @Transactional(readOnly = true)
     public List<AdminMemberView> members(LoginMember viewer) {
         List<Member> found = viewer.isOwner() ? members.findAllForAdmin() : members.findAllForAdmin(viewer.schoolId());
-        return found.stream().map(m -> AdminMemberView.from(m, viewer.isOwner())).toList();
+        var strikes = sanctionService.strikes(found.stream().map(Member::getId).toList());
+        var now = clock.instant();
+        return found.stream()
+                .map(m -> AdminMemberView.from(m, viewer.isOwner(), strikes.getOrDefault(m.getId(), 0), now))
+                .toList();
     }
 
     public AdminMemberView ban(LoginMember viewer, Long memberId) {
@@ -86,16 +98,73 @@ public class AdminService {
         member.ban();
         // 이용이 막히면 로그인할 수 없으니, 그 사람이 연 3교시는 취소하고 모집 중인 3교시에서는 뺀다
         accountService.releaseOpenMeetups(member, clock.instant());
+        sanctionService.recordBan(members.getReferenceById(viewer.id()), member);
         actionLog.record(viewer, AdminAction.Type.BAN, member, null, wasManager ? "교수 직책도 풀림" : null);
         return view(viewer, member);
+    }
+
+    /**
+     * 경고 주기: 쌓인 수에 따라 1번째 경고 · 2번째 7일 정지 · 3번째 30일 정지 · 4번째 영구 정지.
+     * 신고를 보고 줬으면 그 신고도 처리 완료로 바꾼다 (신고한 원우에게 "처리했어요")
+     */
+    public WarnResult warn(LoginMember viewer, Long memberId, WarnRequest req) {
+        Member member = load(memberId);
+        if (member.isOwner()) {
+            throw ApiException.badRequest("CANNOT_BAN_OWNER", "대학원장에게는 경고할 수 없어요");
+        }
+        requireManageable(viewer, member);
+        Report report = req.reportId() == null ? null : reportService.manageable(viewer, req.reportId());
+        if (report != null && (report.getMember() == null || !report.getMember().getId().equals(memberId))) {
+            throw ApiException.badRequest("REPORT_MISMATCH", "이 신고의 대상이 아니에요");
+        }
+        MemberSanction sanction = sanctionService.warn(members.getReferenceById(viewer.id()), member, req.reason(),
+                req.note(), report);
+        int strike = sanctionService.strikes(memberId);
+        actionLog.record(viewer, AdminAction.Type.WARN, member, report == null ? null : idOfMeetup(report),
+                strike + "번째 · " + sanction.getKind().label() + " · " + req.reason().label());
+        if (report != null && report.getStatus() == Report.Status.OPEN) {
+            reportService.resolve(viewer, report.getId(), true);
+        }
+        return new WarnResult(sanction.getKind(), sanction.getKind().label(), strike, sanction.getEndsAt());
+    }
+
+    /** 한 원우의 제재 기록 (교수는 자기 학교 원우만) */
+    @Transactional(readOnly = true)
+    public List<SanctionView> sanctions(LoginMember viewer, Long memberId) {
+        Member member = load(memberId);
+        if (!viewer.isOwner() && !member.isSameSchool(viewer.schoolId())) {
+            throw ApiException.forbidden("우리 학교 원우만 볼 수 있어요");
+        }
+        return sanctionService.history(memberId);
+    }
+
+    /** 잘못 준 경고 취소: 단계에서 빠지고, 이 경고로 걸린 정지는 풀린다 */
+    public List<SanctionView> revokeSanction(LoginMember viewer, Long sanctionId) {
+        MemberSanction sanction = sanctionService.find(sanctionId)
+                .orElseThrow(() -> ApiException.notFound("경고를 찾을 수 없어요"));
+        Member member = load(sanction.getMember().getId());
+        requireManageable(viewer, member);
+        if (!sanction.isRevoked()) {
+            sanctionService.revoke(members.getReferenceById(viewer.id()), sanction);
+            actionLog.record(viewer, AdminAction.Type.REVOKE_SANCTION, member, null,
+                    sanction.getKind().label() + " · " + sanction.getReason().label());
+        }
+        return sanctionService.history(member.getId());
+    }
+
+    private static Long idOfMeetup(Report report) {
+        return report.getMeetup() == null ? null : report.getMeetup().getId();
     }
 
     public AdminMemberView unban(LoginMember viewer, Long memberId) {
         Member member = load(memberId);
         requireManageable(viewer, member);
-        if (member.getStatus() == MemberStatus.BANNED) {
+        // 영구 정지·기간 정지를 지금 푼다 (경고 기록은 남는다 — 단계에서 빼려면 그 경고를 취소한다)
+        boolean suspended = member.isSuspendedAt(clock.instant());
+        if (member.getStatus() == MemberStatus.BANNED || suspended) {
             member.unban();
-            actionLog.record(viewer, AdminAction.Type.UNBAN, member, null, null);
+            member.changeSuspension(null);
+            actionLog.record(viewer, AdminAction.Type.UNBAN, member, null, suspended ? "기간 정지" : null);
         }
         return view(viewer, member);
     }
@@ -223,8 +292,8 @@ public class AdminService {
         }
     }
 
-    private static AdminMemberView view(LoginMember viewer, Member member) {
-        return AdminMemberView.from(member, viewer.isOwner());
+    private AdminMemberView view(LoginMember viewer, Member member) {
+        return AdminMemberView.from(member, viewer.isOwner(), sanctionService.strikes(member.getId()), clock.instant());
     }
 
     private Member load(Long memberId) {

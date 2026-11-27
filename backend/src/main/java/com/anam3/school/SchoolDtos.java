@@ -2,12 +2,15 @@ package com.anam3.school;
 
 import java.util.List;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
+import com.anam3.common.GeoPoint;
 
 public final class SchoolDtos {
 
@@ -47,8 +50,10 @@ public final class SchoolDtos {
     /**
      * 학교 하나의 모든 것: 가입 화면(숨긴 학과 빼고)과 관리 화면(숨긴 학과 포함)이 같이 쓴다.
      */
+    /** campus: 캠퍼스 위치 (없으면 null) */
     public record SchoolView(Long id, String code, String name, String shortName, String graduateSchool,
-            int latestCohort, String place, List<DomainView> emailDomains, List<DepartmentView> departments) {
+            int latestCohort, String place, GeoPoint campus, List<DomainView> emailDomains,
+            List<DepartmentView> departments) {
     }
 
     // ---------------- 대학원장 전용 입력 ----------------
@@ -71,7 +76,11 @@ public final class SchoolDtos {
             Integer latestCohort,
 
             @Size(max = 6, message = "동네 이름은 6자까지 쓸 수 있어요 (예: 신촌)")
-            String place) {
+            String place,
+
+            /** 캠퍼스 위치. 보내지 않으면(null) 그대로 */
+            @Valid
+            GeoPoint campus) {
     }
 
     /** 학교 추가: 첫 이메일 도메인도 같이 받는다 */
@@ -94,6 +103,10 @@ public final class SchoolDtos {
 
             @Size(max = 6, message = "동네 이름은 6자까지 쓸 수 있어요 (예: 신촌)")
             String place,
+
+            /** 캠퍼스 위치 (선택) */
+            @Valid
+            GeoPoint campus,
 
             @NotBlank(message = "이메일 도메인을 입력해 주세요")
             @Size(max = 60, message = "이메일 도메인이 너무 길어요")

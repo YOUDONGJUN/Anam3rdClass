@@ -67,14 +67,22 @@ describe('캘린더', () => {
 })
 
 describe('장소 추천', () => {
+  const named = (name: string) => ({ name, location: null, region: null })
+  const names = (list: { name: string }[]) => list.map((p) => p.name)
+
   it('많이 쓴 장소 먼저, 겹치는 기본 장소는 한 번만, 8개까지', () => {
-    expect(mergePlaces(['참살이길', ' 개운사길 '], ['안암역 2번 출구', '참살이길'])).toEqual([
+    expect(names(mergePlaces([named('참살이길'), named(' 개운사길 ')], ['안암역 2번 출구', '참살이길']))).toEqual([
       '참살이길',
       '개운사길',
       '안암역 2번 출구',
     ])
     expect(mergePlaces([], Array.from({ length: 12 }, (_, i) => `곳${i}`))).toHaveLength(8)
-    expect(mergePlaces(['Pub  A'], ['pub a'])).toEqual(['Pub  A'])
+    expect(names(mergePlaces([named('Pub  A')], ['pub a']))).toEqual(['Pub  A'])
+  })
+
+  it('많이 쓴 장소의 위치·지역은 그대로 가져온다', () => {
+    const located = { name: '참살이 치킨', location: { lat: 37.5868, lng: 127.0297 }, region: '서울 성북구' }
+    expect(mergePlaces([located], ['참살이 치킨'])).toEqual([located])
   })
 })
 

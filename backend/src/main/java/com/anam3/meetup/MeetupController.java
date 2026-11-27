@@ -22,6 +22,7 @@ import com.anam3.meetup.MeetupDtos.MeetupCreateRequest;
 import com.anam3.meetup.MeetupDtos.MeetupDetail;
 import com.anam3.meetup.MeetupDtos.MeetupSummary;
 import com.anam3.meetup.MeetupDtos.MeetupUpdateRequest;
+import com.anam3.meetup.MeetupDtos.PlaceSuggestion;
 import com.anam3.meetup.MeetupDtos.SeatsRequest;
 
 @RestController
@@ -119,9 +120,9 @@ public class MeetupController {
         return meetupService.addSeats(me, id, req.maxPeople());
     }
 
-    /** 3교시 열기 화면의 장소 추천: 우리 학교 3교시에서 많이 쓴 장소 */
+    /** 3교시 열기 화면의 장소 추천: 우리 학교 3교시에서 많이 쓴 장소 (위치를 아는 곳은 위치도) */
     @GetMapping("/places")
-    public List<String> places(@AuthenticationPrincipal LoginMember me) {
+    public List<PlaceSuggestion> places(@AuthenticationPrincipal LoginMember me) {
         return meetupService.popularPlaces(me);
     }
 }

@@ -345,7 +345,8 @@ export function ChatPage() {
   function reportMessage(m: ChatMessage) {
     const s = m.sender
     const label = `${s.name} · ${affiliation(s.cohortLabel, s.departmentLabel)} · ${s.school.shortName}`
-    setReporting(s.ref !== null ? { type: 'MEMBER', id: s.ref, name: s.name, label } : { type: 'MEETUP', id, label: `톡방 ‘${page?.title ?? ''}’` })
+    // 메시지 번호로 신고한다: 보낸 원우가 그 뒤에 나갔어도 그 사람이 대상이고, 메시지 내용이 신고 기록에 남는다
+    setReporting({ type: 'MEMBER', id: m.id, chat: true, name: s.name, label })
     setSelected(null)
   }
 
@@ -565,7 +566,15 @@ export function ChatPage() {
           onDone={() => void memories.refetch()}
         />
       )}
-      {reporting && <ReportDialog key={`${reporting.type}-${reporting.id}`} target={reporting} onClose={() => setReporting(null)} />}
+      {reporting && (
+        <ReportDialog
+          key={`${reporting.type}-${reporting.id}`}
+          target={reporting}
+          onClose={() => setReporting(null)}
+          // 차단했으면 그 원우의 메시지를 바로 가린다
+          onReported={() => room.reload()}
+        />
+      )}
     </div>
   )
 }

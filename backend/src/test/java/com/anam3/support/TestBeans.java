@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Primary;
 
 import com.anam3.push.PushDispatcher;
 
-/** API 테스트에서 진짜 대신 끼우는 빈: 움직이는 시계, 가짜 카카오, 메일·푸시 대신 메모리 */
+/** API 테스트에서 진짜 대신 끼우는 빈: 움직이는 시계, 가짜 카카오·장소 검색, 메일·푸시 대신 메모리 */
 @TestConfiguration
 public class TestBeans {
 
@@ -20,6 +20,12 @@ public class TestBeans {
     @Primary
     FakeKakaoClient fakeKakaoClient() {
         return new FakeKakaoClient();
+    }
+
+    @Bean
+    @Primary
+    FakePlaceSearch fakePlaceSearch() {
+        return new FakePlaceSearch();
     }
 
     @Bean

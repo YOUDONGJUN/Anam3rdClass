@@ -17,6 +17,7 @@ import {
   History,
   Pencil,
   RotateCcw,
+  ShieldAlert,
   TriangleAlert,
   UserCheck,
   UserMinus,
@@ -33,7 +34,9 @@ import {
   useAdminStats,
   useAssignEmail,
   useChangeRole,
+  useMemberSanctions,
   useResolveReport,
+  useRevokeSanction,
   useSchoolAdmin,
   useUpdateMemberProfile,
   useWithdrawMember,
@@ -44,8 +47,13 @@ import { AffiliationFields } from '../components/AffiliationFields'
 import { MeetupRow } from '../components/MeetupRow'
 import { RoleTag } from '../components/PersonName'
 import { REASON_LABEL } from '../lib/report'
+import { FLAG_REPORTERS, nextSanction } from '../lib/sanction'
+import { WarnSheet } from '../components/WarnSheet'
 import { SchoolBadge } from '../components/SchoolBadge'
 import { Button, EmptyState, ErrorState, Field, FormError, Segmented, Spinner } from '../components/ui'
+import { PlacePicker } from '../components/PlacePicker'
+import { MAP_PROVIDERS } from '../lib/map'
+import type { PlaceValue } from '../lib/places'
 import { cardClass, inputClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
 import { serviceName } from '../lib/credit'
@@ -495,6 +503,79 @@ function MemberFilterBar({
 
 // ---------------- 원우: 그리드 ----------------
 
+/** 원우 관리 창: 경고 단계와 기록 (잘못 준 경고는 취소) */
+function SanctionSection({ m, onWarn, canWarn }: { m: AdminMember; onWarn: () => void; canWarn: boolean }) {
+  const history = useMemberSanctions(m.id)
+  const revoke = useRevokeSanction()
+  const toast = useToast()
+  const next = nextSanction(m.strikes)
+  return (
+    <section className="flex flex-col gap-3 border-t border-line pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-extrabold">경고</h3>
+          <p className="text-sm break-keep text-ink-3">
+            {m.strikes === 0 ? '받은 경고가 없어요' : `지금 ${m.strikes}번`}
+            {canWarn && ` · 다음은 ${next.label}`}
+          </p>
+        </div>
+        {canWarn && (
+          <Button size="sm" variant="secondary" onClick={onWarn} className="shrink-0">
+            <ShieldAlert className="size-4 text-danger-ink" aria-hidden />
+            경고 주기
+          </Button>
+        )}
+      </div>
+      {history.data && history.data.length > 0 && (
+        <ul className="flex flex-col divide-y divide-line rounded-xl border border-line">
+          {history.data.map((h) => (
+            <li key={h.id} className={`flex items-start gap-3 px-3.5 py-3 text-sm ${h.revokedAt ? 'opacity-60' : ''}`}>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-ink">
+                  {h.revokedAt ? '취소한 경고' : `${h.strike}번째 · ${h.kindLabel}`}
+                  <span className="font-medium text-ink-3"> · {h.reasonLabel}</span>
+                </p>
+                {h.note && <p className="mt-0.5 break-words whitespace-pre-wrap text-ink-2">{h.note}</p>}
+                <p className="mt-0.5 text-[13px] text-ink-3">
+                  {[
+                    formatDateTime(h.createdAt),
+                    h.actorName,
+                    h.endsAt && !h.revokedAt ? `${formatDateTime(h.endsAt)}까지` : null,
+                    !h.revokedAt && h.kind !== 'BAN' ? (h.acknowledgedAt ? '본인 확인함' : '본인 확인 전') : null,
+                  ]
+                    .filter(Boolean)
+                    .map((part, i) => (
+                      <span key={i}>
+                        {i > 0 && ' · '}
+                        <span className="whitespace-nowrap">{part}</span>
+                      </span>
+                    ))}
+                </p>
+              </div>
+              {!h.revokedAt && (
+                <button
+                  type="button"
+                  className="hit shrink-0 rounded-lg px-2 py-1 text-[13px] font-semibold text-ink-2 hover:bg-surface-2"
+                  disabled={revoke.isPending}
+                  onClick={() => {
+                    if (!window.confirm('이 경고를 취소할까요?\n\n• 단계에서 빠져요\n• 이 경고로 걸린 정지는 풀려요')) return
+                    revoke.mutate(h.id, {
+                      onSuccess: () => toast.show('경고를 취소했어요', 'ok'),
+                      onError: (e) => toast.show(e.message, 'error'),
+                    })
+                  }}
+                >
+                  취소
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 function StatusBadges({ m }: { m: AdminMember }) {
   return (
     <>
@@ -502,6 +583,16 @@ function StatusBadges({ m }: { m: AdminMember }) {
       {m.status === 'BANNED' && (
         <span className="shrink-0 rounded bg-danger-soft px-1.5 py-0.5 text-[11px] leading-none font-bold text-danger-ink">
           이용 정지
+        </span>
+      )}
+      {m.status === 'ACTIVE' && m.suspendedUntil && (
+        <span className="shrink-0 rounded bg-danger-soft px-1.5 py-0.5 text-[11px] leading-none font-bold text-danger-ink">
+          {formatDateTime(m.suspendedUntil)}까지 정지
+        </span>
+      )}
+      {m.status === 'ACTIVE' && m.strikes > 0 && (
+        <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] leading-none font-bold text-danger-ink">
+          경고 {m.strikes}
         </span>
       )}
       {m.status === 'WITHDRAWN' && (
@@ -713,6 +804,10 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
   const withdrawn = m.status === 'WITHDRAWN'
   const canManage = !withdrawn && (isOwner || m.role === 'USER')
   const banned = m.status === 'BANNED'
+  const suspended = !banned && m.suspendedUntil !== null
+  // 영구 정지 · 기간 정지 모두 "정지 풀기"로 푼다
+  const restricted = banned || suspended
+  const [warning, setWarning] = useState(false)
 
   const fail = (e: Error) => setError(e.message)
 
@@ -827,6 +922,9 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
           </form>
         )}
 
+        {canManage && m.role !== 'OWNER' && <SanctionSection m={m} onWarn={() => setWarning(true)} canWarn={!banned} />}
+        {warning && <WarnSheet memberId={m.id} name={m.name} strikes={m.strikes} onClose={() => setWarning(false)} />}
+
         {canManage && m.role !== 'OWNER' && (
           <div className="flex flex-wrap gap-2 border-t border-line pt-5">
             {isOwner && !banned && (
@@ -857,23 +955,24 @@ function MemberDialog({ member: m, onClose }: { member: AdminMember; onClose: ()
             {canManage && (
               <Button
                 size="sm"
-                variant={banned ? 'secondary' : 'danger'}
+                variant={restricted ? 'secondary' : 'danger'}
                 loading={action.isPending}
                 onClick={() => {
-                  if (!banned && !window.confirm(`${m.name} 님의 이용을 정지할까요?
+                  if (restricted && !window.confirm(`${m.name} 님의 정지를 지금 풀까요?\n\n• 경고 기록은 남아요. 단계에서 빼려면 그 경고를 취소해 주세요`)) return
+                  if (!restricted && !window.confirm(`${m.name} 님의 이용을 영구 정지할까요?
 
 • 바로 로그아웃되고 다시 로그인할 수 없어요
 • 그 사람이 연, 아직 모이기 전인 3교시는 취소되고 모이기 전인 3교시에서는 빠져요${
   m.role === 'MANAGER' ? '\n• 교수 직책도 풀려요. 정지를 풀어도 직책은 돌아오지 않아요' : ''
 }`)) return
                   action.mutate(
-                    { id: m.id, action: banned ? 'unban' : 'ban' },
-                    { onSuccess: () => toast.show(banned ? '이용 정지를 풀었어요' : '이용을 정지했어요', 'ok'), onError: fail },
+                    { id: m.id, action: restricted ? 'unban' : 'ban' },
+                    { onSuccess: () => toast.show(restricted ? '정지를 풀었어요' : '이용을 정지했어요', 'ok'), onError: fail },
                   )
                 }}
               >
-                {banned ? <RotateCcw className="size-4" aria-hidden /> : <Ban className="size-4" aria-hidden />}
-                {banned ? '정지 풀기' : '이용 정지'}
+                {restricted ? <RotateCcw className="size-4" aria-hidden /> : <Ban className="size-4" aria-hidden />}
+                {restricted ? '정지 풀기' : '영구 정지'}
               </Button>
             )}
           </div>
@@ -1036,9 +1135,28 @@ function ReportCard({ r, onOpenMember }: { r: Report; onOpenMember: (memberId: n
   const open = r.status === 'OPEN'
   // 대학원장은 아무도 막을 수 없고, 교수는 다른 교수를 막을 수 없다
   const canBan = r.memberRole === 'USER' || (r.memberRole === 'MANAGER' && isOwner)
+  const [warning, setWarning] = useState(false)
+  // 서로 다른 원우 여럿이 같은 사람을 신고 — 자동으로 막지는 않고 먼저 보라고 표시한다
+  const flagged = r.reporterCount >= FLAG_REPORTERS
   return (
     <li className={`flex flex-col gap-2.5 px-5 py-4 ${open ? '' : 'opacity-70'}`}>
+      {warning && r.memberId && (
+        <WarnSheet
+          memberId={r.memberId}
+          name={r.memberName ?? ''}
+          strikes={r.memberStrikes}
+          reason={r.reason}
+          reportId={open ? r.id : null}
+          onClose={() => setWarning(false)}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
+        {flagged && (
+          <span className="inline-flex items-center gap-1 rounded bg-danger px-1.5 py-0.5 text-[11px] leading-none font-bold text-white">
+            <TriangleAlert className="size-3" aria-hidden />
+            주의 · 원우 {r.reporterCount}명 신고
+          </span>
+        )}
         <span
           className={`rounded px-1.5 py-0.5 text-[11px] leading-none font-bold ${
             open ? 'bg-danger-soft text-danger-ink' : 'bg-surface-2 text-ink-3'
@@ -1096,6 +1214,18 @@ function ReportCard({ r, onOpenMember }: { r: Report; onOpenMember: (memberId: n
             )}
             {r.memberAffiliation && ` · ${r.memberAffiliation}`}
             {r.memberBanned && ' · 이용 정지'}
+            {!r.memberBanned && r.memberSuspendedUntil && (
+              <span className="font-semibold text-danger-ink">
+                {' · '}
+                <span className="whitespace-nowrap">{formatDateTime(r.memberSuspendedUntil)}까지 정지</span>
+              </span>
+            )}
+            {!r.memberBanned && r.memberStrikes > 0 && (
+              <span className="text-danger-ink">
+                {' · '}
+                <span className="whitespace-nowrap">경고 {r.memberStrikes}번</span>
+              </span>
+            )}
           </p>
         )}
         {r.targetSnapshot && (
@@ -1108,12 +1238,18 @@ function ReportCard({ r, onOpenMember }: { r: Report; onOpenMember: (memberId: n
       </div>
       <div className="flex flex-wrap gap-2">
         {open && r.memberId && !r.memberBanned && canBan && (
+          <Button size="sm" variant="secondary" onClick={() => setWarning(true)}>
+            <ShieldAlert className="size-4 text-danger-ink" aria-hidden />
+            {nextSanction(r.memberStrikes).kind === 'WARNING' ? '경고' : `경고 (${nextSanction(r.memberStrikes).label})`}
+          </Button>
+        )}
+        {open && r.memberId && !r.memberBanned && canBan && (
           <Button
             size="sm"
             variant="danger"
             loading={action.isPending}
             onClick={() => {
-              if (!window.confirm(`${r.memberName} 님의 이용을 정지할까요?
+              if (!window.confirm(`${r.memberName} 님을 영구 정지할까요? (경고 없이 바로)
 
 • 바로 로그아웃되고 다시 로그인할 수 없어요
 • 그 사람이 연, 아직 모이기 전인 3교시는 취소되고 모이기 전인 3교시에서는 빠져요${
@@ -1126,7 +1262,7 @@ function ReportCard({ r, onOpenMember }: { r: Report; onOpenMember: (memberId: n
             }}
           >
             <Ban className="size-4" aria-hidden />
-            이용 차단
+            영구 정지
           </Button>
         )}
         <Button
@@ -1291,12 +1427,18 @@ function SchoolInfoForm({ school }: { school: School }) {
   const [graduateSchool, setGraduateSchool] = useState(school.graduateSchool ?? '')
   const [latestCohort, setLatestCohort] = useState(String(school.latestCohort))
   const [place, setPlace] = useState(school.place ?? '')
+  // 캠퍼스 위치: 장소 검색으로 학교(정문 등)를 고르면 그 위치. 안 고르면 그대로 둔다
+  const [campus, setCampus] = useState<PlaceValue>({ place: '', location: null, region: null })
+  const campusChanged =
+    campus.location !== null &&
+    (campus.location.lat !== school.campus?.lat || campus.location.lng !== school.campus?.lng)
   const changed =
     name !== school.name ||
     shortName !== school.shortName ||
     graduateSchool !== (school.graduateSchool ?? '') ||
     Number(latestCohort) !== school.latestCohort ||
-    place.trim() !== (school.place ?? '')
+    place.trim() !== (school.place ?? '') ||
+    campusChanged
 
   return (
     <form
@@ -1312,8 +1454,15 @@ function SchoolInfoForm({ school }: { school: School }) {
             graduateSchool: graduateSchool.trim(),
             latestCohort: Number(latestCohort),
             place: place.trim(),
+            ...(campusChanged ? { campus: campus.location } : {}),
           },
-          { onSuccess: () => toast.show('학교 정보를 바꿨어요', 'ok'), onError: (err) => toast.show(err.message, 'error') },
+          {
+            onSuccess: () => {
+              setCampus({ place: '', location: null, region: null })
+              toast.show('학교 정보를 바꿨어요', 'ok')
+            },
+            onError: (err) => toast.show(err.message, 'error'),
+          },
         )
       }}
     >
@@ -1368,6 +1517,29 @@ function SchoolInfoForm({ school }: { school: School }) {
           />
         )}
       </Field>
+      <div className="sm:col-span-2">
+        <Field
+          label="캠퍼스 위치"
+          optional
+          hint={school.campus ? '정문 등을 찾아 고르면 바뀌어요' : '정문 등을 찾아 고르세요'}
+        >
+          {({ id, describedBy }) => (
+            <div className="flex flex-col gap-2">
+              <PlacePicker id={id} describedBy={describedBy} placeholder="예: 연세대학교 정문" value={campus} onChange={setCampus} />
+              {school.campus && !campusChanged && (
+                <a
+                  href={MAP_PROVIDERS[0].url(school.name, school.campus)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hit self-start text-[13px] font-semibold text-ink-2 underline underline-offset-2 hover:text-ink"
+                >
+                  지금 위치를 카카오맵에서 보기
+                </a>
+              )}
+            </div>
+          )}
+        </Field>
+      </div>
       <div className="sm:col-span-2">
         <Button type="submit" variant="secondary" size="sm" loading={updateSchool.isPending} disabled={!changed || !name.trim() || !shortName.trim() || !latestCohort}>
           저장

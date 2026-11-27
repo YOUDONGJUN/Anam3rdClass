@@ -12,6 +12,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import com.anam3.common.GeoPoint;
 import com.anam3.feedback.FeedbackDtos.FeedbackPrompt;
 import com.anam3.ranking.RankingCategory;
 import com.anam3.school.SchoolDtos.SchoolTag;
@@ -76,7 +77,11 @@ public final class MeetupDtos {
             /** 참여비(원). null 이면 없음 */
             Integer fee,
             /** 참여비 선입금 */
-            boolean feePrepaid) {
+            boolean feePrepaid,
+            /** 장소 위치: 장소 검색에서 골랐을 때만 (없으면 null) */
+            GeoPoint location,
+            /** 장소의 지역 (예: 서울 성북구). 없으면 null */
+            String region) {
     }
 
     public record MeetupDetail(
@@ -143,7 +148,15 @@ public final class MeetupDtos {
              * 성사된 뒤 나간 원우: 그때 함께 있던 원우(연 사람 포함)에게만, 신고·차단하라고 보여 준다.
              * ref 는 나간 기록 번호 (신고·차단 요청에 left=true 와 함께 보낸다)
              */
-            List<PersonView> leftPeople) {
+            List<PersonView> leftPeople,
+            /** 장소 위치: 장소 검색에서 골랐을 때만 (없으면 null) */
+            GeoPoint location,
+            /** 장소의 지역 (예: 서울 성북구). 없으면 null */
+            String region) {
+    }
+
+    /** 3교시 열기 화면의 장소 추천. 그 장소를 검색해서 고른 적이 있으면 위치·지역도 (없으면 null) */
+    public record PlaceSuggestion(String name, GeoPoint location, String region) {
     }
 
     /** 정원 늘리기 (빈자리 대기자를 태우려고). 지금 최대 인원보다 커야 한다 */
@@ -165,6 +178,17 @@ public final class MeetupDtos {
             @NotBlank(message = "장소를 입력해 주세요")
             @Size(max = 60, message = "장소는 60자까지 쓸 수 있어요")
             String place,
+
+            /**
+             * 장소 위치: 장소 검색에서 골랐을 때 (직접 쓴 장소는 비운다).
+             * 수정에서 비우면, 장소 이름이 그대로면 위치도 그대로 · 바뀌었으면 지운다
+             */
+            @Valid
+            GeoPoint location,
+
+            /** 장소의 지역 (예: 서울 성북구). 위치가 있을 때만 */
+            @Size(max = 30, message = "지역 이름이 너무 길어요")
+            String region,
 
             @NotEmpty(message = "무엇을 마실지 하나 이상 골라 주세요")
             @Size(max = MAX_CATEGORIES, message = "무엇을 마실지는 3개까지 고를 수 있어요")
@@ -221,6 +245,17 @@ public final class MeetupDtos {
             @NotBlank(message = "장소를 입력해 주세요")
             @Size(max = 60, message = "장소는 60자까지 쓸 수 있어요")
             String place,
+
+            /**
+             * 장소 위치: 장소 검색에서 골랐을 때 (직접 쓴 장소는 비운다).
+             * 수정에서 비우면, 장소 이름이 그대로면 위치도 그대로 · 바뀌었으면 지운다
+             */
+            @Valid
+            GeoPoint location,
+
+            /** 장소의 지역 (예: 서울 성북구). 위치가 있을 때만 */
+            @Size(max = 30, message = "지역 이름이 너무 길어요")
+            String region,
 
             @NotEmpty(message = "무엇을 마실지 하나 이상 골라 주세요")
             @Size(max = MAX_CATEGORIES, message = "무엇을 마실지는 3개까지 고를 수 있어요")

@@ -72,11 +72,15 @@ public abstract class ApiTestSupport {
     @Autowired
     protected LiveHub liveHub;
 
+    @Autowired
+    protected FakePlaceSearch placeSearch;
+
     @BeforeEach
     void resetState() {
         clock.set(T0);
         rankingService.clearCache();
         rateLimits.clearAll();
+        placeSearch.reset();
         mailer.clear();
         pushes.clear();
         if (seededSchools == null) {
@@ -88,6 +92,7 @@ public abstract class ApiTestSupport {
         jdbc.update("delete from notifications");
         jdbc.update("update members set push_off = null, ranking_hidden = false, profile_changed_at = null, "
                 + "toss_id = null, kakaopay_url = null");
+        jdbc.update("delete from member_sanctions");
         jdbc.update("delete from reports");
         jdbc.update("delete from member_blocks");
         jdbc.update("delete from email_verifications");
@@ -113,6 +118,9 @@ public abstract class ApiTestSupport {
         jdbc.update("delete from schools where id not in (" + joined(seededSchools) + ")");
         jdbc.update("update departments set active = true");
         jdbc.update("update schools set latest_cohort = case when code = 'KU' then 62 else 99 end");
+        // 캠퍼스 위치 (V23 과 같게)
+        jdbc.update("update schools set lat = 37.5894, lng = 127.0322 where code = 'KU'");
+        jdbc.update("update schools set lat = 37.5658, lng = 126.9386 where code = 'YONSEI'");
     }
 
     private Set<Long> ids(String sql) {

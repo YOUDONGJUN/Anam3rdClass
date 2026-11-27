@@ -1,6 +1,7 @@
 package com.anam3.auth;
 
 import java.io.IOException;
+import java.time.Clock;
 import java.util.List;
 
 import jakarta.servlet.FilterChain;
@@ -16,6 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import com.anam3.member.Member;
 import com.anam3.member.MemberStatus;
 import com.anam3.member.MemberRepository;
+import com.anam3.sanction.SanctionService;
 
 /**
  * Authorization: Bearer {token} 헤더를 읽어 로그인 사용자를 SecurityContext 에 넣는다.
@@ -29,10 +31,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final MemberRepository members;
+    private final Clock clock;
 
-    public JwtAuthenticationFilter(JwtService jwtService, MemberRepository members) {
+    public JwtAuthenticationFilter(JwtService jwtService, MemberRepository members, Clock clock) {
         this.jwtService = jwtService;
         this.members = members;
+        this.clock = clock;
     }
 
     @Override
@@ -47,6 +51,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // 쓰는 도중 이용이 제한되면 "로그인이 필요해요"(401) 대신 까닭을 알린다
             if (found.isPresent() && found.get().getStatus() == MemberStatus.BANNED) {
                 SecurityConfig.writeError(response, 403, "BANNED", "이용이 제한된 계정이에요. 교수·대학원장에게 문의해 주세요");
+                return;
+            }
+            // 경고가 쌓여 기간 정지 중이면 언제 풀리는지 알린다 (지나면 저절로 풀린다)
+            if (found.isPresent() && found.get().isSuspendedAt(clock.instant())) {
+                SecurityConfig.writeError(response, 403, "SUSPENDED",
+                        SanctionService.suspendedMessage(found.get().getSuspendedUntil()));
                 return;
             }
             var member = found.filter(Member::isActive);

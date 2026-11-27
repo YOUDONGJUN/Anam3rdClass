@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
+import com.anam3.common.GeoPoint;
 import com.anam3.member.Member;
 import com.anam3.school.School;
 
@@ -47,6 +48,17 @@ public class Meetup {
 
     @Column(nullable = false, length = 60)
     private String place;
+
+    /** 장소 위치: 장소 검색에서 골랐을 때만 (직접 쓴 장소는 null). 가까운 순 · 지도 바로가기 */
+    @Column
+    private Double lat;
+
+    @Column
+    private Double lng;
+
+    /** 장소의 지역 (시·구, 예: 서울 성북구). 장소 검색에서 골랐을 때만 */
+    @Column(length = 30)
+    private String region;
 
     /** 마실 것. 여러 개면 "SOJU,BEER" (MeetupTags 참고) */
     @Column(nullable = false, length = 100)
@@ -374,6 +386,22 @@ public class Meetup {
 
     public String getPlace() {
         return place;
+    }
+
+    /** 장소 위치 (없으면 null) */
+    public GeoPoint getLocation() {
+        return GeoPoint.of(lat, lng);
+    }
+
+    public String getRegion() {
+        return region;
+    }
+
+    /** 장소 위치 바꾸기 (null 이면 지운다: 직접 쓴 장소) */
+    public void changeLocation(GeoPoint location, String region) {
+        this.lat = location == null ? null : location.lat();
+        this.lng = location == null ? null : location.lng();
+        this.region = location == null ? null : region;
     }
 
     public List<MeetupCategory> getCategories() {

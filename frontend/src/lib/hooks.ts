@@ -15,3 +15,13 @@ export function useNow(intervalMs = 30_000): Date {
 export function useSlowServer(): boolean {
   return useSyncExternalStore(subscribeSlow, isSlowNow, () => false)
 }
+
+/** 값이 delayMs 동안 그대로일 때만 따라오는 값 (입력할 때마다 찾지 않게) */
+export function useDebounced<T>(value: T, delayMs: number): T {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const id = window.setTimeout(() => setSettled(value), delayMs)
+    return () => window.clearTimeout(id)
+  }, [value, delayMs])
+  return settled
+}

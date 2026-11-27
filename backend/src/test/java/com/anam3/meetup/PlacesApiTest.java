@@ -40,9 +40,9 @@ class PlacesApiTest extends ApiTestSupport {
         open(sinchon, "연세로", "SCHOOL"); // 다른 학교
 
         get("/api/meetups/places", godae)
-                .andExpect(jsonPath("$", contains("참살이길 치킨집", "개운사길")));
+                .andExpect(jsonPath("$[*].name", contains("참살이길 치킨집", "개운사길")));
         get("/api/meetups/places", junior)
-                .andExpect(jsonPath("$", contains("참살이길 치킨집", "62기 비밀 장소", "개운사길")));
-        get("/api/meetups/places", sinchon).andExpect(jsonPath("$", contains("연세로")));
+                .andExpect(jsonPath("$[*].name", contains("참살이길 치킨집", "62기 비밀 장소", "개운사길")));
+        get("/api/meetups/places", sinchon).andExpect(jsonPath("$[*].name", contains("연세로")));
     }
 }

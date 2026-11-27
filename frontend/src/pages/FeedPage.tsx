@@ -1,18 +1,27 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { ChevronRight, Globe2, Megaphone, Plus, School, Search, Trophy, X } from 'lucide-react'
-import { PAST_PAGE, useMeetups, useNotices, useRanking } from '../api/queries'
-import type { Board, MeetupCategory, MeetupSummary } from '../api/types'
+import { ChevronRight, Globe2, Megaphone, Plus, School, Trophy } from 'lucide-react'
+import { PAST_PAGE, useMeetups, useMyMeetups, useNotices, useRanking } from '../api/queries'
+import type { Board, GeoPoint, MeetupSummary } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { BoardHero, BoardSheet, HeroTabs } from '../components/BoardHero'
+import { FeedFilterBar, FeedToolbar, FilterSheet, OriginNote, SortSheet } from '../components/FeedControls'
 import { MeetupRow, MeetupRowSkeleton } from '../components/MeetupRow'
 import { NextDeparture } from '../components/NextDeparture'
 import { EmptyState, ErrorState, Segmented } from '../components/ui'
 import { buttonClass, cardClass } from '../components/styles'
-import { EMPTY_FEED_FILTER, type FeedFilter, filterMeetups, isFiltering } from '../lib/feedFilter'
+import {
+  EMPTY_FEED_FILTER,
+  type FeedFilter,
+  filterMeetups,
+  isFiltering,
+  normalizeFilter,
+  sheetFilterCount,
+} from '../lib/feedFilter'
+import { type FeedSort, favoriteCategories, isFeedSort, sortMeetups, usesDistance } from '../lib/feedSort'
+import { distanceMeters, refreshLocationIfGranted, requestMyLocation, useMyLocation } from '../lib/geo'
 import { useNow } from '../lib/hooks'
 import { readDraft, writeDraft } from '../lib/leaveGuard'
-import { CATEGORY, CATEGORY_ORDER } from '../lib/meetup'
 import { formatDate, formatDayLabel, kstDayKey } from '../lib/time'
 
 function groupByDay(list: MeetupSummary[]) {
@@ -69,79 +78,24 @@ function RankingTeaser() {
 }
 
 const FILTER_KEY = 'anam3.feedFilter'
+/** 정렬은 이 폰에 기억한다 (다음에 열어도 그대로) */
+const SORT_KEY = 'anam3.feedSort'
 
-/** 목록 거르기: 찾기 칸 + 가로로 미는 칩 (참여 가능만 · 언제 · 마실 종류) */
-function FeedFilterBar({ value, onChange, past }: { value: FeedFilter; onChange: (f: FeedFilter) => void; past: boolean }) {
-  const set = (patch: Partial<FeedFilter>) => onChange({ ...value, ...patch })
-  const chip = (active: boolean) =>
-    `hit inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition-colors ${
-      active ? 'border-board bg-board text-on-board' : 'border-line-strong bg-surface text-ink-2 hover:text-ink'
-    }`
-  const toggleCategory = (c: MeetupCategory) =>
-    set({ categories: value.categories.includes(c) ? value.categories.filter((x) => x !== c) : [...value.categories, c] })
-  return (
-    <div className="mb-4 flex flex-col gap-2.5">
-      <label className="relative block">
-        <span className="sr-only">3교시 찾기</span>
-        <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-ink-3" aria-hidden />
-        <input
-          type="search"
-          enterKeyHint="search"
-          value={value.q}
-          onChange={(e) => set({ q: e.target.value })}
-          placeholder="제목·장소·목적으로 찾기"
-          className="h-11 w-full rounded-xl border border-line-strong bg-surface pr-10 pl-10 text-[15px] text-ink placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
-        />
-        {value.q && (
-          <button
-            type="button"
-            aria-label="찾는 말 지우기"
-            onClick={() => set({ q: '' })}
-            className="hit absolute top-1/2 right-2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:text-ink"
-          >
-            <X className="size-4" aria-hidden />
-          </button>
-        )}
-      </label>
-      <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" role="group" aria-label="거르기">
-        {!past && (
-          <>
-            <button type="button" aria-pressed={value.joinable} className={chip(value.joinable)} onClick={() => set({ joinable: !value.joinable })}>
-              참여 가능만
-            </button>
-            {(
-              [
-                ['today', '오늘'],
-                ['tomorrow', '내일'],
-                ['week', '이번 주'],
-              ] as const
-            ).map(([when, label]) => (
-              <button
-                key={when}
-                type="button"
-                aria-pressed={value.when === when}
-                className={chip(value.when === when)}
-                onClick={() => set({ when: value.when === when ? 'all' : when })}
-              >
-                {label}
-              </button>
-            ))}
-            <span className="mx-0.5 w-px shrink-0 self-stretch bg-line" aria-hidden />
-          </>
-        )}
-        {CATEGORY_ORDER.map((c) => {
-          const meta = CATEGORY[c]
-          const active = value.categories.includes(c)
-          return (
-            <button key={c} type="button" aria-pressed={active} className={chip(active)} onClick={() => toggleCategory(c)}>
-              <span className="size-2.5 rounded-full" style={{ backgroundColor: meta.color }} aria-hidden />
-              {meta.label}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
+function readSort(): FeedSort {
+  try {
+    const v = window.localStorage.getItem(SORT_KEY)
+    return isFeedSort(v) ? v : 'soon'
+  } catch {
+    return 'soon'
+  }
+}
+
+function writeSort(sort: FeedSort) {
+  try {
+    window.localStorage.setItem(SORT_KEY, sort)
+  } catch {
+    // 저장이 막혀 있으면 이번에만
+  }
 }
 
 export function FeedPage() {
@@ -155,17 +109,73 @@ export function FeedPage() {
   const { data: loaded, isError, error, refetch, isFetching } = useMeetups(scope, board, limit)
   const now = useNow()
   // 거르기는 이 탭에 기억한다 (상세를 보고 돌아와도 그대로)
-  const [filter, setFilterState] = useState<FeedFilter>(() => readDraft<FeedFilter>(FILTER_KEY) ?? EMPTY_FEED_FILTER)
+  const [filter, setFilterState] = useState<FeedFilter>(() => normalizeFilter(readDraft<Partial<FeedFilter>>(FILTER_KEY)))
   const setFilter = (next: FeedFilter) => {
     setFilterState(next)
     writeDraft(FILTER_KEY, next)
   }
-  // 지난 3교시에는 '참여 가능만'·'언제'가 의미 없다
-  const activeFilter: FeedFilter = scope === 'past' ? { ...filter, joinable: false, when: 'all' } : filter
+  const [sort, setSortState] = useState<FeedSort>(readSort)
+  const [sheet, setSheet] = useState<'sort' | 'filter' | null>(null)
+  const past = scope === 'past'
+  const federated = board === 'all'
+  // 지난 3교시에는 '참여 가능만'·'언제'가 의미 없고, 서버가 준 순서(최근 것부터) 그대로 본다.
+  // 학교 거르기는 연합 게시판에서만
+  const activeFilter = useMemo<FeedFilter>(
+    () => ({
+      ...filter,
+      ...(past ? { joinable: false, when: 'all' as const } : {}),
+      ...(federated ? {} : { schools: [] }),
+    }),
+    [filter, past, federated],
+  )
+  const activeSort: FeedSort = past ? 'soon' : sort
+
+  // 거리 기준점: 내 위치(이 폰 안에서만), 없으면 우리 학교 캠퍼스
+  const geo = useMyLocation()
+  const campus = member?.campus ?? null
+  const origin: GeoPoint | null = geo.point ?? campus
+  const distanceActive = usesDistance(activeSort) || activeFilter.radiusKm !== null
+  // 거리를 쓰는 중이고 이미 허락한 적이 있으면 묻지 않고 내 위치를 받아 둔다
+  useEffect(() => {
+    if (distanceActive) void refreshLocationIfGranted()
+  }, [distanceActive])
+
+  const mine = useMyMeetups()
+  const favorites = useMemo(() => favoriteCategories(mine.data ?? []), [mine.data])
+  const data = useMemo(() => {
+    if (!loaded) return loaded
+    const filtered = filterMeetups(loaded, activeFilter, now, origin)
+    if (past) return filtered
+    return sortMeetups(filtered, activeSort, {
+      now,
+      origin,
+      myCohortLabel: member?.cohortLabel ?? null,
+      favoriteCategories: favorites,
+    })
+  }, [loaded, activeFilter, past, now, origin, activeSort, member?.cohortLabel, favorites])
   const filtering = isFiltering(activeFilter)
-  const data = loaded ? filterMeetups(loaded, activeFilter, now) : loaded
-  const canLoadMore = scope === 'past' && (loaded?.length ?? 0) >= pastLimit
+  const canLoadMore = past && (loaded?.length ?? 0) >= pastLimit
   const schoolName = member?.school.shortName ?? '우리 학교'
+  // 줄마다 거리: 내 위치를 받았거나, 거리를 쓰는 정렬·거르기 중일 때 (우리 학교 기준)
+  const showDistance = origin !== null && (geo.point !== null || distanceActive)
+  const distanceOf = (m: MeetupSummary) =>
+    showDistance && origin && m.location ? distanceMeters(origin, m.location) : null
+
+  function setSort(next: FeedSort) {
+    setSortState(next)
+    writeSort(next)
+    // 가까운 순은 고르는 순간 내 위치를 묻는다 (거절하면 우리 학교 기준)
+    if (next === 'near' && geo.point === null) void requestMyLocation()
+  }
+
+  function setRadius(km: FeedFilter['radiusKm']) {
+    setFilter({ ...filter, radiusKm: km })
+    if (km !== null && geo.point === null) void requestMyLocation()
+  }
+
+  const originNote = (
+    <OriginNote geo={geo} campusName={schoolName} hasCampus={campus !== null} onUseMyLocation={() => void requestMyLocation()} />
+  )
 
   function go(next: { scope?: 'upcoming' | 'past'; board?: Board }) {
     const s = next.scope ?? scope
@@ -177,7 +187,6 @@ export function FeedPage() {
     setParams(p, { replace: true })
   }
 
-  const federated = board === 'all'
   const title = scope === 'past' ? (federated ? '지난 연합 3교시' : '지난 3교시') : federated ? '연합 3교시' : '열린 3교시'
   const subtitle =
     scope === 'past'
@@ -186,8 +195,10 @@ export function FeedPage() {
         ? 'IT연합회 학교 누구나 보고 참여해요.'
         : `${schoolName} 원우끼리, 수업 끝나고 3교시는 여기서.`
 
-  // 다가오는 3교시: 가장 먼저 모이는 하나는 "다음 출발"로 크게, 나머지는 날짜별로 (거르는 중이면 모두 같은 줄로)
-  const next = scope === 'upcoming' && !filtering && data && data.length > 0 ? data[0] : null
+  // 곧 모이는 순: 가장 먼저 모이는 하나는 "다음 출발"로 크게(거르는 중이 아니면), 나머지는 날짜별로.
+  // 다른 정렬은 날짜를 섞어 한 줄로 (줄마다 날짜를 보인다)
+  const byDay = activeSort === 'soon'
+  const next = !past && byDay && !filtering && data && data.length > 0 ? data[0] : null
   const rest = data ? (next ? data.slice(1) : data) : []
 
   return (
@@ -223,7 +234,51 @@ export function FeedPage() {
           />
         </div>
 
-        <FeedFilterBar value={filter} onChange={setFilter} past={scope === 'past'} />
+        <div className="mb-4 flex flex-col gap-2.5">
+          <FeedFilterBar value={filter} onChange={setFilter} past={past} />
+          <FeedToolbar
+            sort={activeSort}
+            showSort={!past}
+            count={data ? data.length : null}
+            filterCount={sheetFilterCount(activeFilter)}
+            onOpenSort={() => setSheet('sort')}
+            onOpenFilter={() => setSheet('filter')}
+          />
+          {distanceActive && originNote}
+        </div>
+        {sheet === 'sort' && (
+          <SortSheet
+            value={sort}
+            onChange={(s) => {
+              setSort(s)
+              setSheet(null)
+            }}
+            onClose={() => setSheet(null)}
+          />
+        )}
+        {sheet === 'filter' && (
+          <FilterSheet
+            value={activeFilter}
+            // 창 안의 조건만 바꾼다 (지난 3교시에서 열어도 '참여 가능만'·'언제'·다른 게시판의 학교는 그대로)
+            onChange={(f) =>
+              setFilter({
+                ...filter,
+                radiusKm: f.radiusKm,
+                regions: f.regions,
+                schools: federated ? f.schools : filter.schools,
+                sizes: f.sizes,
+                noFee: f.noFee,
+                lateJoin: f.lateJoin,
+              })
+            }
+            onClose={() => setSheet(null)}
+            list={loaded ?? []}
+            federated={federated}
+            resultCount={data?.length ?? 0}
+            originNote={originNote}
+            onRadius={setRadius}
+          />
+        )}
 
         {!data && !isError ? (
           <div className={`${cardClass} divide-y divide-line`}>
@@ -268,7 +323,16 @@ export function FeedPage() {
         ) : (
           <div className="flex flex-col gap-7">
             {next && <NextDeparture meetup={next} now={now} />}
-            {groupByDay(rest).map((g) => {
+            {!byDay && (
+              <div className="flex flex-col gap-3">
+                {rest.map((m) => (
+                  <div key={m.id} className={`${cardClass} overflow-hidden`}>
+                    <MeetupRow meetup={m} now={now} showDate backLabel="3교시 목록" distance={distanceOf(m)} />
+                  </div>
+                ))}
+              </div>
+            )}
+            {byDay && groupByDay(rest).map((g) => {
               const label = formatDayLabel(g.items[0].meetAt, now)
               const date = formatDate(g.items[0].meetAt)
               return (
@@ -281,7 +345,7 @@ export function FeedPage() {
                   <div className="flex flex-col gap-3">
                     {g.items.map((m) => (
                       <div key={m.id} className={`${cardClass} overflow-hidden`}>
-                        <MeetupRow meetup={m} now={now} backLabel="3교시 목록" />
+                        <MeetupRow meetup={m} now={now} backLabel="3교시 목록" distance={distanceOf(m)} />
                       </div>
                     ))}
                   </div>

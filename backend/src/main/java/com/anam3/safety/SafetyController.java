@@ -47,7 +47,7 @@ public class SafetyController {
     @PostMapping("/blocks")
     @ResponseStatus(HttpStatus.CREATED)
     public BlockView block(@AuthenticationPrincipal LoginMember me, @Valid @RequestBody BlockRequest req) {
-        return blockService.block(me, req.ref(), Boolean.TRUE.equals(req.left()));
+        return blockService.block(me, req.ref(), Boolean.TRUE.equals(req.left()), Boolean.TRUE.equals(req.chat()));
     }
 
     @DeleteMapping("/blocks/{id}")

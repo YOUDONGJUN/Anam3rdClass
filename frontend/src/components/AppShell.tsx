@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { NavLink, Outlet, useLocation, Link } from 'react-router'
 import { Bell, CircleUser, Images, LoaderCircle, LogOut, Megaphone, Plus, ShieldCheck, Ticket, TrainFront, Trophy, type LucideIcon } from 'lucide-react'
-import { useAdminStats, useChatRooms, useMySettlements, useUnreadNotifications } from '../api/queries'
+import { useAdminStats, useChatRooms, useMySettlements, useSanctionNotice, useUnreadNotifications } from '../api/queries'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from './toastContext'
 import { useSlowServer } from '../lib/hooks'
@@ -10,6 +10,7 @@ import { useServiceName } from '../lib/useServiceName'
 import { affiliation, isStaff } from '../lib/person'
 import { Brand } from './Brand'
 import { FeedbackPrompter } from './FeedbackSheet'
+import { SanctionNoticeDialog } from './SanctionNoticeDialog'
 import { LiveBridge } from './LiveBridge'
 import { ByCompany } from './MadeBy'
 import { RoleTag } from './PersonName'
@@ -62,6 +63,7 @@ function useDocumentTitle() {
 export function AppShell() {
   useDocumentTitle()
   const { member, signOut } = useAuth()
+  const sanctionNotice = useSanctionNotice(!!member)
   const toast = useToast()
   /** 확인 없이 바로 — 카카오로 금방 다시 들어올 수 있다 */
   const logout = () => {
@@ -202,8 +204,12 @@ export function AppShell() {
         </main>
       </div>
 
-      {/* 앱을 열면 어제(최근) 성사된 3교시 후기를 한 번 묻는다 */}
-      <FeedbackPrompter />
+      {/* 경고를 받았으면 확인할 때까지 경고 창 (후기 창보다 먼저, 겹치지 않게). 아니면 어제(최근) 성사된 3교시 후기를 한 번 묻는다 */}
+      {sanctionNotice.data ? (
+        <SanctionNoticeDialog key={sanctionNotice.data.id} notice={sanctionNotice.data} />
+      ) : (
+        <FeedbackPrompter />
+      )}
       {/* 앱: 맨 위에서 당기면 새로 불러온다 (톡방은 메시지 목록을 위로 끌어 올리니 끈다) */}
       {!chat && <PullToRefresh />}
       {/* 새 톡 메시지 등을 바로 받는 실시간 연결 */}

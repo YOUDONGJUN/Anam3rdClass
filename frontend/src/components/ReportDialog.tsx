@@ -19,6 +19,8 @@ export interface ReportTargetInfo {
   fromFeedback?: boolean
   /** 성사된 뒤 나간 원우 (id 는 나간 기록 번호) */
   left?: boolean
+  /** 톡방 메시지를 보낸 원우 (id 는 메시지 번호, 메시지 내용이 신고 기록에 남는다) */
+  chat?: boolean
 }
 
 /**
@@ -73,6 +75,7 @@ export function ReportDialog({
         detail: detail.trim(),
         fromFeedback: target.fromFeedback,
         left: target.left,
+        chat: target.chat,
       },
       {
         onSuccess: () => {
@@ -88,7 +91,7 @@ export function ReportDialog({
   function doBlock() {
     if (!window.confirm('차단할까요?\n\n• 서로가 연 3교시가 안 보여요\n• 서로의 3교시에 참여할 수 없어요')) return
     setError(null)
-    block.mutate({ ref: target.id, left: target.left }, {
+    block.mutate({ ref: target.id, left: target.left, chat: target.chat }, {
       onSuccess: () => {
         toast.show('차단했어요. 내 정보에서 풀 수 있어요', 'ok')
         onReported?.()

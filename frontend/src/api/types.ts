@@ -27,6 +27,12 @@ export interface SchoolTag {
   place?: string | null
 }
 
+/** 지도 위 한 점 (위도·경도) */
+export interface GeoPoint {
+  lat: number
+  lng: number
+}
+
 export interface Member {
   id: number
   /** 인증된 학교 이메일 (예전 회원은 아직 없을 수 있음) */
@@ -62,6 +68,8 @@ export interface Member {
   /** 정산 송금 링크: 토스 아이디 · 카카오페이 송금 링크 (없으면 null) */
   tossId: string | null
   kakaoPayUrl: string | null
+  /** 우리 학교 캠퍼스 위치: 내 위치 없이 "가까운 순"을 볼 때의 기준 (없으면 null) */
+  campus?: GeoPoint | null
 }
 
 /** 앱 알림 종류 (서버 PushType) */
@@ -120,6 +128,8 @@ export interface EmailDomain {
 export interface School extends SchoolTag {
   graduateSchool: string | null
   latestCohort: number
+  /** 캠퍼스 위치 (없으면 null) */
+  campus?: GeoPoint | null
   emailDomains: EmailDomain[]
   departments: Department[]
 }
@@ -229,6 +239,10 @@ export interface MeetupSummary {
   fee: number | null
   /** 참여비 선입금 */
   feePrepaid: boolean
+  /** 장소 위치: 장소 검색에서 골랐을 때만 (없으면 null) */
+  location?: GeoPoint | null
+  /** 장소의 지역 (예: 서울 성북구). 없으면 null */
+  region?: string | null
 }
 
 export interface MeetupDetail extends MeetupSummary {
@@ -434,6 +448,10 @@ export interface MeetupCreateInput {
   title: string
   description: string
   place: string
+  /** 장소 검색에서 고른 위치 (직접 쓴 장소는 null) */
+  location: GeoPoint | null
+  /** 장소의 지역 (위치가 있을 때만) */
+  region: string | null
   categories: MeetupCategory[]
   purposes: string[]
   meetAt: string
@@ -453,7 +471,7 @@ export interface MeetupCreateInput {
 
 export type MeetupUpdateInput = Pick<
   MeetupCreateInput,
-  'title' | 'description' | 'place' | 'categories' | 'purposes' | 'openChatUrl'
+  'title' | 'description' | 'place' | 'location' | 'region' | 'categories' | 'purposes' | 'openChatUrl'
 > & {
   /** 인원 바꾸기 (null 이면 각각 최소 인원 없음 · 최대 인원 없음) */
   people: { minPeople: number | null; maxPeople: number | null }
@@ -463,6 +481,31 @@ export type MeetupUpdateInput = Pick<
   audience: MeetupAudience
   /** 참여 방식 바꾸기 */
   options: { lateJoin: boolean; fee: number | null; feePrepaid: boolean }
+}
+
+/** 3교시 열기 화면의 장소 추천. 그 장소를 검색해서 고른 적이 있으면 위치·지역도 */
+export interface PlaceSuggestion {
+  name: string
+  location: GeoPoint | null
+  region: string | null
+}
+
+/** 장소 검색 결과 하나 (카카오 로컬) */
+export interface PlaceHit {
+  name: string
+  /** 도로명 주소 (없으면 지번) */
+  address: string | null
+  /** 마지막 분류 (호프,요리주점) */
+  category: string | null
+  location: GeoPoint
+  /** 시·구 (서울 성북구) */
+  region: string | null
+}
+
+/** available=false 면 장소 검색을 쓸 수 없다 (직접 쓰기 · 지도 앱 검색으로 안내) */
+export interface PlaceSearchResult {
+  available: boolean
+  places: PlaceHit[]
 }
 
 /** official=true 면 대학원장 글 (실명 + "대학원장" 표시) */
@@ -531,6 +574,10 @@ export interface AdminMember {
   kakaoLinked: boolean
   hasPassword: boolean
   createdAt: string
+  /** 지금까지 받은 경고 수 (취소한 것 빼고) */
+  strikes: number
+  /** 기간 정지가 끝나는 때 (정지 중이 아니면 null) */
+  suspendedUntil: string | null
 }
 
 /** 관리자 조치 종류 (서버 AdminAction.Type). 화면에는 label 을 쓴다 */
@@ -603,6 +650,8 @@ export interface ReportInput {
   fromFeedback?: boolean
   /** targetId 가 나간 원우의 기록 번호(leftPeople.ref)인지 */
   left?: boolean
+  /** targetId 가 톡방 메시지 번호인지 (보낸 원우를 신고하고 메시지 내용을 기록에 남긴다) */
+  chat?: boolean
 }
 
 /** 관리 화면 신고 한 줄. 신고한 사람은 보이지 않는다 */
@@ -629,6 +678,12 @@ export interface Report {
   school: SchoolTag | null
   /** 3교시 후기에서 한 신고 — 대학원장에게만 true 로 온다 */
   fromFeedback: boolean
+  /** 최근 30일 동안 신고당한 사람을 신고한 서로 다른 원우 수 (3명 이상이면 "주의") */
+  reporterCount: number
+  /** 신고당한 사람이 받은 경고 수 (취소한 것 빼고) */
+  memberStrikes: number
+  /** 신고당한 사람의 기간 정지가 끝나는 때 (정지 중이 아니면 null) */
+  memberSuspendedUntil: string | null
 }
 
 /** 내가 차단한 사람 (이름은 가려서) */
@@ -759,4 +814,46 @@ export interface About {
   /** 대학원장 계정 정보 (아직 없으면 null) */
   operator: AboutOperator | null
   supportEmail: string | null
+}
+
+/** 제재 단계: 1번째 경고 · 2번째 7일 정지 · 3번째 30일 정지 · 4번째부터 영구 정지 */
+export type SanctionKind = 'WARNING' | 'SUSPEND_7' | 'SUSPEND_30' | 'BAN'
+
+/** 관리 화면 제재 기록 한 줄. strike: 몇 번째 경고였는지 (취소한 것은 null) */
+export interface SanctionView {
+  id: number
+  kind: SanctionKind
+  kindLabel: string
+  reason: ReportReason
+  reasonLabel: string
+  note: string | null
+  reportId: number | null
+  actorName: string
+  createdAt: string
+  endsAt: string | null
+  acknowledgedAt: string | null
+  revokedAt: string | null
+  strike: number | null
+}
+
+/** 경고 받은 원우에게 보이는 창 (확인할 때까지) */
+export interface SanctionNotice {
+  id: number
+  kind: SanctionKind
+  kindLabel: string
+  reasonLabel: string
+  note: string | null
+  createdAt: string
+  endsAt: string | null
+  /** 지금까지 받은 경고 수 */
+  strikes: number
+  /** 한 번 더 받으면 (예: "30일 정지") */
+  nextLabel: string
+}
+
+export interface WarnResult {
+  kind: SanctionKind
+  kindLabel: string
+  strike: number
+  endsAt: string | null
 }

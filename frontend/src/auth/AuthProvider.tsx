@@ -43,11 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
-    setUnauthorizedHandler((reason: SignOutReason) => {
+    setUnauthorizedHandler((reason: SignOutReason, message?: string) => {
       setNotice(
         reason === 'banned'
           ? '이용이 제한된 계정이에요. 교수·대학원장에게 문의해 주세요'
-          : '로그인이 만료됐어요. 다시 로그인해 주세요',
+          : reason === 'suspended'
+            ? (message ?? '이용이 정지된 계정이에요')
+            : '로그인이 만료됐어요. 다시 로그인해 주세요',
       )
       signOut()
     })

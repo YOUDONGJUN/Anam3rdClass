@@ -30,3 +30,10 @@ export const inputClass =
   'w-full rounded-xl border border-line-strong bg-surface px-3.5 h-12 text-base text-ink transition-colors hover:border-ink-3 focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/25 aria-invalid:border-danger'
 
 export const cardClass = 'card-depth rounded-2xl border border-line bg-surface'
+
+/** 칩 하나 (목록 거르기 · 정렬 창) */
+export function chipClass(active: boolean) {
+  return `hit inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold whitespace-nowrap transition-colors ${
+    active ? 'border-board bg-board text-on-board' : 'border-line-strong bg-surface text-ink-2 hover:text-ink'
+  }`
+}

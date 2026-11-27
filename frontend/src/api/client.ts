@@ -24,9 +24,9 @@ function readStoredToken(): string | null {
 }
 
 let token: string | null = readStoredToken()
-/** 로그인이 풀린 까닭: 만료(401) · 이용 제한(403 BANNED) */
-export type SignOutReason = 'expired' | 'banned'
-let unauthorizedHandler: ((reason: SignOutReason) => void) | null = null
+/** 로그인이 풀린 까닭: 만료(401) · 영구 정지(403 BANNED) · 기간 정지(403 SUSPENDED, 언제 풀리는지는 message) */
+export type SignOutReason = 'expired' | 'banned' | 'suspended'
+let unauthorizedHandler: ((reason: SignOutReason, message?: string) => void) | null = null
 
 export function getToken() {
   return token
@@ -43,7 +43,7 @@ export function setToken(next: string | null) {
 }
 
 /** 로그인이 풀렸을 때(401 · 이용 제한) 호출할 함수. AuthProvider 가 등록한다 */
-export function setUnauthorizedHandler(handler: ((reason: SignOutReason) => void) | null) {
+export function setUnauthorizedHandler(handler: ((reason: SignOutReason, message?: string) => void) | null) {
   unauthorizedHandler = handler
 }
 
@@ -123,6 +123,7 @@ export async function api<T>(path: string, options: { method?: Method; body?: un
       if (token && !path.startsWith('/api/auth/')) {
         if (res.status === 401) unauthorizedHandler?.('expired')
         else if (res.status === 403 && err.code === 'BANNED') unauthorizedHandler?.('banned')
+        else if (res.status === 403 && err.code === 'SUSPENDED') unauthorizedHandler?.('suspended', err.message)
       }
       throw new ApiError(res.status, err.code ?? 'ERROR', err.message ?? '문제가 생겼어요. 잠시 후 다시 시도해 주세요')
     }

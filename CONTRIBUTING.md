@@ -18,7 +18,7 @@
    git checkout -b feat/meetup-comment     # 새 기능
    git checkout -b fix/deadline-timezone   # 버그 수정
    ```
-4. **로컬 실행 & 수정** — [README의 "로컬에서 실행하기"](README.md#로컬에서-실행하기)
+4. **로컬 실행 & 수정** — [README의 "시작하기"](README.md#시작하기)
 5. **테스트 통과 확인**
    ```bash
    cd backend && ./mvnw test

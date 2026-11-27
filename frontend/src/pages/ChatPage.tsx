@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type CSSProperties, type KeyboardEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { ArrowDown, ArrowUp, Bell, BellOff, ChevronLeft, EyeOff, ImageOff, ImagePlus, Info, LoaderCircle } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  Bell,
+  BellOff,
+  ChevronLeft,
+  EyeOff,
+  ImageOff,
+  ImagePlus,
+  Info,
+  Keyboard,
+  LoaderCircle,
+  Smile,
+} from 'lucide-react'
 import { absoluteUrl, ApiError } from '../api/client'
 import { useChatRoom } from '../api/chat'
 import { useMeetupMemories } from '../api/queries'
@@ -14,9 +27,10 @@ import { ReportDialog, type ReportTargetInfo } from '../components/ReportDialog'
 import { ErrorState, Spinner } from '../components/ui'
 import { buttonClass } from '../components/styles'
 import { useToast } from '../components/toastContext'
-import { groupMessages } from '../lib/chat'
+import { groupMessages, isNotice, noticeText, unreadCount } from '../lib/chat'
 import { affiliation } from '../lib/person'
 import { CHAT_SIDE, fetchPhoto, PER_SEND, shrinkPhoto } from '../lib/photo'
+import { STICKERS, stickerOf } from '../lib/stickers'
 import { formatDateTime, formatTime } from '../lib/time'
 
 /** 맨 아래에서 이만큼 안이면 "맨 아래에 있다"로 본다 */
@@ -50,6 +64,7 @@ function Bubble({
   federated,
   first,
   last,
+  unread,
   selected,
   onSelect,
   onPhoto,
@@ -59,6 +74,8 @@ function Bubble({
   federated: boolean
   first: boolean
   last: boolean
+  /** 이 메시지를 아직 안 읽은 사람 수 (카톡의 숫자 1) */
+  unread: number
   selected: boolean
   onSelect: () => void
   onPhoto: (index: number) => void
@@ -68,6 +85,9 @@ function Bubble({
     ? 'bg-accent text-on-accent rounded-2xl rounded-br-md'
     : 'bg-surface text-ink border border-line rounded-2xl rounded-bl-md'
   const muted = m.deleted || m.hidden
+  const sticker = muted ? null : stickerOf(m.sticker)
+  // 이 화면이 모르는 이모티콘 (새로 생긴 것) — 글로 알린다
+  const unknownSticker = !muted && Boolean(m.sticker) && !sticker
   return (
     <div className={`flex flex-col ${m.mine ? 'items-end' : 'items-start'} ${first ? 'mt-3' : 'mt-1'}`}>
       {first && !m.mine && (
@@ -113,7 +133,18 @@ function Bubble({
               )}
             </div>
           )}
-          {(m.body || muted) && (
+          {sticker && (
+            <button
+              type="button"
+              onClick={onSelect}
+              aria-expanded={selected}
+              aria-label={`이모티콘: ${sticker.label}`}
+              className="block"
+            >
+              <img src={sticker.src} alt="" width={128} height={128} draggable={false} className="size-32 select-none" />
+            </button>
+          )}
+          {(m.body || muted || unknownSticker) && (
             <button
               type="button"
               onClick={onSelect}
@@ -122,19 +153,28 @@ function Bubble({
                 muted ? 'italic opacity-60' : ''
               }`}
             >
-              {m.deleted ? '지운 메시지예요' : m.hidden ? '차단한 원우의 메시지예요' : m.body}
+              {m.deleted ? '지운 메시지예요' : m.hidden ? '차단한 원우의 메시지예요' : (m.body ?? '(이모티콘)')}
             </button>
           )}
-          {!m.body && !muted && (
+          {!m.body && !muted && !m.sticker && (
             <button type="button" onClick={onSelect} className="sr-only">
               메시지 메뉴
             </button>
           )}
         </div>
-        {last && (
-          <time dateTime={m.createdAt} className="tabular shrink-0 pb-0.5 text-[11px] text-ink-3">
-            {formatTime(m.createdAt)}
-          </time>
+        {(last || unread > 0) && (
+          <div className={`flex shrink-0 flex-col pb-0.5 ${m.mine ? 'items-end' : 'items-start'}`}>
+            {unread > 0 && (
+              <span className="tabular text-[11px] leading-tight font-bold text-accent-ink" aria-label={`안 읽은 원우 ${unread}명`}>
+                {unread}
+              </span>
+            )}
+            {last && (
+              <time dateTime={m.createdAt} className="tabular text-[11px] text-ink-3">
+                {formatTime(m.createdAt)}
+              </time>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -150,7 +190,7 @@ export function ChatPage() {
   const navigate = useNavigate()
   const toast = useToast()
   const room = useChatRoom(id)
-  const { page, messages, error, loadOlder, loadingOlder, send, remove, markRead, setMuted } = room
+  const { page, messages, reads, error, loadOlder, loadingOlder, send, sendSticker, remove, markRead, setMuted } = room
   const memories = useMeetupMemories(id, Boolean(page))
   const viewport = useVisualViewport()
   const canGoBack = (window.history.state?.idx ?? 0) > 0
@@ -168,6 +208,9 @@ export function ChatPage() {
   const [viewer, setViewer] = useState<{ urls: string[]; start: number } | null>(null)
   const [memoryFrom, setMemoryFrom] = useState<Blob[] | null>(null)
   const [reporting, setReporting] = useState<ReportTargetInfo | null>(null)
+  /** 이모티콘 패널 (키보드 자리에 열린다) */
+  const [panel, setPanel] = useState(false)
+  const stickerBusy = useRef(false)
 
   const atBottom = useCallback(() => {
     const el = listRef.current
@@ -198,7 +241,7 @@ export function ChatPage() {
       const wasAtBottom = before.height - before.top - el.clientHeight < NEAR_BOTTOM
       const mine = messages[messages.length - 1].mine
       if (wasAtBottom || mine) scrollToBottom(!mine)
-      else setNewCount((n) => n + messages.filter((m) => m.id > before.last && !m.mine).length)
+      else setNewCount((n) => n + messages.filter((m) => m.id > before.last && !m.mine && !isNotice(m)).length)
     }
     shape.current = { first, last, height: el.scrollHeight, top: el.scrollTop }
   }, [messages, scrollToBottom])
@@ -305,6 +348,30 @@ export function ChatPage() {
     }
   }
 
+  /** 이모티콘: 누르면 바로 보낸다 (쓰던 글은 그대로). 패널은 열어 둔다 */
+  async function pickSticker(key: string) {
+    if (stickerBusy.current) return
+    stickerBusy.current = true
+    try {
+      await sendSticker(key)
+    } catch (err) {
+      toast.show(err instanceof ApiError ? err.message : '보내지 못했어요. 다시 보내 주세요', 'error')
+    } finally {
+      stickerBusy.current = false
+    }
+  }
+
+  /** 😊 ↔ ⌨ : 패널을 열면 키보드를 내리고, 닫으면 키보드를 올린다 */
+  function togglePanel() {
+    if (panel) {
+      setPanel(false)
+      inputRef.current?.focus()
+    } else {
+      setPanel(true)
+      inputRef.current?.blur()
+    }
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !coarse) {
       e.preventDefault()
@@ -354,7 +421,7 @@ export function ChatPage() {
   const rows = groupMessages(messages)
   // 들어왔을 때 어디까지 읽었었는지 (page 는 처음 불러올 때만 바뀐다) — "여기부터 안 읽은 메시지" 줄
   const unreadFrom = page?.lastReadId ?? 0
-  const firstUnread = unreadFrom ? messages.find((m) => m.id > unreadFrom && !m.mine)?.id : undefined
+  const firstUnread = unreadFrom ? messages.find((m) => m.id > unreadFrom && !m.mine && !isNotice(m))?.id : undefined
 
   return (
     <div
@@ -446,18 +513,27 @@ export function ChatPage() {
                     <span className="h-px flex-1 bg-accent/40" />
                   </div>
                 )}
+                {isNotice(m) ? (
+                  <p className="my-3 flex justify-center">
+                    <span className="max-w-[85%] rounded-full bg-surface-2 px-3 py-1 text-center text-[12px] text-ink-3 [word-break:keep-all]">
+                      {noticeText(m)}
+                    </span>
+                  </p>
+                ) : (
                 <Bubble
                   m={m}
                   federated={page.federated}
                   first={first || m.id === firstUnread}
                   last={last}
+                  unread={unreadCount(m, reads)}
                   selected={selected === m.id}
                   onSelect={() => setSelected(selected === m.id ? null : m.id)}
                   onPhoto={(i) =>
                     setViewer({ urls: m.photos.filter((p) => !p.expired && p.url).map((p) => p.url as string), start: i })
                   }
                 />
-                {selected === m.id && !m.deleted && (
+                )}
+                {selected === m.id && !m.deleted && !isNotice(m) && (
                   <div className={`mt-1 flex gap-1 ${m.mine ? 'justify-end' : 'justify-start'}`}>
                     <span className="self-center px-1 text-[11px] text-ink-3">{formatDateTime(m.createdAt)}</span>
                     {m.mine ? (
@@ -508,7 +584,12 @@ export function ChatPage() {
           취소된 3교시라 읽기만 할 수 있어요
         </p>
       ) : (
-        <div className="shrink-0 border-t border-line bg-surface px-3 pt-2.5 pb-[calc(10px+env(safe-area-inset-bottom))] sm:px-5">
+        <>
+        <div
+          className={`shrink-0 border-t border-line bg-surface px-3 pt-2.5 sm:px-5 ${
+            panel ? 'pb-2.5' : 'pb-[calc(10px+env(safe-area-inset-bottom))]'
+          }`}
+        >
           {photos.length > 0 && (
             <div className="mb-2">
               <PhotoPicks size="sm" photos={photos} onRemove={(i) => setPhotos((p) => p.filter((_, j) => j !== i))} />
@@ -525,19 +606,36 @@ export function ChatPage() {
               {preparing ? <LoaderCircle className="size-5 animate-spin" aria-hidden /> : <ImagePlus className="size-[22px]" aria-hidden />}
             </button>
             <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={pick} />
-            <textarea
-              ref={inputRef}
-              value={text}
-              onChange={(e) => setText(e.target.value.slice(0, 1000))}
-              onKeyDown={onKeyDown}
-              rows={1}
-              placeholder="메시지 보내기"
-              aria-label="메시지"
-              enterKeyHint={coarse ? 'enter' : 'send'}
-              className="max-h-33 min-h-11 flex-1 resize-none rounded-[22px] border border-line-strong bg-surface-2 px-4 py-2.5 text-[15px] leading-snug text-ink focus:border-accent focus:outline-none"
-            />
+            {/* 입력창 안 오른쪽에 이모티콘 단추 (카톡처럼) */}
+            <div className="flex min-h-11 min-w-0 flex-1 items-end rounded-[22px] border border-line-strong bg-surface-2 focus-within:border-accent">
+              <textarea
+                ref={inputRef}
+                value={text}
+                onChange={(e) => setText(e.target.value.slice(0, 1000))}
+                onKeyDown={onKeyDown}
+                onFocus={() => setPanel(false)}
+                rows={1}
+                placeholder="메시지 보내기"
+                aria-label="메시지"
+                enterKeyHint={coarse ? 'enter' : 'send'}
+                className="max-h-33 min-h-[42px] min-w-0 flex-1 resize-none bg-transparent py-2.5 pr-1 pl-4 text-[15px] leading-snug text-ink focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={togglePanel}
+                aria-label={panel ? '키보드로 돌아가기' : '이모티콘'}
+                aria-expanded={panel}
+                className={`flex size-[42px] shrink-0 items-center justify-center rounded-full hover:text-ink ${
+                  panel ? 'text-accent-ink' : 'text-ink-2'
+                }`}
+              >
+                {panel ? <Keyboard className="size-[22px]" aria-hidden /> : <Smile className="size-[22px]" aria-hidden />}
+              </button>
+            </div>
             <button
               type="button"
+              // 눌러도 입력창에서 손이 떠나지 않게 — 안 그러면 폰 키보드가 내려갔다가 다시 올라온다
+              onMouseDown={(e) => e.preventDefault()}
               onClick={submit}
               disabled={!canSend}
               aria-label="보내기"
@@ -547,6 +645,28 @@ export function ChatPage() {
             </button>
           </div>
         </div>
+        {panel && (
+          <div
+            role="group"
+            aria-label="이모티콘"
+            className="h-[min(18rem,42dvh)] shrink-0 overflow-y-auto overscroll-contain border-t border-line bg-surface px-2 pt-2 pb-[calc(8px+env(safe-area-inset-bottom))]"
+          >
+            <div className="grid grid-cols-4 gap-1 sm:grid-cols-6">
+              {STICKERS.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => void pickSticker(s.key)}
+                  aria-label={`${s.label} 보내기`}
+                  className="aspect-square rounded-xl p-1 transition-transform hover:bg-surface-2 active:scale-95"
+                >
+                  <img src={s.src} alt="" loading="lazy" draggable={false} className="size-full select-none" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {viewer && (

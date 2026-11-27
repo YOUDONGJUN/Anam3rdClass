@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { isLiveConnected, subscribeLive } from '../lib/live'
 import { api, ApiError } from './client'
 import { keys } from './queries'
-import type { ChatMessage, ChatPage } from './types'
+import type { ChatMessage, ChatPage, ChatUpdates } from './types'
 import { uploadPhotos } from './uploads'
 
 /** 같은 번호는 새것으로 바꾸고 번호 순으로 */
@@ -21,8 +21,10 @@ const POLL_MS = 15_000
 export function useChatRoom(meetupId: number) {
   const qc = useQueryClient()
   const base = `/api/meetups/${meetupId}/chat`
-  const [page, setPage] = useState<Omit<ChatPage, 'messages'> | null>(null)
+  const [page, setPage] = useState<Omit<ChatPage, 'messages' | 'reads'> | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  /** 나 말고 함께하는 원우들이 각자 마지막으로 읽은 메시지 번호 (메시지 옆 "안 읽은 사람 수") */
+  const [reads, setReads] = useState<number[]>([])
   const [error, setError] = useState<ApiError | null>(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const lastId = useRef(0)
@@ -37,8 +39,9 @@ export function useChatRoom(meetupId: number) {
 
   const apply = useCallback(
     (data: ChatPage) => {
-      const { messages: list, ...rest } = data
+      const { messages: list, reads: readIds, ...rest } = data
       setPage(rest)
+      setReads(readIds ?? [])
       lastId.current = 0
       setMessages([])
       take(list)
@@ -55,7 +58,7 @@ export function useChatRoom(meetupId: number) {
     api<ChatPage>(base).then(apply, fail)
   }, [base, apply, fail])
 
-  /** 새로 온 메시지만. 읽는 중에 또 부르면 끝난 뒤 한 번 더 */
+  /** 새로 온 메시지와 지금 읽은 자리. 읽는 중에 또 부르면 끝난 뒤 한 번 더 */
   const fetchNew = useCallback(async () => {
     if (fetching.current) {
       again.current = true
@@ -65,8 +68,9 @@ export function useChatRoom(meetupId: number) {
     try {
       do {
         again.current = false
-        const data = await api<{ messages: ChatMessage[] }>(`${base}/updates?after=${lastId.current}`)
+        const data = await api<ChatUpdates>(`${base}/updates?after=${lastId.current}`)
         take(data.messages)
+        if (data.reads) setReads(data.reads)
       } while (again.current)
     } catch {
       // 다음 알림·다시 읽기 때 받는다
@@ -97,6 +101,17 @@ export function useChatRoom(meetupId: number) {
       if (photos.length > 0) {
         setPage((p) => (p ? { ...p, photosLeftToday: Math.max(0, p.photosLeftToday - photos.length) } : p))
       }
+      void qc.invalidateQueries({ queryKey: keys.chats })
+      return message
+    },
+    [base, take, qc],
+  )
+
+  /** 이모티콘 보내기 (글·사진과 따로) */
+  const sendSticker = useCallback(
+    async (sticker: string) => {
+      const message = await api<ChatMessage>(base, { method: 'POST', body: { sticker } })
+      take([message])
       void qc.invalidateQueries({ queryKey: keys.chats })
       return message
     },
@@ -146,10 +161,12 @@ export function useChatRoom(meetupId: number) {
     }
   }, [base, apply, fail])
 
-  // 실시간: 이 톡방 소식이면 새 메시지를 읽는다. 다시 연결되면 놓친 것을 읽는다
+  // 실시간: 이 톡방 소식이면 새 메시지를 읽는다. 다시 연결되면 놓친 것을 읽는다.
+  // 다른 원우가 더 읽었으면 읽은 자리만 다시 받는다 (새 메시지가 있으면 함께)
   useEffect(() => {
     return subscribeLive((e) => {
       if (e.type === 'connected') void fetchNew()
+      if (e.type === 'chat-reads' && e.meetupId === meetupId) void fetchNew()
       if (e.type !== 'chat' || e.meetupId !== meetupId) return
       if (e.deleted) {
         setMessages((prev) =>
@@ -183,5 +200,18 @@ export function useChatRoom(meetupId: number) {
     }
   }, [base])
 
-  return { page, messages, error, reload: load, loadOlder, loadingOlder, send, remove, markRead, setMuted }
+  return {
+    page,
+    messages,
+    reads,
+    error,
+    reload: load,
+    loadOlder,
+    loadingOlder,
+    send,
+    sendSticker,
+    remove,
+    markRead,
+    setMuted,
+  }
 }

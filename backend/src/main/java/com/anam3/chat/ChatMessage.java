@@ -7,6 +7,8 @@ import java.util.List;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -20,7 +22,7 @@ import jakarta.persistence.Table;
 import com.anam3.meetup.Meetup;
 import com.anam3.member.Member;
 
-/** 톡방 메시지 한 개: 글, 사진(여러 장), 또는 둘 다 */
+/** 톡방 메시지 한 개: 글, 사진(여러 장), 또는 둘 다 · 이모티콘 하나 · 들어옴/나감 안내 줄 */
 @Entity
 @Table(name = "chat_messages")
 public class ChatMessage {
@@ -30,6 +32,14 @@ public class ChatMessage {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private ChatKind kind = ChatKind.TEXT;
+
+    /** 이모티콘 이름 (ChatStickers) — 이모티콘 메시지만 */
+    @Column(length = ChatStickers.MAX_KEY)
+    private String sticker;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "meetup_id", nullable = false)
@@ -62,6 +72,19 @@ public class ChatMessage {
         this.createdAt = now;
     }
 
+    public static ChatMessage sticker(Meetup meetup, Member member, String sticker, Instant now) {
+        ChatMessage message = new ChatMessage(meetup, member, null, now);
+        message.sticker = sticker;
+        return message;
+    }
+
+    /** 안내 줄: member 가 들어왔다(JOIN) · 나갔다(LEAVE) */
+    public static ChatMessage notice(Meetup meetup, Member member, ChatKind kind, Instant now) {
+        ChatMessage message = new ChatMessage(meetup, member, null, now);
+        message.kind = kind;
+        return message;
+    }
+
     public void addPhoto(String storageKey) {
         photos.add(new ChatPhoto(this, storageKey, photos.size()));
     }
@@ -70,7 +93,21 @@ public class ChatMessage {
     public void delete(Instant now) {
         this.deletedAt = now;
         this.body = null;
+        this.sticker = null;
         this.photos.clear();
+    }
+
+    /** 원우가 보낸 메시지가 아니라 들어옴/나감 안내 줄 */
+    public boolean isNotice() {
+        return kind != ChatKind.TEXT;
+    }
+
+    public ChatKind getKind() {
+        return kind;
+    }
+
+    public String getSticker() {
+        return sticker;
     }
 
     public boolean isDeleted() {

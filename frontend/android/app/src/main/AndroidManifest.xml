@@ -85,4 +85,6 @@
          웹뷰가 대략·정확한 위치를 함께 요청해서 둘 다 적는다 (사용자는 '대략적인 위치'만 허락해도 된다) -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- 사진 저장(갤러리): 안드로이드 9 이하만 필요하다. 10 부터는 권한 없이 저장한다 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 </manifest>

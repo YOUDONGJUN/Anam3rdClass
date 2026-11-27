@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.anam3.admin.AdminAction;
 import com.anam3.admin.AdminActionLog;
 import com.anam3.auth.LoginMember;
+import com.anam3.chat.ChatService;
 import com.anam3.common.ApiException;
 import com.anam3.common.ContentFilter;
 import com.anam3.feedback.FeedbackService;
@@ -90,6 +91,8 @@ public class MeetupService {
     private final MeetupLeaveRepository leaves;
     private final MeetupKickRepository kicks;
     private final AdminActionLog actionLog;
+    /** 톡방에 "○○님이 들어왔어요 / 나갔어요" */
+    private final ChatService chat;
     private final Clock clock;
     /** 시간 겹침 검사 (app.meetup.overlap-check, 기본 켜짐) */
     private final boolean overlapCheck;
@@ -98,8 +101,9 @@ public class MeetupService {
             MemberBlockRepository blocks, ReportRepository reports, MeetupMapper mapper, PushNotifier notifier,
             FeedbackService feedback, MeetupWaitRepository waits, SettlementService settlements,
             NotificationService notifications, MeetupLeaveRepository leaves, MeetupKickRepository kicks,
-            AdminActionLog actionLog, Clock clock,
+            AdminActionLog actionLog, ChatService chat, Clock clock,
             @Value("${app.meetup.overlap-check:true}") boolean overlapCheck) {
+        this.chat = chat;
         this.meetups = meetups;
         this.participations = participations;
         this.members = members;
@@ -224,6 +228,7 @@ public class MeetupService {
         boolean fullBefore = meetup.isFull();
         participations.delete(participation);
         meetup.removeParticipant();
+        chat.left(meetup, memberId);
         if (!kicks.existsByMeetupIdAndMemberId(id, memberId)) {
             kicks.save(new MeetupKick(id, memberId, now));
         }
@@ -684,6 +689,7 @@ public class MeetupService {
         }
         participations.save(new Participation(meetup, members.getReferenceById(viewer.id()), now));
         meetup.addParticipant();
+        chat.joined(meetup, viewer.id());
         waits.deleteOne(id, viewer.id()); // 기다리던 사람이 탔다
         notifier.joined(meetup, viewer.id(), !reachedBefore && meetup.isReached());
         return detail(viewer, id);
@@ -710,6 +716,7 @@ public class MeetupService {
         boolean reached = meetup.isReached(); // 성사된 3교시라 실명·단톡방을 본 뒤에 나간다
         participations.delete(participation);
         meetup.removeParticipant();
+        chat.left(meetup, viewer.id());
         if (reached) {
             leaves.save(new MeetupLeave(viewer.id(), id, now));
         }

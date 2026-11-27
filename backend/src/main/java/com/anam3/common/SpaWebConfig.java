@@ -25,6 +25,11 @@ public class SpaWebConfig implements WebMvcConfigurer {
                 .addResourceLocations("classpath:/static/assets/")
                 .setCacheControl(CacheControl.maxAge(365, TimeUnit.DAYS).cachePublic());
 
+        // 톡방 이모티콘 그림: 자주 보이니 하루 동안 저장해 둔다 (그림을 바꾸면 하루 안에 바뀐다)
+        registry.addResourceHandler("/stickers/**")
+                .addResourceLocations("classpath:/static/stickers/")
+                .setCacheControl(CacheControl.maxAge(1, TimeUnit.DAYS).cachePublic());
+
         // index.html(과 화면 주소)은 브라우저에 저장하지 않는다. 빌드할 때마다 파일 시각이 1980-02-01 로 같아서
         // 시각으로 비교하면(If-Modified-Since → 304) 브라우저가 예전 index.html 과 예전 화면을 계속 쓴다.
         // 시각 비교를 끄면 예전 index.html 을 가진 브라우저도 다음에 열 때 새 화면을 받는다.

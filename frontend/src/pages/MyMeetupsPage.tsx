@@ -103,7 +103,7 @@ function ChatRooms() {
                   {r.muted && <BellOff className="size-3.5 shrink-0 text-ink-3" aria-label="알림 꺼짐" />}
                 </span>
                 <span className={`mt-0.5 block truncate text-[13px] ${r.unread > 0 ? 'font-semibold text-ink-2' : 'text-ink-3'}`}>
-                  {r.lastSender}: {r.lastPreview}
+                  {r.lastSender ? `${r.lastSender}: ${r.lastPreview}` : r.lastPreview}
                 </span>
               </span>
               <span className="flex shrink-0 flex-col items-end gap-1">

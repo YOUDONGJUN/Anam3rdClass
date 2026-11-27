@@ -31,7 +31,7 @@ export function FeedFilterBar({ value, onChange, past }: { value: FeedFilter; on
           value={value.q}
           onChange={(e) => set({ q: e.target.value })}
           placeholder="제목·장소·지역·목적으로 찾기"
-          className="h-11 w-full rounded-xl border border-line-strong bg-surface pr-10 pl-10 text-[15px] text-ink placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
+          className="h-11 w-full rounded-xl border border-line-strong bg-surface pr-10 pl-10 text-base text-ink placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
         />
         {value.q && (
           <button

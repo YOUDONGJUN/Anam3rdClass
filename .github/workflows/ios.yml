@@ -41,13 +41,17 @@ jobs:
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      # 파일 이름에 앱 버전(MARKETING_VERSION)을 붙인다: anam3-ios-v1.2.0.ipa (docs/app-versions.md)
+      - name: 앱 버전
+        id: version
+        run: echo "v=$(grep -m1 'MARKETING_VERSION' ios/App/App.xcodeproj/project.pbxproj | sed -E 's/.*= *([^;]+);.*/\1/')" >> "$GITHUB_OUTPUT"
       - name: .ipa 로 묶기
         run: |
           mkdir -p build/ipa/Payload
           cp -R build/ios/Build/Products/Release-iphoneos/App.app build/ipa/Payload/
-          cd build/ipa && zip -qry ../anam3-ios.ipa Payload
+          cd build/ipa && zip -qry ../anam3-ios-v${{ steps.version.outputs.v }}.ipa Payload
       - uses: actions/upload-artifact@v5
         with:
-          name: anam3-ios-ipa
-          path: frontend/build/anam3-ios.ipa
+          name: anam3-ios-v${{ steps.version.outputs.v }}
+          path: frontend/build/anam3-ios-v${{ steps.version.outputs.v }}.ipa
           retention-days: 14

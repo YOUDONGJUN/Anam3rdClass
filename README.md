@@ -67,7 +67,7 @@ docs/       기획 히스토리 · 배포 · 앱 출시 문서
 ## 문서
 
 - [배포와 환경변수](docs/deployment.md)
-- [안드로이드 출시](docs/android-release.md) · [아이폰 설치](docs/ios-sideload.md)
+- [안드로이드 출시](docs/android-release.md) · [아이폰 설치](docs/ios-sideload.md) · [앱 버전](docs/app-versions.md)
 - [기획 히스토리](docs/planning/README.md)
 - [기여 가이드](CONTRIBUTING.md)
 

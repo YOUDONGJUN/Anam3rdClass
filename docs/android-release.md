@@ -46,7 +46,8 @@ cd android
 ./gradlew bundleRelease    # Play Console 에 올리는 파일 → app/build/outputs/bundle/release/app-release.aab
 ```
 
-올릴 때마다 `frontend/android/app/build.gradle` 의 `versionCode` 를 1씩 올려요.
+올릴 때마다 `frontend/android/app/build.gradle` 의 `versionCode` 를 1씩 올리고, `versionName` 은 아이폰 앱과 같은 버전으로 맞춰요 ([app-versions.md](app-versions.md)).
+폰에 직접 까는 APK 는 `anam3-android-v1.2.0.apk` 처럼 버전을 넣은 이름으로 보관해요.
 
 ## 4. Play Console (결제 뒤)
 

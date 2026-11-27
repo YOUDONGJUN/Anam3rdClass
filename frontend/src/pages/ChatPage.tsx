@@ -13,6 +13,7 @@ import {
   Keyboard,
   LoaderCircle,
   Smile,
+  X,
 } from 'lucide-react'
 import { absoluteUrl, ApiError } from '../api/client'
 import { useChatRoom } from '../api/chat'
@@ -210,7 +211,8 @@ export function ChatPage() {
   const [reporting, setReporting] = useState<ReportTargetInfo | null>(null)
   /** 이모티콘 패널 (키보드 자리에 열린다) */
   const [panel, setPanel] = useState(false)
-  const stickerBusy = useRef(false)
+  /** 고른 이모티콘 — 입력창 위에 미리 보이고, 보내기를 눌러야 보낸다 (카톡처럼) */
+  const [sticker, setSticker] = useState<string | null>(null)
 
   const atBottom = useCallback(() => {
     const el = listRef.current
@@ -310,7 +312,8 @@ export function ChatPage() {
   }
 
   const left = page ? Math.min(PER_SEND, page.photosLeftToday) : 0
-  const canSend = (text.trim().length > 0 || photos.length > 0) && !sending && !preparing
+  const canSend = (text.trim().length > 0 || photos.length > 0 || sticker !== null) && !sending && !preparing
+  const picked = stickerOf(sticker)
 
   async function pick(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
@@ -333,31 +336,26 @@ export function ChatPage() {
     }
   }
 
+  /** 보내기: 고른 이모티콘이 있으면 먼저, 그다음 글·사진 (이모티콘은 글과 한 메시지에 담지 않는다) */
   async function submit() {
     if (!canSend) return
     setSending(true)
     try {
-      await send(text.trim(), photos)
-      setText('')
-      setPhotos([])
-      inputRef.current?.focus()
+      if (sticker) {
+        await sendSticker(sticker)
+        setSticker(null)
+      }
+      if (text.trim() || photos.length > 0) {
+        await send(text.trim(), photos)
+        setText('')
+        setPhotos([])
+      }
+      // 이모티콘 패널을 보고 있으면 그대로 둔다 (입력창을 잡으면 패널이 닫히고 키보드가 올라온다)
+      if (!panel) inputRef.current?.focus()
     } catch (err) {
       toast.show(err instanceof ApiError ? err.message : '보내지 못했어요. 다시 보내 주세요', 'error')
     } finally {
       setSending(false)
-    }
-  }
-
-  /** 이모티콘: 누르면 바로 보낸다 (쓰던 글은 그대로). 패널은 열어 둔다 */
-  async function pickSticker(key: string) {
-    if (stickerBusy.current) return
-    stickerBusy.current = true
-    try {
-      await sendSticker(key)
-    } catch (err) {
-      toast.show(err instanceof ApiError ? err.message : '보내지 못했어요. 다시 보내 주세요', 'error')
-    } finally {
-      stickerBusy.current = false
     }
   }
 
@@ -571,7 +569,10 @@ export function ChatPage() {
               scrollToBottom(true)
               setNewCount(0)
             }}
-            className="pointer-events-auto absolute bottom-3 left-1/2 inline-flex h-9 -translate-x-1/2 items-center gap-1.5 rounded-full bg-board px-4 text-[13px] font-bold text-on-board shadow-lg"
+            className={`pointer-events-auto absolute bottom-3 inline-flex h-9 items-center gap-1.5 rounded-full bg-board px-4 text-[13px] font-bold text-on-board shadow-lg ${
+              // 이모티콘 미리보기(오른쪽)와 겹치지 않게 왼쪽으로
+              picked ? 'left-3' : 'left-1/2 -translate-x-1/2'
+            }`}
           >
             <ArrowDown className="size-4" aria-hidden />새 메시지 {newCount}
           </button>
@@ -585,6 +586,31 @@ export function ChatPage() {
         </p>
       ) : (
         <>
+        {/* 고른 이모티콘 미리보기 — 보내기를 눌러야 보낸다. ✕ 로 뺀다 */}
+        {picked && (
+          <div className="pointer-events-none relative">
+            <div className="pointer-events-auto absolute right-3 bottom-2 rounded-2xl border border-line bg-surface/95 p-1.5 shadow-lg sm:right-5">
+              <img
+                src={picked.src}
+                alt={`보낼 이모티콘: ${picked.label}`}
+                width={112}
+                height={112}
+                draggable={false}
+                // 화면이 낮으면(키보드 · 가로 화면) 작게 — 머리를 가리지 않게
+                className="size-[min(7rem,calc(var(--vv-height)*0.16))] select-none"
+              />
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setSticker(null)}
+                aria-label="고른 이모티콘 빼기"
+                className="absolute -top-2 -right-2 flex size-8 items-center justify-center rounded-full bg-board text-on-board shadow-md"
+              >
+                <X className="size-4" strokeWidth={2.6} aria-hidden />
+              </button>
+            </div>
+          </div>
+        )}
         <div
           className={`shrink-0 border-t border-line bg-surface px-3 pt-2.5 sm:px-5 ${
             panel ? 'pb-2.5' : 'pb-[calc(10px+env(safe-area-inset-bottom))]'
@@ -618,7 +644,7 @@ export function ChatPage() {
                 placeholder="메시지 보내기"
                 aria-label="메시지"
                 enterKeyHint={coarse ? 'enter' : 'send'}
-                className="max-h-33 min-h-[42px] min-w-0 flex-1 resize-none bg-transparent py-2.5 pr-1 pl-4 text-[15px] leading-snug text-ink focus:outline-none"
+                className="max-h-33 min-h-[42px] min-w-0 flex-1 resize-none bg-transparent py-2.5 pr-1 pl-4 text-base leading-snug text-ink focus:outline-none"
               />
               <button
                 type="button"
@@ -656,9 +682,12 @@ export function ChatPage() {
                 <button
                   key={s.key}
                   type="button"
-                  onClick={() => void pickSticker(s.key)}
-                  aria-label={`${s.label} 보내기`}
-                  className="aspect-square rounded-xl p-1 transition-transform hover:bg-surface-2 active:scale-95"
+                  onClick={() => setSticker(s.key)}
+                  aria-label={s.label}
+                  aria-pressed={sticker === s.key}
+                  className={`aspect-square rounded-xl p-1 transition-transform active:scale-95 ${
+                    sticker === s.key ? 'bg-accent/15 ring-2 ring-accent' : 'hover:bg-surface-2'
+                  }`}
                 >
                   <img src={s.src} alt="" loading="lazy" draggable={false} className="size-full select-none" />
                 </button>

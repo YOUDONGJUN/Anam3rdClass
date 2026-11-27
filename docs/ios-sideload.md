@@ -9,8 +9,9 @@
 
 - `.github/workflows/ios.yml` 이 `frontend/ios`, `capacitor.config.ts`, `package-lock.json` 이 바뀌면 자동으로 돌아요.
   손으로 돌리려면: GitHub › Actions › **iOS 앱** › Run workflow
-- 끝나면 그 실행 화면 아래 Artifacts 의 `anam3-ios-ipa` 를 받아 압축을 풀면 `anam3-ios.ipa`
-  - 명령줄: `gh run download <실행 번호> -n anam3-ios-ipa -D <폴더>`
+- 끝나면 그 실행 화면 아래 Artifacts 의 `anam3-ios-v1.2.0`(앱 버전) 을 받아 압축을 풀면 `anam3-ios-v1.2.0.ipa`
+  - 명령줄: `gh run download <실행 번호> -n anam3-ios-v1.2.0 -D <폴더>`
+  - 버전 올리는 법: [app-versions.md](app-versions.md)
 - 공개 저장소라 Mac 서버 사용료는 없어요.
 
 ## 2. 윈도우 준비 (한 번만)

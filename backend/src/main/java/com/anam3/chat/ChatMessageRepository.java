@@ -70,4 +70,18 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     @Query("select max(m.id) from ChatMessage m where m.meetup.id = :meetupId")
     Long findLastId(@Param("meetupId") Long meetupId);
+
+    /** 번호로 (보낸 원우와 함께) — 답장의 원래 메시지 · 공감 · 공지 */
+    @Query("""
+            select m from ChatMessage m join fetch m.member mb join fetch mb.school left join fetch mb.department
+            where m.id in :ids
+            """)
+    List<ChatMessage> findWithSender(@Param("ids") Collection<Long> ids);
+
+    /** 톡방 공지 (최근에 올린 것부터 — 보통 하나) */
+    @Query("""
+            select m from ChatMessage m join fetch m.member mb join fetch mb.school left join fetch mb.department
+            where m.meetup.id = :meetupId and m.pinnedAt is not null order by m.pinnedAt desc
+            """)
+    List<ChatMessage> findPinned(@Param("meetupId") Long meetupId);
 }

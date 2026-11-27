@@ -20,6 +20,9 @@ import com.anam3.chat.ChatDtos.ChatPage;
 import com.anam3.chat.ChatDtos.ChatUpdates;
 import com.anam3.chat.ChatDtos.MessageView;
 import com.anam3.chat.ChatDtos.MuteRequest;
+import com.anam3.chat.ChatDtos.PinRequest;
+import com.anam3.chat.ChatDtos.PinResult;
+import com.anam3.chat.ChatDtos.ReactRequest;
 import com.anam3.chat.ChatDtos.ReadRequest;
 import com.anam3.chat.ChatDtos.RoomList;
 import com.anam3.chat.ChatDtos.SendRequest;
@@ -60,6 +63,27 @@ public class ChatController {
     public List<UploadTicket> uploads(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
             @Valid @RequestBody UploadRequest req) {
         return chat.uploads(me, id, req.contentTypes());
+    }
+
+    /** 메시지 하나 (공감이 바뀌었을 때 다시 읽는다) */
+    @GetMapping("/api/meetups/{id}/chat/{messageId}")
+    public MessageView message(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @PathVariable Long messageId) {
+        return chat.message(me, id, messageId);
+    }
+
+    /** 공감 누르기 · 바꾸기 · 빼기 (reaction 이 null) */
+    @PutMapping("/api/meetups/{id}/chat/{messageId}/reaction")
+    public MessageView react(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @PathVariable Long messageId, @RequestBody ReactRequest req) {
+        return chat.react(me, id, messageId, req.reaction());
+    }
+
+    /** 톡방 공지 올리기 · 내리기 (messageId 가 null) — 연 사람만 */
+    @PutMapping("/api/meetups/{id}/chat/pin")
+    public PinResult pin(@AuthenticationPrincipal LoginMember me, @PathVariable Long id,
+            @RequestBody PinRequest req) {
+        return chat.pin(me, id, req.messageId());
     }
 
     @DeleteMapping("/api/meetups/{id}/chat/{messageId}")

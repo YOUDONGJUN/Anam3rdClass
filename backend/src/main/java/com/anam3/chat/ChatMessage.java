@@ -22,7 +22,7 @@ import jakarta.persistence.Table;
 import com.anam3.meetup.Meetup;
 import com.anam3.member.Member;
 
-/** 톡방 메시지 한 개: 글, 사진(여러 장), 또는 둘 다 · 이모티콘 하나 · 들어옴/나감 안내 줄 */
+/** 톡방 메시지 한 개: 글, 사진(여러 장), 또는 둘 다 · 이모티콘 하나 · 들어옴/나감 안내 줄. 답장이면 원래 메시지 번호 */
 @Entity
 @Table(name = "chat_messages")
 public class ChatMessage {
@@ -58,6 +58,14 @@ public class ChatMessage {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    /** 답장: 어느 메시지에 답했는지 */
+    @Column(name = "reply_to_id")
+    private Long replyToId;
+
+    /** 톡방 공지로 올린 시각 (연 사람이 올린다. 톡방마다 하나) */
+    @Column(name = "pinned_at")
+    private Instant pinnedAt;
+
     @OneToMany(mappedBy = "message", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position")
     private List<ChatPhoto> photos = new ArrayList<>();
@@ -89,12 +97,33 @@ public class ChatMessage {
         photos.add(new ChatPhoto(this, storageKey, photos.size()));
     }
 
-    /** 지우기: 자리는 남기고 글·사진은 없앤다 */
+    /** 지우기: 자리는 남기고 글·사진은 없앤다. 공지였으면 내려간다 */
     public void delete(Instant now) {
         this.deletedAt = now;
         this.body = null;
         this.sticker = null;
+        this.pinnedAt = null;
         this.photos.clear();
+    }
+
+    public void replyTo(Long messageId) {
+        this.replyToId = messageId;
+    }
+
+    public void pin(Instant now) {
+        this.pinnedAt = now;
+    }
+
+    public void unpin() {
+        this.pinnedAt = null;
+    }
+
+    public Long getReplyToId() {
+        return replyToId;
+    }
+
+    public Instant getPinnedAt() {
+        return pinnedAt;
     }
 
     /** 원우가 보낸 메시지가 아니라 들어옴/나감 안내 줄 */

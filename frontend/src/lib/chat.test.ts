@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage, PersonView } from '../api/types'
 import { mergeMessages } from '../api/chat'
-import { groupMessages, previewOf, unreadCount } from './chat'
+import { groupMessages, markDeleted, nextReaction, previewOf, quoteOf, replyLabel, unreadCount, withReaction } from './chat'
+import { pushRecent } from './stickers'
 
 const person = (name: string, ref: number | null): PersonView => ({
   name,
@@ -29,6 +30,8 @@ const msg = (who: string, at: string, extra: Partial<ChatMessage> = {}): ChatMes
   deleted: false,
   hidden: false,
   createdAt: at,
+  reply: null,
+  reactions: [],
   ...extra,
 })
 
@@ -103,5 +106,59 @@ describe('톡방 메시지 묶기', () => {
     const merged = mergeMessages([b], [a, { ...b, deleted: true }])
     expect(merged.map((m) => m.id)).toEqual([a.id, b.id])
     expect(merged[1].deleted).toBe(true)
+  })
+})
+
+describe('공감 · 답장', () => {
+  it('같은 공감을 다시 누르면 빼고, 다른 것은 바꾼다', () => {
+    const m = msg('김고대', '2026-03-02T13:00:00Z', { reactions: [{ reaction: 'HEART', count: 2, mine: true }] })
+    expect(nextReaction(m, 'HEART')).toBeNull()
+    expect(nextReaction(m, 'LOL')).toBe('LOL')
+  })
+
+  it('화면에 먼저 바꿀 때 개수와 내 표시를 맞춘다 (0개는 빠지고, 공감 순서대로)', () => {
+    const m = msg('김고대', '2026-03-02T13:00:00Z', {
+      reactions: [
+        { reaction: 'LIKE', count: 1, mine: false },
+        { reaction: 'HEART', count: 1, mine: true },
+      ],
+    })
+    expect(withReaction(m, 'LOL').reactions).toEqual([
+      { reaction: 'LIKE', count: 1, mine: false },
+      { reaction: 'LOL', count: 1, mine: true },
+    ])
+    expect(withReaction(m, null).reactions).toEqual([{ reaction: 'LIKE', count: 1, mine: false }])
+    expect(withReaction(msg('나', '2026-03-02T13:00:00Z'), 'LIKE').reactions).toEqual([{ reaction: 'LIKE', count: 1, mine: true }])
+  })
+
+  it('답장 줄: 원래 메시지 한 줄과 누구에게', () => {
+    const theirs = msg('김*대', '2026-03-02T13:00:00Z', { body: '몇 시에 와요?' })
+    expect(replyLabel(quoteOf(theirs))).toBe('김*대에게 답장')
+    expect(quoteOf(theirs).preview).toBe('몇 시에 와요?')
+    expect(replyLabel(quoteOf(msg('나', '2026-03-02T13:00:00Z')))).toBe('나에게 답장')
+    expect(quoteOf(msg('김고대', '2026-03-02T13:00:00Z', { body: null, sticker: 'tiger-going' })).preview).toBe('(이모티콘) 가는 중')
+  })
+
+  it('지우면 그 메시지와 그것을 인용한 답장의 한 줄이 바뀐다', () => {
+    const a = msg('김고대', '2026-03-02T13:00:00Z', { reactions: [{ reaction: 'HEART', count: 1, mine: false }] })
+    const b = msg('나', '2026-03-02T13:01:00Z', { reply: { id: a.id, sender: '김고대', mine: false, preview: '안녕' } })
+    const [da, db] = markDeleted([a, b], a.id)
+    expect(da).toMatchObject({ deleted: true, body: null, reactions: [] })
+    expect(db.reply?.preview).toBe('지운 메시지예요')
+    expect(db.deleted).toBe(false)
+  })
+})
+
+describe('최근 쓴 이모티콘', () => {
+  it('방금 쓴 것이 맨 앞, 같은 것은 하나, 4개까지, 모르는 이름은 뺀다', () => {
+    expect(pushRecent([], 'tiger-ok')).toEqual(['tiger-ok'])
+    expect(pushRecent(['tiger-ok', 'tiger-bye'], 'tiger-bye')).toEqual(['tiger-bye', 'tiger-ok'])
+    expect(pushRecent(['tiger-ok', 'tiger-bye', 'tiger-lol', 'tiger-late'], 'tiger-good')).toEqual([
+      'tiger-good',
+      'tiger-ok',
+      'tiger-bye',
+      'tiger-lol',
+    ])
+    expect(pushRecent(['pepe'], 'tiger-ok')).toEqual(['tiger-ok'])
   })
 })

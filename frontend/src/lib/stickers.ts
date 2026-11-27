@@ -34,3 +34,33 @@ const byKey = new Map(STICKERS.map((s) => [s.key, s]))
 export function stickerOf(key: string | null | undefined): Sticker | null {
   return key ? (byKey.get(key) ?? null) : null
 }
+
+// ---- 최근 쓴 이모티콘 (이 기기에만, 패널 맨 위 줄) ----
+
+const RECENT_KEY = 'anam3.recentStickers'
+/** 폰에서 한 줄 (4칸) */
+export const RECENT_MAX = 4
+
+/** 방금 쓴 것을 맨 앞으로 (같은 것은 하나만, 모르는 이름은 뺀다) */
+export function pushRecent(list: string[], key: string, max = RECENT_MAX): string[] {
+  return [key, ...list.filter((k) => k !== key)].filter((k) => byKey.has(k)).slice(0, max)
+}
+
+export function readRecentStickers(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as unknown
+    return Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string' && byKey.has(k)).slice(0, RECENT_MAX) : []
+  } catch {
+    return []
+  }
+}
+
+export function rememberSticker(key: string): string[] {
+  const next = pushRecent(readRecentStickers(), key)
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+  } catch {
+    // 저장이 막힌 브라우저 (사생활 보호 모드) — 이번 화면에서만
+  }
+  return next
+}

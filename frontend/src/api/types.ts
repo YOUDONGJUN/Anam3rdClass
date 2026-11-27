@@ -728,6 +728,29 @@ export interface ChatMessage {
   /** 내가 차단한 원우의 메시지 (내용을 내려보내지 않는다) */
   hidden: boolean
   createdAt: string
+  /** 답장이면 원래 메시지 */
+  reply: ChatQuote | null
+  /** 공감 (공감 순서대로. 지운·가린 메시지는 비어 있다) */
+  reactions: ChatReaction[]
+}
+
+/** 다른 메시지를 한 줄로 (답장의 원래 메시지 · 톡방 공지) */
+export interface ChatQuote {
+  id: number
+  /** 보낸 원우 이름 (3교시 공개 규칙대로 가려질 수 있다) */
+  sender: string
+  mine: boolean
+  /** 한 줄 ("지운 메시지예요" · "(이모티콘) 가는 중" · "사진" …) */
+  preview: string
+}
+
+export type ReactionKind = 'HEART' | 'LIKE' | 'CHECK' | 'LOL' | 'WOW' | 'SAD'
+
+/** 공감 하나: 몇 명이 눌렀는지, 나도 눌렀는지 */
+export interface ChatReaction {
+  reaction: ReactionKind
+  count: number
+  mine: boolean
 }
 
 export interface ChatPage {
@@ -749,11 +772,16 @@ export interface ChatPage {
   photosLeftToday: number
   /** 나 말고 함께하는 원우들이 각자 마지막으로 읽은 메시지 번호 — 메시지 옆 "안 읽은 사람 수" */
   reads: number[]
+  /** 톡방 공지 (없으면 null) */
+  pinned: ChatQuote | null
+  /** 공지를 올리고 내릴 수 있다 (연 사람) */
+  canPin: boolean
 }
 
 export interface ChatUpdates {
   messages: ChatMessage[]
   reads: number[]
+  pinned: ChatQuote | null
 }
 
 export interface ChatRoom {

@@ -8,8 +8,8 @@ export function LiveBridge() {
   const qc = useQueryClient()
   useEffect(() => {
     const off = subscribeLive((e) => {
-      // 다른 원우가 읽었다는 소식은 열린 톡방의 "안 읽은 사람 수"만 바꾼다 (내 안 읽은 수는 그대로)
-      if (e.type === 'chat-reads') return
+      // 다른 원우가 읽었다 · 공감 · 공지는 열린 톡방만 바꾼다 (내 안 읽은 수는 그대로)
+      if (e.type === 'chat-reads' || e.type === 'chat-change') return
       void qc.invalidateQueries({ queryKey: keys.chats })
       if (e.type === 'connected') void qc.invalidateQueries({ queryKey: keys.unreadNotifications })
     })

@@ -4,6 +4,7 @@
 import { Capacitor, registerPlugin, SystemBars, SystemBarsStyle, SystemBarType } from '@capacitor/core'
 import { App } from '@capacitor/app'
 import { Directory, Filesystem } from '@capacitor/filesystem'
+import { Keyboard } from '@capacitor/keyboard'
 import { PushNotifications } from '@capacitor/push-notifications'
 import { Share } from '@capacitor/share'
 import { SplashScreen } from '@capacitor/splash-screen'
@@ -34,6 +35,15 @@ interface AnamNativePlugin {
 const AnamNative = registerPlugin<AnamNativePlugin>('AnamNative')
 
 let infoRequest: Promise<AppInfo | null> | null = null
+
+/**
+ * 아이폰 앱 키보드 위 ∧ ∨ 완료 막대. 톡방에서만 숨긴다 — 다른 화면(가입 · 3교시 만들기 …)에서는 "완료"가 키보드를 내리는 단추라 그대로 둔다.
+ * 예전 앱(v1.2.0 이하)은 이 기능이 없어 그대로 보인다
+ */
+export function setKeyboardBar(visible: boolean) {
+  if (Capacitor.getPlatform() !== 'ios') return
+  void Keyboard.setAccessoryBarVisible({ isVisible: visible }).catch(() => {})
+}
 
 export function appInfo(): Promise<AppInfo | null> {
   if (!isApp) return Promise.resolve(null)

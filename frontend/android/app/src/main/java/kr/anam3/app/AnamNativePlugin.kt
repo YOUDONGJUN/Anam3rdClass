@@ -1,11 +1,22 @@
 package kr.anam3.app
 
+import android.Manifest
+import android.content.ContentValues
+import android.media.MediaScannerConnection
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Base64
 import com.getcapacitor.JSObject
+import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
+import java.io.File
+import java.io.IOException
 import com.kakao.sdk.auth.model.OAuthToken
 import com.kakao.sdk.common.KakaoSdk
 import com.kakao.sdk.common.model.ClientError
@@ -18,8 +29,12 @@ import com.kakao.sdk.user.UserApiClient
  * - info: 앱 버전, 푸시를 쓸 수 있는지(google-services.json 을 넣고 빌드했는지), 카카오 키가 있는지
  * - kakaoLogin: 카카오톡 앱(없으면 카카오 계정 창)으로 로그인하고 카카오 액세스 토큰을 웹에 준다.
  *   웹은 이 토큰을 서버(POST /api/auth/kakao/app)로 보내고, 서버가 우리 앱의 토큰인지 카카오에 확인한다.
+ * - savePhoto: 사진을 갤러리(사진/안암3교시)에 저장한다. 안드로이드 9 이하는 저장 권한을 먼저 묻는다
  */
-@CapacitorPlugin(name = "AnamNative")
+@CapacitorPlugin(
+    name = "AnamNative",
+    permissions = [Permission(alias = "photos", strings = [Manifest.permission.WRITE_EXTERNAL_STORAGE])],
+)
 class AnamNativePlugin : Plugin() {
 
     private val kakaoKey: String = BuildConfig.KAKAO_NATIVE_APP_KEY
@@ -46,6 +61,63 @@ class AnamNativePlugin : Plugin() {
         result.put("pushAvailable", firebaseId != 0)
         result.put("kakaoAvailable", kakaoKey.isNotEmpty())
         call.resolve(result)
+    }
+
+    /** data: 사진(base64) · mimeType · fileName */
+    @PluginMethod
+    fun savePhoto(call: PluginCall) {
+        if (call.getString("data").isNullOrEmpty()) {
+            call.reject("저장할 사진이 없어요", "NO_DATA")
+            return
+        }
+        // 안드로이드 10 부터는 권한 없이 갤러리에 넣을 수 있다
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && getPermissionState("photos") != PermissionState.GRANTED) {
+            requestPermissionForAlias("photos", call, "savePhotoPermission")
+            return
+        }
+        writePhoto(call)
+    }
+
+    @PermissionCallback
+    private fun savePhotoPermission(call: PluginCall) {
+        if (getPermissionState("photos") == PermissionState.GRANTED) {
+            writePhoto(call)
+        } else {
+            call.reject("사진을 저장하려면 저장 권한을 허용해 주세요", "PERMISSION_DENIED")
+        }
+    }
+
+    private fun writePhoto(call: PluginCall) {
+        val mime = call.getString("mimeType") ?: "image/jpeg"
+        val name = call.getString("fileName") ?: "anam3-${System.currentTimeMillis()}.jpg"
+        try {
+            val bytes = Base64.decode(call.getString("data"), Base64.DEFAULT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = context.contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, name)
+                    put(MediaStore.Images.Media.MIME_TYPE, mime)
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$ALBUM")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IOException("갤러리에 자리를 만들지 못했어요")
+                (resolver.openOutputStream(uri) ?: throw IOException("갤러리에 쓸 수 없어요")).use { it.write(bytes) }
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), ALBUM)
+                dir.mkdirs()
+                val file = File(dir, name)
+                file.writeBytes(bytes)
+                MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), arrayOf(mime), null)
+            }
+            call.resolve()
+        } catch (e: Exception) {
+            call.reject("사진을 저장하지 못했어요", "SAVE_FAILED", e)
+        }
     }
 
     @PluginMethod
@@ -91,5 +163,10 @@ class AnamNativePlugin : Plugin() {
                 call.resolve(result)
             }
         }
+    }
+
+    private companion object {
+        /** 갤러리 앨범 이름 (사진/안암3교시) */
+        const val ALBUM = "안암3교시"
     }
 }

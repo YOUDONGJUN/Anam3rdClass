@@ -712,11 +712,17 @@ export interface ChatPhoto {
   expired: boolean
 }
 
+/** TEXT: 원우가 보낸 메시지 · JOIN/LEAVE: sender 가 들어왔다/나갔다는 안내 줄 */
+export type ChatKind = 'TEXT' | 'JOIN' | 'LEAVE'
+
 export interface ChatMessage {
   id: number
+  kind: ChatKind
   sender: PersonView
   mine: boolean
   body: string | null
+  /** 이모티콘 이름 (lib/stickers) — 이모티콘 메시지만 */
+  sticker: string | null
   photos: ChatPhoto[]
   deleted: boolean
   /** 내가 차단한 원우의 메시지 (내용을 내려보내지 않는다) */
@@ -741,6 +747,13 @@ export interface ChatPage {
   muted: boolean
   photoKeepDays: number
   photosLeftToday: number
+  /** 나 말고 함께하는 원우들이 각자 마지막으로 읽은 메시지 번호 — 메시지 옆 "안 읽은 사람 수" */
+  reads: number[]
+}
+
+export interface ChatUpdates {
+  messages: ChatMessage[]
+  reads: number[]
 }
 
 export interface ChatRoom {
@@ -751,7 +764,8 @@ export interface ChatRoom {
   unread: number
   muted: boolean
   lastPreview: string
-  lastSender: string
+  /** 들어옴/나감 안내 줄이면 null (lastPreview 가 "○○님이 들어왔어요") */
+  lastSender: string | null
   lastAt: string
 }
 

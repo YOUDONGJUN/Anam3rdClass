@@ -3,6 +3,7 @@
 // ⚠️ 플러그인(@capacitor/*) 버전을 올리면 앱도 다시 빌드해서 올려야 한다 (웹과 앱의 플러그인 버전이 맞아야 한다).
 import { Capacitor, registerPlugin, SystemBars, SystemBarsStyle, SystemBarType } from '@capacitor/core'
 import { App } from '@capacitor/app'
+import { Directory, Filesystem } from '@capacitor/filesystem'
 import { PushNotifications } from '@capacitor/push-notifications'
 import { Share } from '@capacitor/share'
 import { SplashScreen } from '@capacitor/splash-screen'
@@ -26,6 +27,8 @@ export interface AppInfo {
 interface AnamNativePlugin {
   info(): Promise<AppInfo>
   kakaoLogin(): Promise<{ accessToken: string }>
+  /** 갤러리(사진/안암3교시)에 저장. data 는 base64 */
+  savePhoto(options: { data: string; mimeType: string; fileName: string }): Promise<void>
 }
 
 const AnamNative = registerPlugin<AnamNativePlugin>('AnamNative')
@@ -92,6 +95,73 @@ export async function shareLink(title: string, text: string, url: string): Promi
   } catch {
     return 'failed'
   }
+}
+
+// ---------------- 사진 저장 ----------------
+
+/** saved: 갤러리에 저장함 · shared: 공유 창을 띄움(거기서 저장) · downloaded: 파일로 내려받음 */
+export type SaveResult = 'saved' | 'shared' | 'downloaded' | 'cancelled'
+
+function base64Of(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '')
+    reader.onerror = () => reject(reader.error ?? new Error('사진을 읽지 못했어요'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+/**
+ * 사진 저장: 안드로이드 앱은 갤러리에 바로 · 아이폰 앱은 공유 창("이미지 저장") ·
+ * 폰 브라우저는 공유 창 · PC 는 내려받기.
+ * 예전 앱(이 기능이 없는 빌드)이면 업데이트하라고 알린다 (앱 기능은 앱을 새로 깔아야 생긴다)
+ */
+export async function savePhotoFile(blob: Blob, fileName: string): Promise<SaveResult> {
+  const mimeType = blob.type || 'image/jpeg'
+  const platform = Capacitor.getPlatform()
+  if (platform === 'android') {
+    try {
+      await AnamNative.savePhoto({ data: await base64Of(blob), mimeType, fileName })
+      return 'saved'
+    } catch (e) {
+      if (errorCode(e) === 'UNIMPLEMENTED') throw new Error('앱을 업데이트하면 사진을 저장할 수 있어요', { cause: e })
+      throw new Error(e instanceof Error && e.message ? e.message : '사진을 저장하지 못했어요', { cause: e })
+    }
+  }
+  if (platform === 'ios') {
+    let uri: string | null = null
+    try {
+      uri = (await Filesystem.writeFile({ path: fileName, data: await base64Of(blob), directory: Directory.Cache })).uri
+    } catch (e) {
+      if (errorCode(e) !== 'UNIMPLEMENTED') throw e
+      // 예전 앱: 아래 웹 방식(공유 창)으로
+    }
+    if (uri) {
+      try {
+        await Share.share({ files: [uri], dialogTitle: '사진 저장' })
+        return 'shared'
+      } catch {
+        return 'cancelled'
+      }
+    }
+  }
+  const file = new File([blob], fileName, { type: mimeType })
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] })
+      return 'shared'
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return 'cancelled'
+      throw e
+    }
+  }
+  if (isApp) throw new Error('앱을 업데이트하면 사진을 저장할 수 있어요')
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(file)
+  link.download = file.name
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(link.href), 10_000)
+  return 'downloaded'
 }
 
 // ---------------- 푸시 ----------------

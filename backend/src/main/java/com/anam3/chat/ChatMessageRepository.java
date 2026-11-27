@@ -49,10 +49,11 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             """)
     List<Object[]> findRoomsOf(@Param("memberId") Long memberId, Pageable pageable);
 
-    /** 안 읽은 메시지 수: [3교시 번호, 개수]. 내가 보낸 것 · 지운 것 · 차단한 사람 것은 세지 않는다 */
+    /** 안 읽은 메시지 수: [3교시 번호, 개수]. 내가 보낸 것 · 지운 것 · 차단한 사람 것 · 들어옴/나감 줄은 세지 않는다 */
     @Query("""
             select m.meetup.id, count(m.id) from ChatMessage m
             where m.meetup.id in :meetupIds and m.member.id <> :memberId and m.deletedAt is null
+              and m.kind = com.anam3.chat.ChatKind.TEXT
               and m.member.id not in :hidden
               and m.id > coalesce((select s.lastReadId from ChatState s
                                    where s.meetup.id = m.meetup.id and s.member.id = :memberId), 0)

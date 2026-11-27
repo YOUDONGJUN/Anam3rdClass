@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import com.anam3.auth.LoginMember;
 import com.anam3.chat.ChatMessage;
 import com.anam3.chat.ChatMessageRepository;
+import com.anam3.chat.ChatStickers;
 import com.anam3.meetup.ParticipationRepository;
 
 /**
@@ -33,6 +34,7 @@ public class ChatMessageTargets {
 
     public Optional<ChatMessage> find(LoginMember viewer, Long messageId) {
         return messages.findWithMeetup(List.of(messageId)).stream().findFirst()
+                .filter(m -> !m.isNotice()) // "○○님이 들어왔어요" 같은 안내 줄은 신고할 수 없다
                 .filter(m -> participations.existsByMeetupIdAndMemberId(m.getMeetup().getId(), viewer.id()));
     }
 
@@ -45,6 +47,9 @@ public class ChatMessageTargets {
     public static String body(ChatMessage m) {
         if (m.isDeleted()) {
             return "(신고하기 전에 보낸 사람이 지운 메시지예요)";
+        }
+        if (m.getSticker() != null) {
+            return "[" + ChatStickers.preview(m.getSticker()) + "]";
         }
         String text = m.getBody() == null ? "" : m.getBody().strip();
         int photos = m.getPhotos().size();

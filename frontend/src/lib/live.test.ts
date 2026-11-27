@@ -14,6 +14,7 @@ describe('실시간 연결 읽기', () => {
   it('지운 메시지와 읽음', () => {
     expect(parseSseBlock('event: chat\ndata: {"meetupId":3,"messageId":10,"deleted":true}')).toMatchObject({ deleted: true })
     expect(parseSseBlock('event:chat-read\ndata:{"meetupId":4}')).toEqual({ type: 'chat-read', meetupId: 4 })
+    expect(parseSseBlock('event:chat-reads\ndata:{"meetupId":4}')).toEqual({ type: 'chat-reads', meetupId: 4 })
   })
 
   it('주석(ping)과 모르는 이름은 건너뛴다', () => {

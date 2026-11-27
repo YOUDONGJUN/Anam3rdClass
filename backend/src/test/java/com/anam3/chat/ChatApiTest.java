@@ -40,6 +40,8 @@ class ChatApiTest extends ApiTestSupport {
         meetupId = createMeetup(host, 3, null, Duration.ofHours(5), Duration.ofHours(3), null);
         post("/api/meetups/" + meetupId + "/join", anam, null).andExpect(status().isOk());
         pushes.clear();
+        // "이안암님이 들어왔어요" 안내 줄은 따로 시험한다 (들어오고_나가면_톡방에_안내_줄이_남는다)
+        jdbc.update("delete from chat_messages where kind <> 'TEXT'");
     }
 
     private String url() {
@@ -90,9 +92,10 @@ class ChatApiTest extends ApiTestSupport {
         meetupId = createMeetup(host, null, null, Duration.ofHours(5), Duration.ofHours(3), null, "ALL");
         post("/api/meetups/" + meetupId + "/join", sinchon, null).andExpect(status().isOk());
         say(sinchon, "연세대에서 왔어요").andExpect(status().isOk());
+        // [0] 은 "이신촌님이 들어왔어요"
         get(url(), host).andExpect(jsonPath("$.federated").value(true))
-                .andExpect(jsonPath("$.messages[0].sender.school.code").value("YONSEI"))
-                .andExpect(jsonPath("$.messages[0].sender.name").value("이신촌"));
+                .andExpect(jsonPath("$.messages[1].sender.school.code").value("YONSEI"))
+                .andExpect(jsonPath("$.messages[1].sender.name").value("이신촌"));
     }
 
     @Test
@@ -258,11 +261,101 @@ class ChatApiTest extends ApiTestSupport {
         long horangRef = participantRef(host, meetupId, 2);
         post("/api/blocks", anam, "{\"ref\":" + horangRef + "}").andExpect(status().isCreated());
         say(horang, "안녕하세요").andExpect(status().isOk());
-        get(url(), anam).andExpect(jsonPath("$.messages[0].hidden").value(true))
-                .andExpect(jsonPath("$.messages[0].body").value(nullValue()));
-        get(url(), host).andExpect(jsonPath("$.messages[0].body").value("안녕하세요"));
+        // [0] 은 "박호랑님이 들어왔어요"
+        get(url(), anam).andExpect(jsonPath("$.messages[1].hidden").value(true))
+                .andExpect(jsonPath("$.messages[1].body").value(nullValue()));
+        get(url(), host).andExpect(jsonPath("$.messages[1].body").value("안녕하세요"));
         get("/api/me/chats", anam).andExpect(jsonPath("$.totalUnread").value(0))
                 .andExpect(jsonPath("$.rooms[0].lastPreview").value("차단한 원우의 메시지예요"));
+    }
+
+    // ---------- 들어옴 · 나감 ----------
+
+    @Test
+    void 들어오고_나가면_톡방에_안내_줄이_남는다() throws Exception {
+        host = signup("godae", "김고대", 61);
+        anam = signup("anam", "이안암", 61);
+        horang = signup("horang", "박호랑", 61);
+        registerDevice(host, "host-phone");
+        meetupId = createMeetup(host, 3, null, Duration.ofHours(5), Duration.ofHours(3), null);
+
+        // 성사 전에는 안내 줄의 이름도 가려진다. 폰 알림은 보내지 않는다
+        post("/api/meetups/" + meetupId + "/join", anam, null).andExpect(status().isOk());
+        get(url(), host).andExpect(jsonPath("$.messages", hasSize(1)))
+                .andExpect(jsonPath("$.messages[0].kind").value("JOIN"))
+                .andExpect(jsonPath("$.messages[0].sender.name").value("이*암"))
+                .andExpect(jsonPath("$.messages[0].body").value(nullValue()));
+        assertThat(chatPushes("host-phone")).isEmpty();
+
+        // 성사되면 실명
+        post("/api/meetups/" + meetupId + "/join", horang, null).andExpect(status().isOk());
+        get(url(), host).andExpect(jsonPath("$.messages[0].sender.name").value("이안암"))
+                .andExpect(jsonPath("$.messages[1].kind").value("JOIN"))
+                .andExpect(jsonPath("$.messages[1].sender.name").value("박호랑"));
+        // 톡방 목록에는 보낸 사람 없이 한 줄로, 안 읽은 수에는 세지 않는다
+        get("/api/me/chats", host).andExpect(jsonPath("$.rooms[0].lastPreview").value("박호랑님이 들어왔어요"))
+                .andExpect(jsonPath("$.rooms[0].lastSender").value(nullValue()))
+                .andExpect(jsonPath("$.totalUnread").value(0));
+
+        // 안내 줄은 들어온 사람도 지울 수 없다
+        long joinNotice = ((Number) read(get(url(), anam), "$.messages[0].id")).longValue();
+        delete(url() + "/" + joinNotice, anam).andExpect(status().isForbidden());
+
+        // 나가기 · 내보내기 모두 "나갔어요" (내보낸 것은 드러내지 않는다)
+        delete("/api/meetups/" + meetupId + "/join", anam).andExpect(status().isOk());
+        long horangRef = participantRef(host, meetupId, 1);
+        delete("/api/meetups/" + meetupId + "/participants/" + horangRef, host).andExpect(status().isOk());
+        get(url(), host).andExpect(jsonPath("$.messages", hasSize(4)))
+                .andExpect(jsonPath("$.messages[2].kind").value("LEAVE"))
+                .andExpect(jsonPath("$.messages[3].kind").value("LEAVE"))
+                .andExpect(jsonPath("$.messages[3].sender.ref").value(nullValue()));
+        assertThat(chatPushes("host-phone")).isEmpty();
+    }
+
+    // ---------- 이모티콘 ----------
+
+    @Test
+    void 이모티콘은_정해진_것만_하나씩_보낸다() throws Exception {
+        twoJoined();
+        long id = ((Number) read(post(url(), anam, "{\"sticker\":\"tiger-going\"}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.sticker").value("tiger-going"))
+                .andExpect(jsonPath("$.kind").value("TEXT"))
+                .andExpect(jsonPath("$.body").value(nullValue())), "$.id")).longValue();
+        assertThat(chatPushes("host-phone").getLast().body()).isEqualTo("이*암: (이모티콘) 가는 중");
+        get("/api/me/chats", host).andExpect(jsonPath("$.rooms[0].lastPreview").value("(이모티콘) 가는 중"))
+                .andExpect(jsonPath("$.totalUnread").value(1));
+        get(url(), host).andExpect(jsonPath("$.messages[0].sticker").value("tiger-going"));
+
+        post(url(), anam, "{\"sticker\":\"pepe\"}").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("STICKER"));
+        post(url(), anam, "{\"sticker\":\"tiger-going\",\"body\":\"같이\"}").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("STICKER_ALONE"));
+
+        delete(url() + "/" + id, anam).andExpect(status().isNoContent());
+        get(url(), host).andExpect(jsonPath("$.messages[0].sticker").value(nullValue()))
+                .andExpect(jsonPath("$.messages[0].deleted").value(true));
+    }
+
+    // ---------- 읽음 숫자 ----------
+
+    @Test
+    void 다른_원우가_어디까지_읽었는지_알려_주고_새로_들어온_원우는_그때까지_읽은_것으로_친다() throws Exception {
+        twoJoined();
+        long first = sayId(host, "하나");
+        // 이안암은 아직 안 읽었다 (들어온 때까지만 읽음) → 김고대 화면에서 "하나" 옆 1
+        ResultActions page = get(url(), host).andExpect(jsonPath("$.reads", hasSize(1)));
+        assertThat(((Number) read(page, "$.reads[0]")).longValue()).isLessThan(first);
+        // 보낸 사람은 거기까지 읽은 것으로 친다
+        get(url(), anam).andExpect(jsonPath("$.reads[0]").value(first));
+
+        put(url() + "/read", anam, "{\"lastId\":" + first + "}").andExpect(status().isNoContent());
+        get(url() + "/updates?after=" + first, host).andExpect(jsonPath("$.messages", hasSize(0)))
+                .andExpect(jsonPath("$.reads[0]").value(first));
+
+        // 나중에 들어온 박호랑은 예전 메시지를 읽은 것으로 친다 (카톡처럼)
+        post("/api/meetups/" + meetupId + "/join", horang, null).andExpect(status().isOk());
+        ResultActions after = get(url(), host).andExpect(jsonPath("$.reads", hasSize(2)));
+        assertThat(((Number) read(after, "$.reads[1]")).longValue()).isGreaterThan(first);
     }
 
     // ---------- 사진 ----------

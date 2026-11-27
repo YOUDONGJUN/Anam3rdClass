@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage, PersonView } from '../api/types'
 import { mergeMessages } from '../api/chat'
-import { groupMessages, previewOf } from './chat'
+import { groupMessages, previewOf, unreadCount } from './chat'
 
 const person = (name: string, ref: number | null): PersonView => ({
   name,
@@ -20,9 +20,11 @@ const person = (name: string, ref: number | null): PersonView => ({
 let seq = 0
 const msg = (who: string, at: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({
   id: ++seq,
+  kind: 'TEXT',
   sender: person(who, who === '나' ? null : who.length),
   mine: who === '나',
   body: '안녕',
+  sticker: null,
   photos: [],
   deleted: false,
   hidden: false,
@@ -70,6 +72,29 @@ describe('톡방 메시지 묶기', () => {
         }),
       ),
     ).toBe('사진 2장')
+    expect(previewOf(msg('김고대', '2026-03-02T13:00:00Z', { body: null, sticker: 'tiger-going' }))).toBe(
+      '(이모티콘) 가는 중',
+    )
+    expect(previewOf(msg('박호랑', '2026-03-02T13:00:00Z', { kind: 'JOIN', body: null }))).toBe('박호랑님이 들어왔어요')
+    expect(previewOf(msg('박호랑', '2026-03-02T13:00:00Z', { kind: 'LEAVE', body: null }))).toBe('박호랑님이 나갔어요')
+  })
+
+  it('들어옴/나감 줄은 덩어리를 끊는다', () => {
+    const rows = groupMessages([
+      msg('김고대', '2026-03-02T13:00:00Z'),
+      msg('박호랑', '2026-03-02T13:00:10Z', { kind: 'JOIN', body: null }),
+      msg('김고대', '2026-03-02T13:00:20Z'),
+    ])
+    expect(rows[0].last).toBe(true)
+    expect(rows[2].first).toBe(true)
+  })
+
+  it('안 읽은 사람 수: 그 메시지보다 앞까지만 읽은 원우 수 (안내 줄 · 지운 메시지는 0)', () => {
+    const m = msg('나', '2026-03-02T13:00:00Z')
+    expect(unreadCount(m, [m.id - 1, m.id, m.id + 3])).toBe(1)
+    expect(unreadCount(m, [])).toBe(0)
+    expect(unreadCount({ ...m, deleted: true }, [0, 0])).toBe(0)
+    expect(unreadCount({ ...m, kind: 'JOIN' }, [0, 0])).toBe(0)
   })
 
   it('합칠 때 같은 번호는 새것으로, 번호 순으로', () => {

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.anam3.auth.LoginMember;
+import com.anam3.chat.ChatService;
 import com.anam3.common.ApiException;
 import com.anam3.memory.MemoryService;
 import com.anam3.meetup.Meetup;
@@ -40,6 +41,7 @@ public class AccountService {
     private final MeetupWaitRepository waits;
     private final SchoolService schoolService;
     private final MemoryService memories;
+    private final ChatService chat;
     private final Clock clock;
 
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("M월 d일", Locale.KOREAN)
@@ -47,7 +49,8 @@ public class AccountService {
 
     public AccountService(MemberRepository members, MeetupRepository meetups, ParticipationRepository participations,
             MemberBlockRepository blocks, PushService push, PushNotifier notifier, MeetupWaitRepository waits,
-            SchoolService schoolService, MemoryService memories, Clock clock) {
+            SchoolService schoolService, MemoryService memories, ChatService chat, Clock clock) {
+        this.chat = chat;
         this.members = members;
         this.memories = memories;
         this.meetups = meetups;
@@ -200,6 +203,7 @@ public class AccountService {
                 boolean wasFull = locked.isFull();
                 participations.delete(p);
                 locked.removeParticipant();
+                chat.left(locked, member.getId());
                 if (closed) {
                     notifier.left(locked); // 성사 뒤 빠졌으니 연 사람이 알아야 한다
                 }

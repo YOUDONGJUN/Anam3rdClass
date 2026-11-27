@@ -154,7 +154,7 @@ public class ChatService {
         return new ChatPage(m.getId(), m.getTitle(), m.statusAt(now), m.getMeetAt(), room.people().size(),
                 m.isFederated(), views(found, room, viewer, now), hasMore, room.canWrite(),
                 state == null ? 0 : state.getLastReadId(), state != null && state.isMuted(),
-                PhotoLimits.CHAT_KEEP_DAYS, photosLeftToday(viewer.id(), now));
+                PhotoLimits.CHAT_KEEP_DAYS, photosLeftToday(viewer.id(), now), reads(room, viewer));
     }
 
     /** after 다음에 온 메시지 (실시간 알림을 받거나 화면으로 돌아왔을 때) */
@@ -162,7 +162,18 @@ public class ChatService {
     public ChatUpdates updates(LoginMember viewer, Long meetupId, Long after) {
         Room room = room(viewer, meetupId);
         List<ChatMessage> found = messages.findAfter(meetupId, after, PageRequest.of(0, UPDATES_MAX));
-        return new ChatUpdates(views(found, room, viewer, clock.instant()));
+        return new ChatUpdates(views(found, room, viewer, clock.instant()), reads(room, viewer));
+    }
+
+    /** 나 말고 함께하는 원우들이 각자 마지막으로 읽은 메시지 번호 (톡방을 아직 안 연 원우는 0) */
+    private List<Long> reads(Room room, LoginMember viewer) {
+        Map<Long, Long> readIds = new HashMap<>();
+        states.findReadIds(room.meetup().getId()).forEach(r -> readIds.put((Long) r[0], (Long) r[1]));
+        return room.memberIds().stream()
+                .filter(id -> !id.equals(viewer.id()))
+                .map(id -> readIds.getOrDefault(id, 0L))
+                .sorted()
+                .toList();
     }
 
     private List<MessageView> views(List<ChatMessage> list, Room room, LoginMember viewer, Instant now) {
@@ -189,10 +200,11 @@ public class ChatService {
                 .map(p -> new PhotoView(p.getStorageKey(), expired ? null : storage.viewUrl(p.getStorageKey()),
                         expired))
                 .toList();
-        return new MessageView(m.getId(),
+        return new MessageView(m.getId(), m.getKind(),
                 mapper.personView(sender, viewer, revealed, m.getMeetup().isHostedBy(sender.getId()),
                         refs.get(sender.getId())),
-                mine, hidden ? null : m.getBody(), photoViews, m.isDeleted(), hidden, m.getCreatedAt());
+                mine, hidden ? null : m.getBody(), hidden ? null : m.getSticker(), photoViews, m.isDeleted(),
+                hidden, m.getCreatedAt());
     }
 
     private int photosLeftToday(Long memberId, Instant now) {
@@ -225,6 +237,9 @@ public class ChatService {
         }
         String body = req.body() == null || req.body().isBlank() ? null : req.body().strip();
         List<String> keys = req.photoKeys() == null ? List.of() : List.copyOf(new LinkedHashSet<>(req.photoKeys()));
+        if (req.sticker() != null) {
+            return sendSticker(room, viewer, req.sticker(), body != null || !keys.isEmpty(), now);
+        }
         if (body == null && keys.isEmpty()) {
             throw ApiException.badRequest("EMPTY", "보낼 메시지를 써 주세요");
         }
@@ -247,11 +262,55 @@ public class ChatService {
         } catch (DataIntegrityViolationException e) {
             throw ApiException.badRequest("PHOTO_USED", "이미 보낸 사진이에요. 다시 골라 주세요");
         }
+        return sent(room, viewer, message, now);
+    }
+
+    /** 이모티콘: 정해진 것만, 글·사진 없이 하나만 */
+    private MessageView sendSticker(Room room, LoginMember viewer, String sticker, boolean withOthers, Instant now) {
+        if (!ChatStickers.exists(sticker)) {
+            throw ApiException.badRequest("STICKER", "없는 이모티콘이에요");
+        }
+        if (withOthers) {
+            throw ApiException.badRequest("STICKER_ALONE", "이모티콘은 글·사진과 따로 보내 주세요");
+        }
+        ChatMessage message = messages.saveAndFlush(
+                ChatMessage.sticker(room.meetup(), members.getReferenceById(viewer.id()), sticker, now));
+        return sent(room, viewer, message, now);
+    }
+
+    /** 보낸 뒤: 보낸 사람은 거기까지 읽은 것으로 · 열린 화면에 알리고 · 폰 알림 */
+    private MessageView sent(Room room, LoginMember viewer, ChatMessage message, Instant now) {
+        Long meetupId = room.meetup().getId();
         stateOf(room.meetup(), viewer.id()).readUpTo(message.getId());
         live.publish(room.memberIds(), "chat", Map.of("meetupId", meetupId, "messageId", message.getId()));
         notifyNew(room, message);
         return view(message, message.getPhotos(), viewer, MeetupMapper.canSeeRealNames(room.meetup(), viewer, true),
                 room.refs(), Set.of(), now);
+    }
+
+    // ---------- 들어옴 · 나감 ----------
+
+    /**
+     * 참여했다 → 톡방에 "○○님이 들어왔어요". 들어온 사람은 그 순간까지 읽은 것으로 친다
+     * (예전 메시지 옆 "안 읽은 사람 수"에 세지 않는다 — 카톡처럼). 폰 알림은 보내지 않는다.
+     */
+    public void joined(Meetup meetup, Long memberId) {
+        ChatMessage notice = notice(meetup, memberId, ChatKind.JOIN);
+        stateOf(meetup, memberId).readUpTo(notice.getId());
+    }
+
+    /** 나갔거나 내보내졌다 → 톡방에 "○○님이 나갔어요" (내보낸 것은 드러내지 않는다) */
+    public void left(Meetup meetup, Long memberId) {
+        notice(meetup, memberId, ChatKind.LEAVE);
+    }
+
+    private ChatMessage notice(Meetup meetup, Long memberId, ChatKind kind) {
+        ChatMessage notice = messages.saveAndFlush(
+                ChatMessage.notice(meetup, members.getReferenceById(memberId), kind, clock.instant()));
+        List<Long> people = participations.findMemberIds(meetup.getId());
+        Long meetupId = meetup.getId();
+        afterCommit(() -> live.publish(people, "chat", Map.of("meetupId", meetupId, "messageId", notice.getId())));
+        return notice;
     }
 
     /** 내 메시지 지우기: 자리는 남고 "지운 메시지"로 보인다. 사진은 저장소에서도 지운다 */
@@ -260,7 +319,7 @@ public class ChatService {
         ChatMessage message = messages.findById(messageId)
                 .filter(m -> m.getMeetup().getId().equals(meetupId))
                 .orElseThrow(() -> ApiException.notFound("메시지를 찾을 수 없어요"));
-        if (!message.isSentBy(viewer.id())) {
+        if (!message.isSentBy(viewer.id()) || message.isNotice()) {
             throw ApiException.forbidden("내가 보낸 메시지만 지울 수 있어요");
         }
         if (message.isDeleted()) {
@@ -279,10 +338,18 @@ public class ChatService {
     public void read(LoginMember viewer, Long meetupId, long lastId) {
         Room room = room(viewer, meetupId);
         Long last = messages.findLastId(meetupId);
-        stateOf(room.meetup(), viewer.id()).readUpTo(Math.min(lastId, last == null ? 0 : last));
+        ChatState state = stateOf(room.meetup(), viewer.id());
+        long before = state.getLastReadId();
+        state.readUpTo(Math.min(lastId, last == null ? 0 : last));
         live.viewing(viewer.id(), meetupId);
         // 내 다른 기기(폰·PC)의 안 읽은 수도 맞춘다
         live.publish(List.of(viewer.id()), "chat-read", Map.of("meetupId", meetupId));
+        // 더 읽었으면 톡방을 연 다른 원우 화면의 "안 읽은 사람 수"를 줄인다 (1분마다 오는 '보고 있어요'는 빼고)
+        if (state.getLastReadId() > before) {
+            Set<Long> others = new HashSet<>(room.memberIds());
+            others.remove(viewer.id());
+            live.publish(others, "chat-reads", Map.of("meetupId", meetupId));
+        }
     }
 
     /** 톡방을 닫았다 — 이제 새 메시지는 폰 알림으로 */
@@ -343,15 +410,18 @@ public class ChatService {
             }
             Member sender = last.getMember();
             boolean mine = sender.getId().equals(viewer.id());
-            String preview = last.isDeleted() ? "지운 메시지예요"
-                    : !mine && hidden.contains(sender.getId()) ? "차단한 원우의 메시지예요"
-                    : last.getBody() != null ? shorten(last.getBody(), 60)
-                    : "사진 " + photoCount.getOrDefault(last.getId(), 1) + "장";
             String senderName = mine ? "나"
                     : mapper.personView(sender, viewer, MeetupMapper.canSeeRealNames(m, viewer, true),
                             m.isHostedBy(sender.getId()), null).name();
+            String preview = last.isNotice() ? noticeText(last.getKind(), senderName)
+                    : last.isDeleted() ? "지운 메시지예요"
+                    : !mine && hidden.contains(sender.getId()) ? "차단한 원우의 메시지예요"
+                    : last.getSticker() != null ? ChatStickers.preview(last.getSticker())
+                    : last.getBody() != null ? shorten(last.getBody(), 60)
+                    : "사진 " + photoCount.getOrDefault(last.getId(), 1) + "장";
+            // 들어옴/나감 줄은 보낸 사람 없이 한 줄로 ("○○님이 들어왔어요")
             rooms.add(new RoomView(id, m.getTitle(), m.statusAt(now), m.getMeetAt(), count, muted, preview,
-                    senderName, last.getCreatedAt()));
+                    last.isNotice() ? null : senderName, last.getCreatedAt()));
         }
         return new RoomList(total, rooms);
     }
@@ -385,7 +455,8 @@ public class ChatService {
         String name = full == null ? "원우"
                 : (m.isReached() && !m.isCanceled()) || full.isOwner() || full.isWithdrawn() ? full.getName()
                 : NameMasker.mask(full.getName());
-        String text = message.getBody() != null ? shorten(message.getBody(), 80)
+        String text = message.getSticker() != null ? ChatStickers.preview(message.getSticker())
+                : message.getBody() != null ? shorten(message.getBody(), 80)
                 : "사진 " + message.getPhotos().size() + "장을 보냈어요";
         push.sendPushOnly(to, new PushMessage(PushType.CHAT, m.getTitle(), name + ": " + text,
                 "/meetups/" + m.getId() + "/chat", "chat-" + m.getId()));
@@ -426,6 +497,10 @@ public class ChatService {
     private static ApiException dailyLimit() {
         return ApiException.badRequest("PHOTO_DAILY_LIMIT",
                 "톡방 사진은 하루에 " + PhotoLimits.CHAT_PER_DAY + "장까지 보낼 수 있어요");
+    }
+
+    static String noticeText(ChatKind kind, String name) {
+        return name + (kind == ChatKind.JOIN ? "님이 들어왔어요" : "님이 나갔어요");
     }
 
     static String shorten(String text, int max) {
